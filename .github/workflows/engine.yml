@@ -1,0 +1,51 @@
+name: Build sky engine
+
+# Builds Stellarium Web Engine to WebAssembly on Linux with the pinned emsdk.
+# Runs on demand and whenever the pins or build script change.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'engine/**'
+      - '.github/workflows/engine.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read pins
+        id: pins
+        run: |
+          echo "emsdk=$(cat engine/EMSDK_VERSION)" >> "$GITHUB_OUTPUT"
+          echo "swe=$(cat engine/SWE_COMMIT)" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch Stellarium Web Engine at pinned commit
+        run: |
+          git init swe
+          git -C swe remote add origin https://github.com/Stellarium/stellarium-web-engine.git
+          git -C swe fetch --depth 1 origin "${{ steps.pins.outputs.swe }}"
+          git -C swe checkout FETCH_HEAD
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ steps.pins.outputs.emsdk }}
+          actions-cache-folder: emsdk-cache
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build
+        run: node engine/build-engine.mjs swe public/engine
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stellarium-web-engine
+          path: public/engine/
+          retention-days: 30

@@ -1,0 +1,49 @@
+# Stellarium Web Engine build
+
+The 3D sky is drawn by [Stellarium Web Engine](https://github.com/Stellarium/stellarium-web-engine)
+(SWE, AGPL-3.0), compiled from C to WebAssembly with Emscripten.
+
+| Pin                | File            | Value                                              |
+| ------------------ | --------------- | -------------------------------------------------- |
+| Upstream commit    | `SWE_COMMIT`    | see file                                           |
+| Emscripten (emsdk) | `EMSDK_VERSION` | `1.39.17` (the version upstream's Dockerfile uses) |
+
+## Why not SCons?
+
+Upstream builds with `make js` → SCons. On Windows, SCons picks MSVC-style flags (`/Fo`, `/I`) and
+strips `PATH`, so emcc cannot run. `build-engine.mjs` reproduces the upstream `SConstruct` (release
+mode, ES6 module output) by calling `emcc` directly. It runs the same way on Linux CI, Windows and
+macOS.
+
+## Build locally
+
+```bash
+git clone https://github.com/Stellarium/stellarium-web-engine.git /path/to/swe
+git -C /path/to/swe checkout "$(cat engine/SWE_COMMIT)"
+git clone https://github.com/emscripten-core/emsdk.git /path/to/emsdk
+/path/to/emsdk/emsdk install 1.39.17 && /path/to/emsdk/emsdk activate 1.39.17
+source /path/to/emsdk/emsdk_env.sh        # Windows PowerShell: emsdk_env.ps1
+node engine/build-engine.mjs /path/to/swe public/engine
+```
+
+Output: `public/engine/stellarium-web-engine.js` (~100 KiB) and `.wasm` (~1.2 MiB, ~0.4 MiB
+gzipped). A clean build takes about 20 seconds on an 8-core machine.
+
+In CI, `.github/workflows/engine.yml` does the same on Ubuntu and uploads the two files as a build
+artifact.
+
+## Integration notes (found in the trial build)
+
+- Call `stel.setFont()` only after the first frame has rendered (two `requestAnimationFrame`s after
+  `onReady`). Calling it inside `onReady` crashes with "memory access out of bounds" because the
+  renderer does not exist yet.
+- With `USE_ES6_IMPORT_META=0` the page must pass `wasmFile` explicitly.
+- Star, DSO, Milky Way and planet data are HiPS-style tile folders (`properties` + `Norder*/Dir*/`).
+  Star tiles use SWE's binary `eph` format (`src/eph-file.c`). Our own catalogs (Gaia DR3 subset,
+  Hipparcos, OpenNGC) are converted to this format by a pipeline; we never load data from
+  Stellarium's servers.
+
+## License
+
+SWE is AGPL-3.0. Because this site links it into a network service, the whole site is AGPL-3.0 and
+its complete source, including this build script, is public.
