@@ -113,6 +113,43 @@ def encode_tile(
     return out
 
 
+def encode_tile_np(
+    kind: str,
+    order: int,
+    pix: int,
+    columns: list[Column],
+    arrays: dict,
+    children_mask: int | None = None,
+) -> bytes:
+    """Vectorised encode_tile for numeric columns ('f', 'i', 'Q') given numpy arrays.
+
+    Produces byte-for-byte the same layout as encode_tile (tested)."""
+    import numpy as np
+
+    fmt = {"f": "<f4", "i": "<i4", "Q": "<u8"}
+    dtype = np.dtype([(c.name, fmt[c.type]) for c in columns])
+    n = len(next(iter(arrays.values())))
+    rec = np.zeros(n, dtype=dtype)
+    for c in columns:
+        rec[c.name] = arrays[c.name]
+    raw = rec.tobytes()
+    row_size = dtype.itemsize
+    shuffled = np.frombuffer(raw, dtype=np.uint8).reshape(n, row_size).T.tobytes()
+    comp = zlib.compress(shuffled, 9)
+
+    starts = [dtype.fields[c.name][1] for c in columns]
+    head = struct.pack("<IQ", TILE_VERSION, 4 * 4**order + pix)
+    table = struct.pack("<IIII", 1, row_size, len(columns), n)
+    for c, s in zip(columns, starts, strict=True):
+        table += _name4(c.name) + _name4(c.type) + struct.pack("<III", c.unit, s, c.nbytes)
+    block = struct.pack("<II", len(shuffled), len(comp)) + comp
+    out = b"EPHE" + struct.pack("<I", FILE_VERSION)
+    if children_mask is not None:
+        out += _chunk("JSON", json.dumps({"children_mask": children_mask}).encode())
+    out += _chunk(kind, head + table + block)
+    return out
+
+
 def decode_tile(data: bytes) -> dict:
     """Decode a tile (used for tests and for inspecting upstream files)."""
     assert data[:4] == b"EPHE", "bad magic"

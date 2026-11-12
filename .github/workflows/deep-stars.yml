@@ -1,0 +1,49 @@
+name: Deep star layer to R2
+
+# Builds the Gaia DR3 V 10–14 layer as ONE PMTiles file and uploads it to R2
+# through pipelines/r2/r2.py (8 GB hard guard). Manual only: it runs once, or
+# when the catalog method changes. Raw downloads never leave the runner.
+on:
+  workflow_dispatch:
+    inputs:
+      vmax:
+        description: Faintest V magnitude (keep the file under ~450 MB)
+        default: '14.0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-writes
+  cancel-in-progress: false
+
+jobs:
+  build-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install numpy astropy astropy-healpix pmtiles requests boto3
+      - name: Fetch Gaia DR3 G < 14 (GAVO async TAP, ~2 GB, stays on the runner)
+        working-directory: pipelines/catalogs
+        run: python fetch.py --only gaia-deep
+      - name: Build PMTiles
+        working-directory: pipelines/catalogs
+        run: python build_gaia_deep.py --vmax "${{ inputs.vmax }}"
+      - name: Upload to R2 (guarded)
+        working-directory: pipelines/r2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          python r2.py usage
+          python r2.py upload ../catalogs/out/gaia-deep-v1.pmtiles stars/gaia-deep-v1.pmtiles \
+            --type application/vnd.pmtiles --cache "public, max-age=31536000, immutable"
+          python r2.py upload ../catalogs/out/gaia-deep-v1.properties stars/gaia-deep-v1.properties \
+            --type "text/plain; charset=utf-8" --cache "public, max-age=86400"
+          python r2.py usage

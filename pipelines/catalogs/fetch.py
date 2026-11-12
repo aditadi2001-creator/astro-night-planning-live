@@ -114,6 +114,53 @@ def tap_async(query: str, max_wait_s: int = 3600) -> bytes:
     return content
 
 
+def tap_async_fmt(query: str, fmt: str) -> bytes:
+    """tap_async with an output format (e.g. 'fits')."""
+    r = requests.post(
+        GAVO_TAP.replace("/sync", "/async"),
+        data={"REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": fmt, "MAXREC": "6000000",
+              "QUERY": query},
+        headers=UA, timeout=120, allow_redirects=False,
+    )
+    job = r.headers.get("Location")
+    if r.status_code not in (200, 303) or not job:
+        raise RuntimeError(f"TAP async submit failed: {r.status_code} {r.text[:300]}")
+    requests.post(f"{job}/phase", data={"PHASE": "RUN"}, headers=UA, timeout=60)
+    start = time.time()
+    while True:
+        phase = requests.get(f"{job}/phase", headers=UA, timeout=60).text.strip()
+        if phase == "COMPLETED":
+            break
+        if phase in ("ERROR", "ABORTED"):
+            raise RuntimeError(f"TAP job {phase}: {requests.get(f'{job}/error', headers=UA, timeout=60).text[:500]}")
+        if time.time() - start > 7200:
+            raise RuntimeError("TAP job did not finish in 2 h")
+        time.sleep(15)
+    content = get(f"{job}/results/result")
+    requests.delete(job, headers=UA, timeout=60)
+    return content
+
+
+# G bands for the deep layer, each under GAVO's per-job row limit.
+DEEP_BANDS = [(-5.0, 12.0), (12.0, 13.0), (13.0, 13.5), (13.5, 13.75), (13.75, 14.0)]
+
+
+def fetch_gaia_deep() -> None:
+    """Gaia DR3 G < 14 as binary FITS, one file per magnitude band (~17 M rows)."""
+    for lo, hi in DEEP_BANDS:
+        name = f"gaia_deep_{lo:g}_{hi:g}.fits"
+        if (RAW / name).exists():
+            print(f"  {name} already present")
+            continue
+        print(f"Gaia DR3 {lo} <= G < {hi}…", flush=True)
+        q = (
+            "SELECT source_id, ra, dec, pmra, pmdec, phot_g_mean_mag, phot_bp_mean_mag, "
+            f"phot_rp_mean_mag FROM gaia.dr3lite WHERE phot_g_mean_mag >= {lo} "
+            f"AND phot_g_mean_mag < {hi}"
+        )
+        save(name, tap_async_fmt(q, "fits"))
+
+
 def fetch_gaia(gmax: float) -> None:
     """Gaia DR3 down to G < gmax in one async job."""
     print(f"Gaia DR3, G < {gmax} (GAVO gaia.dr3lite)…")
@@ -178,7 +225,7 @@ SOURCES = {
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--gaia-gmax", type=float, default=10.6)
-    ap.add_argument("--only", default="", help="comma-separated subset: " + ",".join([*SOURCES, "gaia"]))
+    ap.add_argument("--only", default="", help="comma-separated subset: " + ",".join([*SOURCES, "gaia", "gaia-deep"]))
     args = ap.parse_args()
     only = set(filter(None, args.only.split(",")))
     for name, fn in SOURCES.items():
@@ -186,6 +233,9 @@ def main() -> None:
             fn()
     if not only or "gaia" in only:
         fetch_gaia(args.gaia_gmax)
+    # The deep layer (~2 GB of downloads) is only fetched when asked for.
+    if "gaia-deep" in only:
+        fetch_gaia_deep()
 
 
 if __name__ == "__main__":

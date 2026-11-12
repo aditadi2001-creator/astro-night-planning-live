@@ -1,0 +1,59 @@
+import { describe, expect, it } from 'vitest';
+import { hipsToTile, parse7timer, parseDem, parseHips, parseTile } from '../worker/src/routes';
+
+describe('worker routes are strict allow-lists', () => {
+  it('parses tile URLs and rejects anything else', () => {
+    expect(parseTile('/tiles/lightpollution-2025/7/64/42.webp')).toEqual({
+      dataset: { kind: 'lightpollution', year: 2025 },
+      z: 7,
+      x: 64,
+      y: 42,
+    });
+    expect(parseTile('/tiles/clouds-2026111214/3/1/2.webp')?.dataset).toEqual({
+      kind: 'clouds',
+      hour: '2026111214',
+    });
+    expect(parseTile('/tiles/clouds-2026111214/3/8/2.webp')).toBeNull(); // x out of range
+    expect(parseTile('/tiles/../secret/1/1/1.webp')).toBeNull();
+    expect(parseTile('/tiles/anything-else/1/0/0.webp')).toBeNull();
+  });
+
+  it('parses HiPS star tiles and checks the Dir folder', () => {
+    expect(parseHips('/hips/gaia/properties')).toEqual({ kind: 'properties' });
+    expect(parseHips('/hips/gaia/Norder6/Dir10000/Npix12345.eph')).toEqual({
+      kind: 'tile',
+      order: 6,
+      pix: 12345,
+    });
+    expect(parseHips('/hips/gaia/Norder6/Dir0/Npix12345.eph')).toBeNull(); // wrong Dir
+    expect(parseHips('/hips/gaia/Norder0/Dir0/Npix12.eph')).toBeNull(); // order 0 has 12 pixels
+    expect(parseHips('/hips/gaia/Norder5/Dir10000/Npix12345.eph')).toBeNull(); // order 5 has 12,288
+  });
+
+  it('maps HEALPix pixels into unique PMTiles z/x/y slots', () => {
+    const seen = new Set<string>();
+    for (const order of [0, 1, 2]) {
+      for (let pix = 0; pix < 12 * 4 ** order; pix++) {
+        const { z, x, y } = hipsToTile(order, pix);
+        expect(x).toBeLessThan(2 ** z);
+        expect(y).toBeLessThan(2 ** z);
+        seen.add(`${z}/${x}/${y}`);
+      }
+    }
+    expect(seen.size).toBe(12 + 48 + 192);
+  });
+
+  it('only proxies Copernicus DEM tile names', () => {
+    const n = 'Copernicus_DSM_COG_10_N42_00_E000_00_DEM';
+    expect(parseDem(`/dem/${n}/${n}.tif`)).toBe(n);
+    expect(parseDem(`/dem/${n}/other.tif`)).toBeNull();
+    expect(parseDem('/dem/../../etc/passwd')).toBeNull();
+  });
+
+  it('only proxies 7Timer with sane coordinates', () => {
+    expect(parse7timer('/7timer/42.9/0.1')).toEqual({ lat: '42.9', lon: '0.1' });
+    expect(parse7timer('/7timer/-33.9/151.2')).toEqual({ lat: '-33.9', lon: '151.2' });
+    expect(parse7timer('/7timer/95/0')).toBeNull();
+    expect(parse7timer('/7timer/1/2?x=evil')).toBeNull();
+  });
+});

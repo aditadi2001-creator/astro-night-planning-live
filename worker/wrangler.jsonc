@@ -1,0 +1,23 @@
+{
+  // Data Worker for astro-night-planning-live. Free Workers plan only.
+  // Deploy ONLY with: npx wrangler deploy --config worker/wrangler.jsonc
+  // (the name below is explicit; this config never touches any other Worker).
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "astro-night-planning-live-data",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-13",
+  "workers_dev": true,
+  "preview_urls": false,
+  // Workers Caching: serves repeated tiles without running the Worker or
+  // reading R2 (cache hits still count toward the 100k requests/day).
+  "cache": { "enabled": true },
+  "r2_buckets": [
+    {
+      "binding": "DATA",
+      "bucket_name": "astro-night-planning-live-data",
+    },
+  ],
+  "observability": { "enabled": false },
+  // Hard cap on CPU per request; tile requests use well under 5 ms.
+  "limits": { "cpu_ms": 50 },
+}

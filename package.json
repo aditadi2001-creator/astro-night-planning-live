@@ -18,14 +18,18 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ci": "npm run check && npm run lint && npm run format:check && npm run test && npm run build"
+    "ci": "npm run check && npm run lint && npm run format:check && npm run test && npm run build && tsc -p worker",
+    "worker:dev": "wrangler dev --local --config worker/wrangler.jsonc --port 8787",
+    "worker:check": "tsc -p worker"
   },
   "dependencies": {
     "astronomy-engine": "^2.1.19",
     "geotiff": "^3.0.5",
+    "pmtiles": "^4.5.0",
     "svelte": "^5.57.3"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261112.1",
     "@eslint/js": "^10.0.1",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tsconfig/svelte": "^5.0.9",
@@ -38,6 +42,7 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.72.2",
     "vite": "^8.3.8",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.0",
+    "wrangler": "^4.161.0"
   }
 }

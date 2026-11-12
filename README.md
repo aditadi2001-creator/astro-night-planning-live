@@ -94,8 +94,8 @@ call per search (cached for a week).
 ## Terrain horizon (Copernicus DEM via the Worker)
 
 The Copernicus GLO-30 bucket on AWS Open Data has no CORS headers, so browsers read it through our
-Cloudflare Worker (Phase 5); during development the Vite dev server proxies `/dem`. Until the Worker
-exists the deployed site shows a flat horizon.
+data Worker (`VITE_DATA_BASE` + `/dem`); during development without a Worker the Vite dev server
+proxies `/dem`. Without either, the site shows a flat horizon.
 
 Per **new** location the browser reads one header and one overview block from each 1°×1° tile
 within 90 km: typically 4–6 tiles = **8–12 requests, 2.5–4 MB**, once. The finished profile is
@@ -103,33 +103,99 @@ cached on the device, so revisits cost nothing. Terrain loads only after the pag
 skipped under Data Saver / 2G / 3G unless the visitor asks for it.
 
 Worker budget: 100 visitors a day trying 2 new locations each ≈ 2,400 Worker requests/day for
-terrain, 2–3 % of the account-wide 100,000/day free limit. (Shared with your main site; the total
-estimate is in the R2/Worker section added in Phase 5.)
+terrain, 2–3 % of the account-wide 100,000/day free limit (see the Worker section below).
 
-## Cloudflare R2: cost rules
+## Data Worker and R2 (free tier only)
 
-R2 is the only service with a payment method on file, so the design stays **well under half** of
-the free tier and has a hard cap:
+One Worker, `astro-night-planning-live-data` (code in [`worker/`](worker/)), on the **free Workers
+plan**, bound to one R2 bucket, `astro-night-planning-live-data`. The browser never reads R2
+directly and never lists the bucket.
 
-| Free tier (per month) | Our hard limit                                  |
-| --------------------- | ----------------------------------------------- |
-| 10 GB storage         | 5 GB target, **jobs refuse uploads above 8 GB** |
-| 1 M Class A ops       | ~1–2 k/month expected (one upload per hour)     |
-| 10 M Class B ops      | capped far lower by the free Worker's 100 k/day |
+| Route                               | What it serves                                                                         |
+| ----------------------------------- | -------------------------------------------------------------------------------------- |
+| `/tiles/<dataset>/<z>/<x>/<y>.webp` | one tile out of a PMTiles archive in R2 (light pollution, hourly clouds)               |
+| `/hips/gaia/...`                    | the deep star layer (Gaia DR3, V 10–14) for the sky engine                             |
+| `/data/<name>.json`                 | small JSON files (e.g. the list of available cloud hours)                              |
+| `/dem/<tile>.tif`                   | pass-through to the Copernicus DEM bucket (no CORS there); byte ranges only, max 4 MiB |
+| `/7timer/<lat>/<lon>`               | 7Timer! ASTRO forecast (no CORS there), cached 3 h                                     |
 
-The detailed monthly estimate with calculations is added in Phase 5, when the bucket and Worker
-exist.
+Everything else is 404, so the Worker can't be used as an open proxy. Large datasets are **one
+PMTiles file each**. The Worker reads single tiles out of them with range requests and serves each
+tile at its own URL, so [Workers Caching](https://developers.cloudflare.com/workers/cache/) can keep
+it: a cache hit doesn't run the Worker or read R2.
 
-### Checking that R2 is enabled and how much it is used
+### Expected monthly usage (with calculation)
 
-1. Cloudflare dashboard → **Storage & Databases → R2 Object Storage** (older dashboards: **R2** in
-   the sidebar). If you see a "Purchase R2 / Add R2 subscription" screen, R2 is not enabled yet.
-   Enabling it is a $0 subscription; you are only billed above the free tier.
-2. The R2 **Overview** page shows total storage and Class A / Class B operations for the month.
-3. **Manage Account → Billing → Billable usage** shows anything that would be charged. It should
-   always read $0.00.
-4. Usage alerts: **Notifications → Add** and look for a usage-based billing alert. Phase 5 will
-   confirm the exact option name in your dashboard.
+**R2 free tier: 10 GB-month storage, 1 M Class A, 10 M Class B. Our rule: stay under half.**
+
+| Storage                            | Size                                      | Notes                                                             |
+| ---------------------------------- | ----------------------------------------- | ----------------------------------------------------------------- |
+| Deep star layer (Gaia DR3, V ≤ 14) | ~0.28 GB                                  | 16.8 M stars × ~17 bytes (measured 17.4 B/star on a test build)   |
+| Light pollution PMTiles (Phase 8)  | ≤ 2 GB                                    | resolution chosen to fit                                          |
+| Hourly satellite clouds (Phase 6)  | ≤ 0.7 GB                                  | 24 h kept × ≤ 30 MB per hour                                      |
+| Small JSON etc.                    | < 0.01 GB                                 |                                                                   |
+| **Total**                          | **≈ 3 GB** (target 5 GB, hard limit 8 GB) | during the yearly light-pollution switch-over, +2 GB for ≤ 1 week |
+
+| Class A (writes, lists)                                     | Per month                            |
+| ----------------------------------------------------------- | ------------------------------------ |
+| Hourly cloud upload: 1 PUT + 1 LIST (bucket total) per hour | 24 × 30 × 2 = **1,440**              |
+| Yearly light-pollution, deep stars, occasional re-uploads   | < 20                                 |
+| Deletes                                                     | free                                 |
+| **Total**                                                   | **≈ 1,500 = 0.15 % of the free 1 M** |
+
+| Class B (reads)                                                                                                                                                                           | Per month                                               |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Hard ceiling: the free Workers plan stops at 100,000 requests/day (Error 1027, no charge). Even if every request missed the cache and needed ~1.05 R2 reads (tile + occasional directory) | 100,000 × 30 × 1.05 ≈ **3.2 M = 32 % of the free 10 M** |
+| Realistic (50 % Workers Caching hit rate, 5,000 visits/day × 4 Worker requests)                                                                                                           | 5,000 × 4 × 30 × 0.5 ≈ **0.3 M**                        |
+
+So the free Workers request cap also caps R2 reads below half the R2 free tier.
+
+### Worker requests per visit (account-wide free limit: 100,000/day, shared with your main site)
+
+| Action                                      | Worker requests                                                         |
+| ------------------------------------------- | ----------------------------------------------------------------------- |
+| Open the site (sky + cards)                 | 0–2 (deep star tiles only when zoomed in; 7Timer once per 3 h, Phase 7) |
+| Zoom the sky to a telescope field           | 5–30 star tiles, cached afterwards                                      |
+| New location: terrain horizon               | 8–12, once (then cached on the device)                                  |
+| Open the satellite cloud map (Phase 6)      | ≈ 20–40 tiles                                                           |
+| Light-pollution value at the site (Phase 8) | 1–2                                                                     |
+
+A typical visit costs ~2–5 requests; a heavy one ~60. **10,000 typical visits/day ≈ 20,000–50,000
+requests**, so traffic would have to grow to tens of thousands of visits a day before the shared
+limit is close. I will tell you if usage approaches it. Above the limit Cloudflare answers with
+error 1027 for the rest of the UTC day (the site still loads from Pages; the Worker-backed extras
+show their "unavailable" state) — it never charges.
+
+### Storage guard in every R2 write job
+
+[`pipelines/r2/r2.py`](pipelines/r2/r2.py) is the only code that writes to R2. Before every upload
+it totals the bucket. If the upload would take it above **8 GB** it first deletes the oldest hourly
+cloud files (deletes are free); if that is not enough the job **fails and uploads nothing**. It
+refuses any bucket whose name does not start with `astro-night-planning-live`. Unit-tested in
+`pipelines/r2/test_r2.py`. Raw downloads (Gaia, NASA `.h5`, GMGSI) never go to R2: jobs process
+them on the GitHub runner and upload only the finished PMTiles.
+
+A bucket **lifecycle rule** deletes `clouds/hourly/` objects after 2 days as a safety net.
+
+### Checking R2 and Worker usage
+
+1. **R2 enabled?** Dashboard → **Storage & Databases → R2 Object Storage**. If it offers to
+   "Purchase R2" / add a subscription, it is not enabled; enabling is a $0 subscription.
+2. **R2 usage:** R2 → **Overview** shows storage and Class A / Class B operations this month.
+   `python pipelines/r2/r2.py usage` (with the secrets in your environment) lists the bucket.
+3. **Worker usage:** **Workers & Pages → astro-night-planning-live-data → Metrics** (requests per
+   day). The 100,000/day limit is account-wide, so also glance at **Workers & Pages → Overview**.
+4. **Anything billable?** **Manage Account → Billing → Billable Usage** — should read $0.00.
+5. **Get an email before any charge:** on that page select **Set Budget Alert**, enter **$0.01**,
+   **Create**. (Cloudflare creates a $10 alert by default on pay-as-you-go accounts; lower it to
+   $0.01.) Also available under **Notifications → Add → Budget Alert**.
+
+### Custom domain option (later)
+
+If you add a custom domain on Cloudflare (e.g. `sky.example.com`), the same Worker can serve on it
+(`routes` in `worker/wrangler.jsonc`), or R2 can be connected to it directly as a public bucket
+domain with Cloudflare's CDN in front. Neither costs money. The `r2.dev` URL stays off: it is
+rate-limited and meant for testing.
 
 ## Roadmap
 

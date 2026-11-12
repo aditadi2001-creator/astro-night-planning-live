@@ -32,9 +32,14 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      - name: Worker type check
+        run: npx tsc -p worker
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Pipeline unit tests (eph tile format)
         working-directory: pipelines/catalogs
-        run: python -m unittest test_eph -v
+        run: pip install numpy && python -m unittest test_eph -v
+      - name: R2 storage-guard tests
+        working-directory: pipelines/r2
+        run: pip install boto3 && python -m unittest test_r2 -v

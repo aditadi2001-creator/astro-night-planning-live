@@ -80,6 +80,8 @@ type EngineFactory = (opts: {
   onReady: (stel: Stel) => void;
 }) => void;
 
+import { GAIA_DEEP_URL } from '../config';
+
 const BASE = import.meta.env.BASE_URL;
 export const SKYDATA = `${BASE}skydata/`;
 
@@ -116,6 +118,9 @@ export async function startEngine(canvas: HTMLCanvasElement): Promise<Stel> {
 function addSkyData(stel: Stel): void {
   const c = stel.core;
   c.stars.addDataSource({ url: `${SKYDATA}stars` });
+  // Deep layer V 10–14 from R2 via the data Worker (engine key 'gaia': it
+  // starts where the bundled layer's max_vmag ends).
+  if (GAIA_DEEP_URL) c.stars.addDataSource({ url: GAIA_DEEP_URL, key: 'gaia' });
   c.dsos.addDataSource({ url: `${SKYDATA}dso` });
   c.skycultures.addDataSource({ url: `${SKYDATA}skycultures/western`, key: 'western' });
   c.milkyway.addDataSource({ url: `${SKYDATA}surveys/milkyway` });

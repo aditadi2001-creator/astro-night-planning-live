@@ -9,7 +9,7 @@
  * the browser reads only the few blocks it needs with HTTP range requests.
  *
  * The bucket sends no CORS headers, so browsers read it through our Worker
- * (`VITE_DEM_BASE`); in development the Vite dev server proxies `/dem`.
+ * (`VITE_DATA_BASE` + `/dem`); in development the Vite dev server proxies `/dem`.
  *
  * We read only overview level 3 (≈ 240 m) of each 1°×1° tile within 90 km:
  * one header and one ~0.6 MB block per tile, typically 4–6 tiles (8–12
@@ -19,9 +19,9 @@
  */
 import { fromUrl, type GeoTIFFImage } from 'geotiff';
 import { horizonProfile } from './horizon';
+import { DEM_URL } from '../config';
 
-export const DEM_BASE: string =
-  (import.meta.env.VITE_DEM_BASE as string | undefined) ?? (import.meta.env.DEV ? '/dem' : '');
+export const DEM_BASE: string = DEM_URL;
 
 const FAR_M = 90_000;
 const M_PER_DEG = 111_320;

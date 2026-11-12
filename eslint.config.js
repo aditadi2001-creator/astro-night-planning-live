@@ -5,7 +5,16 @@ import globals from 'globals';
 import svelteConfig from './svelte.config.js';
 
 export default ts.config(
-  { ignores: ['dist/', 'node_modules/', 'public/engine/', 'coverage/', 'pipelines/**/.venv/'] },
+  {
+    ignores: [
+      'dist/',
+      'node_modules/',
+      'public/engine/',
+      'coverage/',
+      'pipelines/**/.venv/',
+      '**/.wrangler/',
+    ],
+  },
   js.configs.recommended,
   ...ts.configs.strict,
   ...svelte.configs.recommended,

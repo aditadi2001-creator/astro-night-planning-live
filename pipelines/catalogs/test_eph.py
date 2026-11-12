@@ -28,6 +28,22 @@ class EphRoundTrip(unittest.TestCase):
         self.assertEqual(r1["gaia"], 2**60 + 7)
         self.assertTrue(math.isnan(r1["ra"]))
 
+    def test_numpy_encoder_matches_reference(self) -> None:
+        import numpy as np
+
+        from eph import encode_tile_np
+
+        cols = [Column("gaia", "Q"), Column("vmag", "f", EPH_VMAG), Column("ra", "f", EPH_RAD)]
+        rows = [(123456789012345, 11.5, 1.25), (7, 13.75, 6.0)]
+        ref = encode_tile("STAR", 6, 4097, cols, rows, children_mask=3)
+        fast = encode_tile_np(
+            "STAR", 6, 4097, cols,
+            {"gaia": np.array([r[0] for r in rows], dtype=np.uint64),
+             "vmag": np.array([r[1] for r in rows]), "ra": np.array([r[2] for r in rows])},
+            children_mask=3,
+        )
+        self.assertEqual(ref, fast)
+
     def test_nuniq_order0(self) -> None:
         out = decode_tile(encode_tile("DSO ", 0, 11, [Column("vmag", "f", EPH_VMAG)], [(5.0,)]))
         self.assertEqual((out["chunks"][0]["order"], out["chunks"][0]["pix"]), (0, 11))
