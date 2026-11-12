@@ -124,12 +124,16 @@
         .catch(() => {
           if (!ctrl.signal.aborted) horizonState = 'error';
         });
-    const idle = (window as Window & { requestIdleCallback?: (cb: () => void) => number })
-      .requestIdleCallback;
-    const handle = idle ? idle(start) : window.setTimeout(start, 1500);
+    // Called as methods of window (an unbound requestIdleCallback throws
+    // "Illegal invocation"); the timeout makes sure it runs on a busy page too.
+    const hasIdle = typeof window.requestIdleCallback === 'function';
+    const handle = hasIdle
+      ? window.requestIdleCallback(start, { timeout: 3000 })
+      : window.setTimeout(start, 1500);
     return () => {
       ctrl.abort();
-      if (!idle) clearTimeout(handle);
+      if (hasIdle) window.cancelIdleCallback(handle);
+      else window.clearTimeout(handle);
     };
   });
   const horizonSource = $derived(

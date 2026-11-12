@@ -76,6 +76,25 @@ export function parseDem(path: string): string | null {
   return m ? (m[1] ?? null) : null;
 }
 
+/** Largest DEM byte slice the Worker will fetch in one request. */
+export const DEM_MAX_SLICE = 4 * 1024 * 1024;
+
+/**
+ * The byte slice of a DEM request, from the `r=<start>-<end>` query parameter
+ * (inclusive, like HTTP ranges). The range travels in the URL rather than a
+ * Range header because Workers Caching strips Range headers and caches by URL:
+ * this way each slice is its own cacheable URL.
+ */
+export function parseDemSlice(search: string): { start: number; end: number } | null {
+  const r = new URLSearchParams(search).get('r');
+  const m = r ? /^(\d{1,10})-(\d{1,10})$/.exec(r) : null;
+  if (!m) return null;
+  const start = Number(m[1]);
+  const end = Number(m[2]);
+  if (end < start || end - start + 1 > DEM_MAX_SLICE) return null;
+  return { start, end };
+}
+
 /** /7timer/42.9/0.1 — coordinates rounded to 0.1° (7Timer!'s grid is coarser). */
 export function parse7timer(path: string): { lat: string; lon: string } | null {
   const m = /^\/7timer\/(-?\d{1,2}(?:\.\d)?)\/(-?\d{1,3}(?:\.\d)?)$/.exec(path);
@@ -91,6 +110,7 @@ export function corsHeaders(): Record<string, string> {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
     'Access-Control-Allow-Headers': 'Range, If-None-Match',
-    'Access-Control-Expose-Headers': 'Content-Range, Accept-Ranges, Content-Length, ETag',
+    'Access-Control-Expose-Headers':
+      'Content-Range, Accept-Ranges, Content-Length, ETag, X-File-Size',
   };
 }

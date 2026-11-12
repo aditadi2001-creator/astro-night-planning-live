@@ -17,7 +17,7 @@
  * the device, so a location is only fetched once. 240 m is enough for terrain
  * beyond the first 300 m, which is all the horizon needs.
  */
-import { fromUrl, type GeoTIFFImage } from 'geotiff';
+import { BaseClient, BaseResponse, fromCustomClient, type GeoTIFFImage } from 'geotiff';
 import { horizonProfile } from './horizon';
 import { DEM_URL } from '../config';
 
@@ -46,13 +46,61 @@ function tileName(latFloor: number, lonFloor: number): string {
   return `Copernicus_DSM_COG_10_${ns}${la}_00_${ew}${lo}_00_DEM`;
 }
 
+/**
+ * geotiff.js client that sends each byte range as `?r=<start>-<end>` instead of
+ * a Range header. The data Worker sits behind Workers Caching, which strips
+ * Range headers and caches by URL; with the range in the URL every slice is
+ * its own cacheable request. The Worker answers 200 with just those bytes and
+ * the file size in X-File-Size; the dev proxy turns `r` back into a Range
+ * header and passes Amazon's 206 through. Both look like a 206 to geotiff.js.
+ */
+export class SliceClient extends BaseClient {
+  override async request(options: RequestInit = {}): Promise<BaseResponse> {
+    const range = new Headers(options.headers).get('Range') ?? '';
+    const m = /^bytes=(\d+)-(\d+)$/.exec(range);
+    if (!m) throw new Error(`DEM: unsupported range "${range}"`);
+    const res = await fetch(`${this.url}?r=${m[1]}-${m[2]}`, { signal: options.signal ?? null });
+    return new SliceResponse(res, `${m[1]}-${m[2]}`);
+  }
+}
+
+class SliceResponse extends BaseResponse {
+  constructor(
+    private res: Response,
+    private range: string,
+  ) {
+    super();
+  }
+  /** A 200 is a slice only if the Worker marked it with X-File-Size; any other
+   * 200 is a whole file, which geotiff.js then refuses (allowFullFile is off). */
+  private get isSlice(): boolean {
+    return this.res.status === 200 && this.res.headers.has('X-File-Size');
+  }
+  override get status(): number {
+    return this.isSlice ? 206 : this.res.status;
+  }
+  override getHeader(name: string): string | undefined {
+    if (this.isSlice && name.toLowerCase() === 'content-range') {
+      return `bytes ${this.range}/${this.res.headers.get('X-File-Size')}`;
+    }
+    return this.res.headers.get(name) ?? undefined;
+  }
+  override async getData(): Promise<ArrayBuffer> {
+    return this.res.arrayBuffer();
+  }
+}
+
 async function openTile(latFloor: number, lonFloor: number, signal: AbortSignal) {
   const name = tileName(latFloor, lonFloor);
   try {
     // 64 KiB blocks: the whole COG header arrives in one request. `blockSize`
     // is a supported BlockedSource option that the bundled typings omit.
-    const opts = { blockSize: 65_536 } as unknown as Parameters<typeof fromUrl>[1];
-    const tiff = await fromUrl(`${DEM_BASE}/${name}/${name}.tif`, opts, signal);
+    const opts = { blockSize: 65_536 } as unknown as Parameters<typeof fromCustomClient>[1];
+    const tiff = await fromCustomClient(
+      new SliceClient(`${DEM_BASE}/${name}/${name}.tif`),
+      opts,
+      signal,
+    );
     return tiff;
   } catch (e) {
     if (signal.aborted) throw e;

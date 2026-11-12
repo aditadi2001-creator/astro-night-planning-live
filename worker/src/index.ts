@@ -10,8 +10,8 @@
  *   /hips/gaia/properties                 deep Gaia star layer for the sky engine
  *   /hips/gaia/Norder<o>/Dir<d>/Npix<p>.eph
  *   /data/<name>.json                     small JSON objects in R2 (e.g. latest.json)
- *   /dem/<Copernicus tile>/<same>.tif     pass-through to the Copernicus DEM bucket
- *                                         (no CORS there), Range requests supported
+ *   /dem/<Copernicus tile>/<same>.tif?r=a-b  one byte slice of a Copernicus DEM tile
+ *                                         (no CORS on that bucket), max 4 MiB
  *   /7timer/<lat>/<lon>                   7Timer! ASTRO forecast (no CORS there)
  *
  * Tiles are served one per URL so Workers Caching can keep each of them (the
@@ -24,6 +24,7 @@ import {
   corsHeaders,
   hipsToTile,
   parseDem,
+  parseDemSlice,
   parseHips,
   parseTile,
   parse7timer,
@@ -118,39 +119,47 @@ async function serveJson(env: Env, path: string): Promise<Response> {
   });
 }
 
-async function proxyDem(req: Request, path: string): Promise<Response> {
-  const name = parseDem(path);
+/**
+ * One byte slice of a Copernicus DEM tile: /dem/<name>/<name>.tif?r=<start>-<end>.
+ *
+ * Workers Caching strips Range headers and caches by URL, so the slice is part
+ * of the URL and the answer is a plain, cacheable 200 holding just those bytes
+ * (X-File-Size carries the full file size). Whole-file pulls (≈30 MB) are
+ * refused, so this cannot be used to stream entire tiles. DEM files never
+ * change, so slices are cached for 30 days: a returning visitor or a nearby
+ * location costs no Amazon request and no Worker run.
+ */
+async function proxyDem(req: Request, url: URL): Promise<Response> {
+  const name = parseDem(url.pathname);
   if (!name) return notFound();
-  const headers = new Headers();
-  const range = req.headers.get('Range');
-  // The terrain reader only ever asks for byte ranges; refuse whole-file pulls
-  // (≈30 MB each) so the proxy cannot be used to stream entire tiles.
-  if (!range || !/^bytes=\d+-\d+$/.test(range)) {
-    return respond('A single byte Range is required', 416, { 'Cache-Control': 'no-store' });
+  const slice = parseDemSlice(url.search);
+  if (!slice) {
+    return respond('Need ?r=<start>-<end> (max 4 MiB)', 400, {
+      'Cache-Control': 'no-store',
+      'Content-Type': 'text/plain',
+    });
   }
-  const [start, end] = range.slice(6).split('-').map(Number) as [number, number];
-  if (end - start > 4 * 1024 * 1024) {
-    return respond('Range too large (max 4 MiB)', 416, { 'Cache-Control': 'no-store' });
-  }
-  headers.set('Range', range);
-  const up = await fetch(`${DEM_ORIGIN}/${name}/${name}.tif`, { method: req.method, headers });
+  const up = await fetch(`${DEM_ORIGIN}/${name}/${name}.tif`, {
+    method: req.method,
+    headers: { Range: `bytes=${slice.start}-${slice.end}` },
+  });
   // 403/404 from S3 means "no tile here" (open sea): pass it on as 404.
   if (up.status === 403 || up.status === 404) return notFound(IMMUTABLE);
-  const out = new Headers();
-  for (const k of [
-    'Content-Type',
-    'Content-Length',
-    'Content-Range',
-    'Accept-Ranges',
-    'ETag',
-    'Last-Modified',
-  ]) {
-    const v = up.headers.get(k);
-    if (v) out.set(k, v);
+  if (up.status === 416) {
+    return respond('Range not satisfiable', 416, { 'Cache-Control': 'no-store' });
   }
-  // Byte-range responses must not go into the URL-keyed Worker cache.
-  out.set('Cache-Control', 'private, no-store');
-  return respond(up.body, up.status, out);
+  if (up.status !== 206) {
+    // Upstream ignored the range (would be the whole file): refuse.
+    await up.body?.cancel();
+    return respond(`Unexpected upstream status ${up.status}`, 502, { 'Cache-Control': 'no-store' });
+  }
+  const total = /\/(\d+)$/.exec(up.headers.get('Content-Range') ?? '')?.[1];
+  const out: Record<string, string> = {
+    'Content-Type': 'application/octet-stream',
+    'Cache-Control': 'public, max-age=2592000',
+  };
+  if (total) out['X-File-Size'] = total;
+  return respond(up.body, 200, out);
 }
 
 async function proxy7timer(path: string): Promise<Response> {
@@ -172,12 +181,13 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     if (req.method === 'OPTIONS') return respond(null, 204, { 'Access-Control-Max-Age': '86400' });
     if (req.method !== 'GET' && req.method !== 'HEAD') return respond('Method not allowed', 405);
-    const path = new URL(req.url).pathname;
+    const url = new URL(req.url);
+    const path = url.pathname;
     try {
       if (path.startsWith('/tiles/')) return await serveTile(env, path);
       if (path.startsWith('/hips/gaia/')) return await serveHips(env, path);
       if (path.startsWith('/data/')) return await serveJson(env, path);
-      if (path.startsWith('/dem/')) return await proxyDem(req, path);
+      if (path.startsWith('/dem/')) return await proxyDem(req, url);
       if (path.startsWith('/7timer/')) return await proxy7timer(path);
       if (path === '/' || path === '/health')
         return respond('ok', 200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' });

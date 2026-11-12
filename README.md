@@ -95,7 +95,7 @@ call per search (cached for a week).
 
 The Copernicus GLO-30 bucket on AWS Open Data has no CORS headers, so browsers read it through our
 data Worker (`VITE_DATA_BASE` + `/dem`); during development without a Worker the Vite dev server
-proxies `/dem`. Without either, the site shows a flat horizon.
+proxies `/dem` (it turns the app's `?r=a-b` slices into `Range` headers for Amazon). Without either, the site shows a flat horizon.
 
 Per **new** location the browser reads one header and one overview block from each 1°×1° tile
 within 90 km: typically 4–6 tiles = **8–12 requests, 2.5–4 MB**, once. The finished profile is
@@ -111,18 +111,30 @@ One Worker, `astro-night-planning-live-data` (code in [`worker/`](worker/)), on 
 plan**, bound to one R2 bucket, `astro-night-planning-live-data`. The browser never reads R2
 directly and never lists the bucket.
 
-| Route                               | What it serves                                                                         |
-| ----------------------------------- | -------------------------------------------------------------------------------------- |
-| `/tiles/<dataset>/<z>/<x>/<y>.webp` | one tile out of a PMTiles archive in R2 (light pollution, hourly clouds)               |
-| `/hips/gaia/...`                    | the deep star layer (Gaia DR3, V 10–14) for the sky engine                             |
-| `/data/<name>.json`                 | small JSON files (e.g. the list of available cloud hours)                              |
-| `/dem/<tile>.tif`                   | pass-through to the Copernicus DEM bucket (no CORS there); byte ranges only, max 4 MiB |
-| `/7timer/<lat>/<lon>`               | 7Timer! ASTRO forecast (no CORS there), cached 3 h                                     |
+Live at `https://astro-night-planning-live-data.aditadi2001.workers.dev` (build the site with
+`VITE_DATA_BASE` set to that URL). Deploy only with
+`npx wrangler deploy --config worker/wrangler.jsonc`. The free plan caps CPU at 10 ms per request
+on its own; custom CPU limits are a paid setting, so the config sets none.
+
+| Route                               | What it serves                                                                             |
+| ----------------------------------- | ------------------------------------------------------------------------------------------ |
+| `/tiles/<dataset>/<z>/<x>/<y>.webp` | one tile out of a PMTiles archive in R2 (light pollution, hourly clouds)                   |
+| `/hips/gaia/...`                    | the deep star layer (Gaia DR3, V 10–14) for the sky engine                                 |
+| `/data/<name>.json`                 | small JSON files (e.g. the list of available cloud hours)                                  |
+| `/dem/<tile>.tif?r=<a>-<b>`         | one byte slice (≤ 4 MiB) of a Copernicus DEM tile (no CORS on that bucket), cached 30 days |
+| `/7timer/<lat>/<lon>`               | 7Timer! ASTRO forecast (no CORS there), cached 3 h                                         |
 
 Everything else is 404, so the Worker can't be used as an open proxy. Large datasets are **one
 PMTiles file each**. The Worker reads single tiles out of them with range requests and serves each
 tile at its own URL, so [Workers Caching](https://developers.cloudflare.com/workers/cache/) can keep
 it: a cache hit doesn't run the Worker or read R2.
+
+Why the DEM byte range is in the URL (`?r=`) and not a `Range` header: Workers Caching strips
+`Range` headers, asks the Worker for the whole object and slices it from cache. For a 30–40 MB
+elevation file that would mean pulling the whole file. With the range in the URL, each slice is its
+own small cacheable response, so a second visitor near the same place costs no Amazon request.
+(Splitting the Worker into an uncached front and a cached back would also work, but with caching on
+each internal call is billed as a separate request, which would double usage.)
 
 ### Expected monthly usage (with calculation)
 

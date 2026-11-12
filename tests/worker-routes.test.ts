@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { hipsToTile, parse7timer, parseDem, parseHips, parseTile } from '../worker/src/routes';
+import {
+  DEM_MAX_SLICE,
+  hipsToTile,
+  parse7timer,
+  parseDem,
+  parseDemSlice,
+  parseHips,
+  parseTile,
+} from '../worker/src/routes';
 
 describe('worker routes are strict allow-lists', () => {
   it('parses tile URLs and rejects anything else', () => {
@@ -48,6 +56,16 @@ describe('worker routes are strict allow-lists', () => {
     expect(parseDem(`/dem/${n}/${n}.tif`)).toBe(n);
     expect(parseDem(`/dem/${n}/other.tif`)).toBeNull();
     expect(parseDem('/dem/../../etc/passwd')).toBeNull();
+  });
+
+  it('reads DEM byte slices from ?r= and caps them at 4 MiB', () => {
+    expect(parseDemSlice('?r=0-65535')).toEqual({ start: 0, end: 65535 });
+    expect(parseDemSlice(`?r=10-${10 + DEM_MAX_SLICE - 1}`)).not.toBeNull();
+    expect(parseDemSlice(`?r=10-${10 + DEM_MAX_SLICE}`)).toBeNull();
+    expect(parseDemSlice('')).toBeNull();
+    expect(parseDemSlice('?r=5-4')).toBeNull();
+    expect(parseDemSlice('?r=0-')).toBeNull();
+    expect(parseDemSlice('?r=0-10,20-30')).toBeNull();
   });
 
   it('only proxies 7Timer with sane coordinates', () => {

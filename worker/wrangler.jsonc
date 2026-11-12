@@ -18,6 +18,6 @@
     },
   ],
   "observability": { "enabled": false },
-  // Hard cap on CPU per request; tile requests use well under 5 ms.
-  "limits": { "cpu_ms": 50 },
+  // No "limits" block: custom CPU limits are a paid-plan setting. The free
+  // plan already caps every request at 10 ms CPU; tile requests use well under 5 ms.
 }
