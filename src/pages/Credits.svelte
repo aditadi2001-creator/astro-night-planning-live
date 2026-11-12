@@ -70,8 +70,9 @@
   }
   blockquote {
     margin: 8px 0 0;
-    padding-left: 10px;
-    border-left: 3px solid var(--line);
+    padding: 6px 10px;
+    background: var(--panel-2);
+    border-radius: 6px;
     font-size: 13px;
   }
   .badge {
