@@ -72,6 +72,7 @@ export function locateMe(): Promise<Place> {
           lat: round(pos.coords.latitude, 4),
           lon: round(pos.coords.longitude, 4),
           elevation: pos.coords.altitude != null ? Math.round(pos.coords.altitude) : 0,
+          ...(pos.coords.altitude == null ? { needsElevation: true } : {}),
         }),
       (err) => reject(new Error(err.message || 'Location permission denied.')),
       { enableHighAccuracy: false, timeout: 15000, maximumAge: 10 * 60 * 1000 },

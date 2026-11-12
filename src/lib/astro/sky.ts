@@ -7,6 +7,12 @@ export interface Place {
   /** Metres above sea level. */
   elevation: number;
   name: string;
+  /** IANA time zone of the site, when known (from the geocoder or forecast). */
+  timezone?: string;
+  /** Region / country, for display. */
+  detail?: string;
+  /** True when elevation is unknown (e.g. GPS without altitude); filled from the forecast's terrain model. */
+  needsElevation?: boolean;
 }
 
 export interface BodyPosition {

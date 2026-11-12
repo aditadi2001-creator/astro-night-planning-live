@@ -1,8 +1,12 @@
 <script lang="ts">
   const methods = [
     'Airmass: Kasten & Young (1989).',
-    'Refraction: Bennett (1982) and Saemundsson (1986), scaled for live temperature and pressure (Meeus, ch. 16).',
-    'Sun, Moon and planet positions: Astronomy Engine.',
+    'Refraction: Bennett (1982) and Saemundsson (1986), scaled for temperature and pressure (Meeus, ch. 16); the sky engine’s refraction is patched to match.',
+    'Positions: Stellarium Web Engine (ERFA) and Astronomy Engine, cross-checked against JPL Horizons.',
+    'Transparency: V-band extinction from Rayleigh scattering (Hansen & Travis 1974), CAMS aerosol optical depth and ozone.',
+    'Moonlight: Krisciunas & Schaefer (1991).',
+    'Dew risk: dew-point spread versus typical radiative cooling of optics (an estimate).',
+    'Imaging score: clouds × transparency × Moon × darkness as relative signal-to-noise factors; models ECMWF, GFS and ICON give the agreement indicator.',
   ];
 </script>
 

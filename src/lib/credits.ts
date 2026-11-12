@@ -66,7 +66,19 @@ export const CREDITS: Credit[] = [
     usage:
       'Temperature, humidity, dew point, pressure, wind, visibility, low/mid/high cloud cover, upper-air winds.',
     kind: 'data',
-    status: 'planned',
+    status: 'live',
+  },
+  {
+    id: 'open-meteo-geocoding',
+    name: 'Open-Meteo Geocoding API (GeoNames)',
+    url: 'https://open-meteo.com/en/docs/geocoding-api',
+    license: 'CC BY 4.0',
+    attribution:
+      'Location search by Open-Meteo.com, based on GeoNames (https://www.geonames.org), CC BY 4.0.',
+    shortCredit: 'Search: Open-Meteo geocoding (GeoNames, CC BY 4.0)',
+    usage: 'Place-name search with coordinates, elevation and time zone.',
+    kind: 'data',
+    status: 'live',
   },
   {
     id: 'open-meteo-aq',
@@ -78,7 +90,7 @@ export const CREDITS: Credit[] = [
     shortCredit: 'Air quality: Open-Meteo.com, CAMS ENSEMBLE data provider',
     usage: 'Aerosol optical depth, dust, PM2.5, PM10, US/European AQI.',
     kind: 'data',
-    status: 'planned',
+    status: 'live',
   },
   {
     id: '7timer',

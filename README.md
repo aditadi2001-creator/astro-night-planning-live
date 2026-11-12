@@ -11,8 +11,8 @@ transparency, haze, light pollution, the Moon and darkness times.
   satellite night lights underestimate LED light.
 - **License: [AGPL-3.0](LICENSE)**, required by Stellarium Web Engine.
 
-> Status: **Phase 2 of 11 done** (3D sky with self-hosted catalogs and time controls). See
-> [Roadmap](#roadmap).
+> Status: **Phase 3 of 11 done** (3D sky, live weather and air quality, condition cards, tonight
+> timeline). See [Roadmap](#roadmap).
 
 ## Quick start
 
@@ -64,7 +64,28 @@ site's Credits page. Only openly licensed sources that need no permission reques
 
 See [docs/methods.md](docs/methods.md). Implemented so far: Kasten–Young airmass, Bennett and
 Saemundsson refraction with live temperature and pressure correction, a patched engine refraction,
-position cross-checks against Astronomy Engine and JPL Horizons, and darkness times.
+position cross-checks against Astronomy Engine and JPL Horizons, darkness times, V-band extinction
+(Rayleigh + CAMS aerosol + ozone), Krisciunas & Schaefer moonlight, dew risk, and the imaging
+score with model agreement.
+
+## Open-Meteo usage (live weather)
+
+Each visitor's browser calls Open-Meteo directly (no key; free terms: non-commercial, < 600/min,
+5,000/hour, 10,000/day **per IP**). Per location we make 3 merged requests, cached for 30 minutes in
+memory and localStorage and shared by everyone within ~1 km (coordinates rounded to 0.01°):
+
+| Request                         | Variables                              | Open-Meteo call-equivalents* |
+| ------------------------------- | -------------------------------------- | ---------------------------- |
+| Forecast, best match            | 12 surface + 18 pressure-level, 4 days | 3                            |
+| Cloud cover, ECMWF + GFS + ICON | 1 × 3 models                           | 1                            |
+| Air quality (CAMS)              | 6                                      | 1                            |
+
+\*Open-Meteo counts large requests as several calls (roughly one per 10 variables).
+
+A tab left open all day refreshes 48 times: 48 × 5 ≈ 240 call-equivalents per day, under 3 % of
+one visitor's daily allowance. Refreshing pauses while the tab is hidden, and failed requests retry
+after 1 s, 2 s and 4 s, then back off from 30 s up to 30 min. Location search adds one geocoding
+call per search (cached for a week).
 
 ## Cloudflare R2: cost rules
 
@@ -95,7 +116,7 @@ exist.
 
 1. ✅ Setup, CI, license, trial build of Stellarium Web Engine
 2. ✅ 3D sky with self-hosted catalogs, time controls
-3. Live conditions (Open-Meteo weather + air quality), condition cards, tonight timeline
+3. ✅ Live conditions (Open-Meteo weather + air quality), condition cards, tonight timeline
 4. Realism layer: extinction, sky brightness, limiting magnitude, clouds, Moon, terrain horizon
 5. R2 bucket + Worker (range requests, caching, CORS, 7Timer proxy) — needs your OK
 6. Satellite clouds (GIBS map, GMGSI hourly PMTiles)

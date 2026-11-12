@@ -53,6 +53,54 @@ See `pipelines/catalogs/README.md`: Hipparcos + Gaia DR3 to V = 10 in the site i
 sky objects, IAU star names, the Stellarium Western sky culture, and a Milky Way reprojected from
 ESA's Gaia EDR3 colour map.
 
-_Later phases add: extinction, sky brightness (Krisciunas & Schaefer 1991), limiting magnitude
-(Schaefer 1990 / Crumey 2014), the seeing estimate, the imaging score and the light-pollution
-model._
+## Extinction and transparency
+
+`src/lib/physics/extinction.ts`. Zenith V-band extinction k (mag/airmass) = Rayleigh + aerosol +
+ozone, with Δm = 1.0857 τ:
+
+- **Rayleigh:** Hansen & Travis (1974) optical depth, τ(550 nm) = 0.0973 at 1013.25 hPa (matches
+  Bucholtz 1995: 0.09728), scaled by the forecast station pressure.
+- **Aerosol:** CAMS AOD at 550 nm from Open-Meteo. CAMS AOD already includes humidity growth, so
+  humidity is not applied a second time.
+- **Ozone:** Chappuis band, σ(550 nm) = 3.3·10⁻²¹ cm² (Serdyuchenko et al. 2014), climatological
+  300 DU (Open-Meteo has no total-column ozone) → 0.029 mag.
+- Checks: a Mauna Kea-like site (615 hPa, AOD 0.02) gives 0.12, inside the measured 0.11–0.13
+  (Krisciunas et al. 1987); a clear sea-level night (AOD 0.1) gives 0.24.
+- Classes: < 0.18 excellent, < 0.25 good, < 0.35 average, < 0.5 poor, otherwise bad.
+
+## Moonlight
+
+`src/lib/physics/moonlight.ts`: Krisciunas & Schaefer (1991), PASP 103, 1033, equations 1, 3, 15,
+20 and 21. Check: the paper's dark sky 21.587 mag/arcsec² = 79.0 nL; a full Moon 60° high gives
+18.1 mag/arcsec² 45° away (k = 0.172), consistent with the usual ~18 for full-Moon skies.
+
+## Dew risk (heuristic)
+
+`src/lib/physics/dew.ts`. Dew point from Magnus–Tetens (Alduchov & Eskridge 1996 constants). Optics
+under a clear calm sky run ~3 °C below air temperature by radiative cooling (Monteith & Unsworth);
+clouds remove this and wind reduces it (×0.3 at ≥ 8 m/s). Risk compares the dew-point spread with
+that undercooling: margin ≤ 0 high, ≤ 1.5 °C moderate, ≤ 3 °C low. Labelled as an estimate.
+
+## Imaging score
+
+`src/lib/physics/score.ts`. For sky-limited imaging SNR ∝ S/√B, so the score (0–100) multiplies
+relative SNR factors:
+
+| Factor       | Formula                                                                               |
+| ------------ | ------------------------------------------------------------------------------------- |
+| Clouds       | 1 − [1 − (1 − L)(1 − M)(1 − 0.6 H)] — random overlap; thin high cloud blocks 60 %     |
+| Transparency | 10^(−0.4 (k − 0.15) · 1.5): light lost vs. a clean site at airmass 1.5                |
+| Moon         | √(B_dark / (B_dark + B_moon)), K&S moonlight for a target 45° high, 90° from the Moon |
+| Darkness     | 0 above −12° Sun altitude, 1 below −18°, linear between                               |
+| Seeing       | added with the seeing model (later phase)                                             |
+
+B_dark is the natural sky (21.6 mag/arcsec²) until the light-pollution layer exists. Hours follow
+the site's local clock (half-hour zones included) and are sampled at mid-hour.
+
+## Model agreement
+
+Total cloud cover from Open-Meteo's best match plus ECMWF IFS 0.25°, GFS and ICON for the same hour;
+spread (max − min) ≤ 20 points = high, ≤ 45 = medium, otherwise low.
+
+_Later phases add: live T/P refraction in the engine, sky brightness and limiting magnitude
+(Schaefer 1990 / Crumey 2014), the seeing estimate and the light-pollution model._

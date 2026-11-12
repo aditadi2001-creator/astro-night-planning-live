@@ -1,32 +1,19 @@
 <script lang="ts">
   import type { Place } from '../lib/astro/sky';
-  import { locateMe } from '../lib/location';
+  import LocationPicker from './LocationPicker.svelte';
+  import { fmtTime, zoneLabel } from '../lib/time/format';
 
   interface Props {
     place: Place;
     now: Date;
+    tz: string | undefined;
     night: boolean;
     onplace: (p: Place) => void;
   }
-  let { place, now, night = $bindable(), onplace }: Props = $props();
+  let { place, now, tz, night = $bindable(), onplace }: Props = $props();
 
-  let busy = $state(false);
-  let error = $state('');
+  let picking = $state(false);
 
-  async function useMyLocation() {
-    busy = true;
-    error = '';
-    try {
-      onplace(await locateMe());
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
-    } finally {
-      busy = false;
-    }
-  }
-
-  const fmtTime = (d: Date) =>
-    d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const fmtCoord = (v: number, pos: string, neg: string) =>
     `${Math.abs(v).toFixed(3)}° ${v >= 0 ? pos : neg}`;
 </script>
@@ -37,18 +24,23 @@
     <span>Astro Night Planning</span>
   </div>
 
-  <div class="loc">
-    <span class="name">{place.name}</span>
+  <button
+    class="loc"
+    onclick={() => (picking = !picking)}
+    aria-expanded={picking}
+    aria-haspopup="dialog"
+    title="Change location"
+  >
+    <span class="name">{place.name}{place.detail ? `, ${place.detail}` : ''} ▾</span>
     <span class="coords">
       {fmtCoord(place.lat, 'N', 'S')}, {fmtCoord(place.lon, 'E', 'W')} · {place.elevation} m
     </span>
-  </div>
+  </button>
 
   <div class="actions">
-    <time datetime={now.toISOString()} aria-label="Local time">{fmtTime(now)}</time>
-    <button onclick={useMyLocation} disabled={busy} aria-busy={busy}>
-      {busy ? 'Locating…' : 'Use my location'}
-    </button>
+    <time datetime={now.toISOString()} aria-label="Local time at the site">
+      {fmtTime(now, tz, true)} <span class="zone">{zoneLabel(now, tz)}</span>
+    </time>
     <button
       onclick={() => (night = !night)}
       aria-pressed={night}
@@ -57,7 +49,10 @@
       Night mode
     </button>
   </div>
-  {#if error}<p class="error" role="alert">{error}</p>{/if}
+
+  {#if picking}
+    <LocationPicker {place} {onplace} onclose={() => (picking = false)} />
+  {/if}
 </header>
 
 <style>
@@ -66,12 +61,12 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 8px 16px;
-    padding: 10px var(--gap);
+    padding: 8px var(--gap);
     border-bottom: 1px solid var(--line);
     background: var(--panel);
     position: sticky;
     top: 0;
-    z-index: 5;
+    z-index: 15;
   }
   .brand {
     display: flex;
@@ -82,11 +77,23 @@
   .loc {
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
     min-width: 0;
     flex: 1 1 200px;
+    background: transparent;
+    border-color: transparent;
+    text-align: left;
+    padding: 4px 8px;
+  }
+  .loc:hover {
+    border-color: var(--line);
   }
   .name {
     font-weight: 500;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .coords {
     font-size: 12px;
@@ -97,17 +104,14 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
   }
   time {
     font-family: var(--mono);
     font-variant-numeric: tabular-nums;
   }
-  .error {
-    flex-basis: 100%;
-    margin: 0;
-    color: var(--bad);
-    font-size: 13px;
+  .zone {
+    font-size: 11px;
+    color: var(--muted);
   }
   @media (max-width: 480px) {
     .brand span {

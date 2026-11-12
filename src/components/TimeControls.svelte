@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Place } from '../lib/astro/sky';
   import { HOUR, tonight } from '../lib/astro/time';
+  import { fmtDateTime, fromLocalInput, toLocalInput, zoneLabel } from '../lib/time/format';
 
   interface Props {
     place: Place;
@@ -8,33 +9,17 @@
     time: Date;
     /** True when following the real clock. */
     live: boolean;
+    tz: string | undefined;
     onchange: (time: Date, live: boolean) => void;
   }
-  let { place, time, live, onchange }: Props = $props();
+  let { place, time, live, tz, onchange }: Props = $props();
 
   const step = (h: number) => onchange(new Date(time.getTime() + h * HOUR), false);
 
-  const label = $derived(
-    time.toLocaleString(undefined, {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    }),
-  );
-
   function onInput(e: Event) {
-    const v = (e.currentTarget as HTMLInputElement).value;
-    const d = new Date(v);
-    if (!Number.isNaN(d.getTime())) onchange(d, false);
+    const d = fromLocalInput((e.currentTarget as HTMLInputElement).value, tz);
+    if (d) onchange(d, false);
   }
-
-  // datetime-local wants local time without zone.
-  const localValue = $derived.by(() => {
-    const d = new Date(time.getTime() - time.getTimezoneOffset() * 60e3);
-    return d.toISOString().slice(0, 16);
-  });
 </script>
 
 <div class="time" role="group" aria-label="Time controls">
@@ -44,10 +29,13 @@
   <button onclick={() => step(1)} aria-label="One hour later">+1 h</button>
   <button onclick={() => onchange(tonight(place, new Date()), false)}>Tonight</button>
   <label class="picker">
-    <span class="visually-hidden">Date and time to show</span>
-    <input type="datetime-local" value={localValue} onchange={onInput} />
+    <span class="visually-hidden">Date and time to show (site time)</span>
+    <input type="datetime-local" value={toLocalInput(time, tz)} onchange={onInput} />
   </label>
-  <span class="shown" aria-live="polite">{live ? 'Live' : label}</span>
+  <span class="shown" aria-live="polite">
+    {live ? 'Live' : fmtDateTime(time, tz)}
+    {zoneLabel(time, tz)}
+  </span>
 </div>
 
 <style>
