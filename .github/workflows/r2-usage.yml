@@ -1,0 +1,32 @@
+name: R2 usage check
+
+# Read-only: lists the project's bucket and prints its size per folder.
+# One ListObjects call per 1,000 objects (Class A), no writes. Run it by hand to
+# check that the R2 secrets work, or to see how close the bucket is to its budget.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-writes
+  cancel-in-progress: false
+
+jobs:
+  usage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install boto3
+      - name: Bucket usage
+        working-directory: pipelines/r2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: python r2.py usage
