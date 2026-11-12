@@ -1,0 +1,45 @@
+diff --git a/src/algos/refraction.c b/src/algos/refraction.c
+index d1fdb1a..935d89d 100644
+--- a/src/algos/refraction.c
++++ b/src/algos/refraction.c
+@@ -62,24 +62,37 @@ void refraction(const double v[3], double pressure, double temperature,
+ 
+     const double p_saemundson = 1.02 * pressure / 1010. * 283. /
+                          (273. + temperature) / 60.;
++    // Meeus' zenith term is +0.0019279 arcmin (not degrees).
++    const double zenith_term = 0.0019279 / 60. * pressure / 1010. * 283. /
++                         (273. + temperature);
++    const double alt0_deg = geom_alt_deg;
++    double cos0, k;
+     if (geom_alt_deg > MIN_GEO_ALTITUDE_DEG)
+     {
+         // refraction from Saemundsson, S&T1986 p70 / in Meeus, Astr.Alg.
+         double r = p_saemundson / tan((geom_alt_deg + 10.3 /
+-                     (geom_alt_deg + 5.11)) * DD2R) + 0.0019279;
++                     (geom_alt_deg + 5.11)) * DD2R) + zenith_term;
+         geom_alt_deg += r;
+         if (geom_alt_deg > 90.)
+             geom_alt_deg = 90.;
+-        out[2] = sin(geom_alt_deg * DD2R);
+     }
+     else if (geom_alt_deg > MIN_GEO_ALTITUDE_DEG - TRANSITION_WIDTH_GEO_DEG)
+     {
+         // Avoids the jump below -5 by interpolating linearly between
+         // MIN_GEO_ALTITUDE_DEG and bottom of transition zone
+         double r_m5 = p_saemundson / tan((MIN_GEO_ALTITUDE_DEG + 10.3 /
+-                     (MIN_GEO_ALTITUDE_DEG + 5.11)) * DD2R) + 0.0019279;
++                     (MIN_GEO_ALTITUDE_DEG + 5.11)) * DD2R) + zenith_term;
+         geom_alt_deg += r_m5 * (geom_alt_deg - (MIN_GEO_ALTITUDE_DEG -
+                         TRANSITION_WIDTH_GEO_DEG)) / TRANSITION_WIDTH_GEO_DEG;
++    }
++    // Rotate in the vertical plane: scale the horizontal components so the
++    // vector stays unit length. (Only changing z and renormalising, as the
++    // original code did, shrinks the refraction by cos^2(alt).)
++    cos0 = cos(alt0_deg * DD2R);
++    if (cos0 > 1e-12) {
++        k = cos(geom_alt_deg * DD2R) / cos0;
++        out[0] = v[0] * k;
++        out[1] = v[1] * k;
+         out[2] = sin(geom_alt_deg * DD2R);
+     }
+     vec3_normalize(out, out);

@@ -42,6 +42,16 @@ artifact.
   Star tiles use SWE's binary `eph` format (`src/eph-file.c`). Our own catalogs (Gaia DR3 subset,
   Hipparcos, OpenNGC) are converted to this format by a pipeline; we never load data from
   Stellarium's servers.
+- `constellations.show_only_pointed` defaults to `true` (only the constellation at the view centre
+  is drawn); we set it to `false`.
+
+## Patches (`engine/patches/`)
+
+`build-engine.mjs` applies every `*.patch` in this folder (skipping ones already applied).
+
+| Patch                                 | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0001-refraction-rotate-vector.patch` | Upstream raised only the vector's z component to the refracted altitude and then renormalised, which shrinks refraction by cos²(alt): at 42° only 0.66′ of the correct 1.10′ was applied, at 60° only 0.17′ of 0.58′. The patch rotates the vector in the vertical plane, and adds Meeus's zenith term in arcmin (upstream added 0.0019279 **degrees**). Verified in the browser: the engine now matches `src/lib/physics/refraction.ts` to 0.0001′ from 0° to 89°. |
 
 ## License
 

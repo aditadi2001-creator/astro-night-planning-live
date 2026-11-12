@@ -10,7 +10,8 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, writeFileSync, copyFileSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { cpus } from 'node:os';
 
 const src = resolve(process.argv[2] ?? '');
@@ -35,6 +36,25 @@ const glob = (dir, re) =>
         .filter((f) => re.test(f))
         .map((f) => `${dir}/${f}`)
     : [];
+
+// 0. Apply our patches (engine/patches/*.patch) unless already applied.
+const patchDir = join(dirname(fileURLToPath(import.meta.url)), 'patches');
+for (const p of existsSync(patchDir)
+  ? readdirSync(patchDir)
+      .filter((f) => f.endsWith('.patch'))
+      .sort()
+  : []) {
+  const file = join(patchDir, p);
+  const git = (...a) =>
+    spawnSync('git', ['-C', src, 'apply', '--ignore-whitespace', ...a, file], { stdio: 'pipe' });
+  if (git('--reverse', '--check').status === 0) {
+    console.log(`patch ${p}: already applied`);
+    continue;
+  }
+  const r = git();
+  if (r.status !== 0) throw new Error(`patch ${p} failed:\n${r.stderr}`);
+  console.log(`patch ${p}: applied`);
+}
 
 // 1. Embed shaders, fonts, textures into src/assets (upstream tools/make-assets.py).
 // The script insists on being called as ./tools/make-assets.py and assumes '/'

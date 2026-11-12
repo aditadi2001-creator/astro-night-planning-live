@@ -13,3 +13,5 @@ pipelines/**/out/
 pipelines/**/.venv/
 .wrangler/
 .claude/settings.local.json
+__pycache__/
+*.pyc

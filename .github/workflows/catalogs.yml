@@ -1,0 +1,40 @@
+name: Build sky catalogs
+
+# Rebuilds public/skydata from the open source catalogs. Manual only: the
+# output changes rarely and is committed to the repo after review.
+on:
+  workflow_dispatch:
+    inputs:
+      vmax:
+        description: Faintest V magnitude in the Pages star layer
+        default: '10.0'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install numpy astropy astropy-healpix pillow reproject requests
+      - name: Fetch raw catalogs (not uploaded anywhere)
+        working-directory: pipelines/catalogs
+        run: python fetch.py
+      - name: Build
+        working-directory: pipelines/catalogs
+        run: |
+          python build_stars.py --vmax "${{ inputs.vmax }}"
+          python build_dso.py
+          python build_skyculture.py
+          python build_milkyway.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skydata
+          path: public/skydata/
+          retention-days: 14

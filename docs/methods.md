@@ -26,8 +26,28 @@ The two fits agree with each other to about 0.12′ (7″), far below typical se
 
 ## Positions
 
-Sun, Moon and planets come from Astronomy Engine (topocentric, aberration-corrected); we apply our
-own T/P-aware refraction instead of the library's fixed standard atmosphere.
+- **3D sky:** Stellarium Web Engine computes apparent positions with ERFA (precession, nutation,
+  aberration, proper motion and parallax from the catalogues). Its refraction uses Saemundsson's
+  formula; we patch an upstream bug that applied only cos²(alt) of the refraction (half of it at
+  45°) and a degree/arcmin mix-up in Meeus's zenith term — see `engine/README.md`. After the patch
+  the engine matches `src/lib/physics/refraction.ts` to 0.0001′ between 0° and 89°.
+- **Cross-check:** for Altair from Greenwich on 2026-11-12 18:11:02 UTC the engine's geometric
+  altitude/azimuth agree with an independent Astronomy Engine calculation (Hipparcos position and
+  proper motion) to 4.7″ / 2.6″.
+- **Cards:** Sun, Moon and planets in the side cards come from Astronomy Engine (topocentric,
+  aberration-corrected) with our own refraction.
+- **Darkness times:** astronomical dusk/dawn (Sun at −18°) from Astronomy Engine's altitude search;
+  tested against the timeanddate.com table for London (18:11 / 05:18 UTC on 12–13 Nov 2026).
+  Where the Sun never reaches −18° (summer at high latitude), "Tonight" jumps to the Sun's lowest
+  point instead.
+- **Pending:** the engine estimates pressure from elevation at a fixed 15 °C. Live temperature and
+  pressure from Open-Meteo are wired into it in the realism phase.
+
+## Catalogues
+
+See `pipelines/catalogs/README.md`: Hipparcos + Gaia DR3 to V = 10 in the site itself, OpenNGC deep
+sky objects, IAU star names, the Stellarium Western sky culture, and a Milky Way reprojected from
+ESA's Gaia EDR3 colour map.
 
 _Later phases add: extinction, sky brightness (Krisciunas & Schaefer 1991), limiting magnitude
 (Schaefer 1990 / Crumey 2014), the seeing estimate, the imaging score and the light-pollution

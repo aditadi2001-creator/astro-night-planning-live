@@ -1,0 +1,11 @@
+obs_title             = Milky Way (Gaia EDR3 colour map)
+obs_copyright         = ESA/Gaia/DPAC, CC BY-SA 3.0 IGO. Acknowledgement: A. Moitinho
+obs_description       = Reprojected from ESA's Gaia EDR3 all-sky colour map
+dataproduct_type      = image
+hips_frame            = equatorial
+hips_tile_format      = webp
+hips_tile_width       = 512
+hips_order_min        = 0
+hips_order            = 1
+hips_version          = 1.4
+hips_release_date     = 2026-11-12T00:00Z

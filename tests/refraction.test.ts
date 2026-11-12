@@ -21,9 +21,16 @@ describe('refraction', () => {
     expect(arcmin(refractionFromApparent(10))).toBeCloseTo(5.3, 1);
     expect(arcmin(refractionFromApparent(45))).toBeCloseTo(1.0, 1);
   });
-  it('is zero at the zenith', () => {
+  it('is zero at the zenith (without relying on clamping)', () => {
     expect(arcmin(refractionFromApparent(90))).toBeCloseTo(0, 2);
-    expect(arcmin(refractionFromTrue(90))).toBeCloseTo(0, 2);
+    expect(arcmin(refractionFromTrue(90))).toBeCloseTo(0, 5);
+    // Just below the zenith it must already be positive and tiny (~0.017′ at 89°).
+    expect(arcmin(refractionFromTrue(89))).toBeGreaterThan(0.01);
+    expect(arcmin(refractionFromTrue(89))).toBeLessThan(0.03);
+  });
+  it('Saemundsson at 42.19° true altitude = 1.1185′ (formula value, standard conditions)', () => {
+    // 1.02 / tan(42.1933° + 10.3 / 47.3033°) = 1.11661′, + 0.00193′ zenith term.
+    expect(arcmin(refractionFromTrue(42.1933))).toBeCloseTo(1.11854, 4);
   });
   // The two formulas are independent fits, each good to ~0.1′ (Meeus ch. 16),
   // so their round trip agrees to ~0.12′ (≈7″), far below typical seeing.

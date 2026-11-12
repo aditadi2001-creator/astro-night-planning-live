@@ -1,7 +1,9 @@
 <script lang="ts">
   import TopBar from './components/TopBar.svelte';
   import SkyView from './components/SkyView.svelte';
+  import TimeControls from './components/TimeControls.svelte';
   import SunMoonCard from './components/SunMoonCard.svelte';
+  import Layers from './components/Layers.svelte';
   import Credits from './pages/Credits.svelte';
   import About from './pages/About.svelte';
   import { loadPlace, savePlace } from './lib/location';
@@ -9,11 +11,18 @@
 
   let place = $state<Place>(loadPlace());
   let now = $state(new Date());
+  /** The moment the sky and cards show; follows `now` while live. */
+  let shown = $state(new Date());
+  let live = $state(true);
   let route = $state(location.hash);
   let night = $state(false);
+  let layers = $state({ constellations: true });
 
   $effect(() => {
-    const t = setInterval(() => (now = new Date()), 1000);
+    const t = setInterval(() => {
+      now = new Date();
+      if (live) shown = now;
+    }, 1000);
     const onHash = () => (route = location.hash);
     addEventListener('hashchange', onHash);
     return () => {
@@ -30,6 +39,11 @@
     place = p;
     savePlace(p);
   }
+
+  function setTime(t: Date, isLive: boolean) {
+    live = isLive;
+    shown = t;
+  }
 </script>
 
 <a class="skip" href="#main">Skip to content</a>
@@ -43,10 +57,14 @@
   {:else}
     <div class="layout">
       <section class="sky" aria-label="Live sky view">
-        <SkyView {place} {now} />
+        <TimeControls {place} time={shown} {live} onchange={setTime} />
+        <div class="sky-box">
+          <SkyView {place} time={shown} {live} constellations={layers.constellations} />
+        </div>
       </section>
       <aside class="cards" aria-label="Observing conditions">
-        <SunMoonCard {place} {now} />
+        <SunMoonCard {place} now={shown} />
+        <Layers bind:layers />
       </aside>
     </div>
   {/if}
@@ -80,14 +98,25 @@
     grid-template-columns: 1fr;
   }
   .sky {
-    min-height: 60vh;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .sky-box {
+    height: 62vh;
+    min-height: 320px;
+  }
+  .cards {
+    display: grid;
+    gap: var(--gap);
+    align-content: start;
   }
   @media (min-width: 960px) {
     .layout {
       grid-template-columns: 1fr 360px;
     }
-    .sky {
-      min-height: calc(100vh - 140px);
+    .sky-box {
+      height: calc(100vh - 190px);
     }
   }
   footer {

@@ -3,3 +3,5 @@ node_modules/
 public/engine/
 package-lock.json
 coverage/
+public/skydata/
+pipelines/**/raw/

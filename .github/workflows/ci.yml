@@ -32,3 +32,9 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pipeline unit tests (eph tile format)
+        working-directory: pipelines/catalogs
+        run: python -m unittest test_eph -v

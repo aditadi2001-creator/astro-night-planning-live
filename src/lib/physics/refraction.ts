@@ -49,8 +49,8 @@ export function refractionFromTrue(
   if (!Number.isFinite(trueAltDeg) || trueAltDeg < -1.9 || trueAltDeg > 90) return 0;
   const h = trueAltDeg;
   let arcmin = 1.02 / Math.tan((h + 10.3 / (h + 5.11)) * DEG);
-  // Constant offset so that R is zero at the zenith, consistent with Bennett.
-  arcmin -= 0.0019279;
+  // At h = 90° the formula gives −0.0019279′; Meeus adds it back so R(90°) = 0.
+  arcmin += 0.0019279;
   return Math.max(0, (arcmin / 60) * refractionScale(atm));
 }
 
