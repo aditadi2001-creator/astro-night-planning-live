@@ -137,6 +137,78 @@ export function setObserver(
   o.utc = stel.date2MJD(date.getTime());
 }
 
+/** Live atmosphere inputs for the patched engine (engine/patches/0002). */
+export interface EngineAtmosphere {
+  /** Station pressure, hPa (null = estimate from elevation). */
+  pressure: number | null;
+  /** Air temperature, °C (null = 15 °C). */
+  temperature: number | null;
+  /** V-band zenith extinction, mag/airmass. */
+  k: number;
+  /** B−V colour excess per airmass. */
+  dbv: number;
+  /** Naked-eye limiting magnitude of the sky background (before extinction). */
+  limitMag: number;
+}
+
+interface EngineHeap {
+  HEAPU8: Uint8Array;
+  HEAPF64: Float64Array;
+  _malloc(n: number): number;
+  _free(p: number): void;
+  _skylayers_set(i: number, p: number, w: number, h: number, a0: number, a1: number): void;
+  _skylayers_win_to_altaz(x: number, y: number, out: number): number;
+}
+
+export function setAtmosphere(stel: Stel, a: EngineAtmosphere): void {
+  const c = stel.core as SweCore & Record<string, number>;
+  c.refraction_pressure = a.pressure ?? Number.NaN;
+  c.refraction_temperature = a.temperature ?? 15;
+  c.extinction_k = a.k;
+  c.extinction_dbv = a.dbv;
+  c.visual_limit_mag = a.limitMag;
+}
+
+export const SKY_LAYER = { clouds: 0, terrain: 1 } as const;
+
+/** Upload an RGBA alt–az image (width = 360° of azimuth from north, rows from altMin to altMax). */
+export function setSkyLayer(
+  stel: Stel,
+  layer: number,
+  rgba: Uint8Array | Uint8ClampedArray | null,
+  w: number,
+  h: number,
+  altMinDeg: number,
+  altMaxDeg: number,
+): void {
+  const m = stel as unknown as EngineHeap;
+  if (!rgba) {
+    m._skylayers_set(layer, 0, 0, 0, 0, 0);
+    return;
+  }
+  const ptr = m._malloc(rgba.length);
+  try {
+    m.HEAPU8.set(rgba, ptr);
+    m._skylayers_set(layer, ptr, w, h, altMinDeg, altMaxDeg);
+  } finally {
+    m._free(ptr);
+  }
+}
+
+/** Azimuth/altitude (degrees, apparent) under a point of the canvas (CSS pixels). */
+export function altAzAt(stel: Stel, x: number, y: number): { az: number; alt: number } | null {
+  const m = stel as unknown as EngineHeap;
+  const ptr = m._malloc(16);
+  try {
+    if (!m._skylayers_win_to_altaz(x, y, ptr)) return null;
+    const az = m.HEAPF64[ptr >> 3] ?? 0;
+    const alt = m.HEAPF64[(ptr >> 3) + 1] ?? 0;
+    return { az: stel.anp(az) * stel.R2D, alt: alt * stel.R2D };
+  } finally {
+    m._free(ptr);
+  }
+}
+
 export interface ObjectInfo {
   name: string;
   otherNames: string[];

@@ -94,7 +94,7 @@ relative SNR factors:
 | Darkness     | 0 above −12° Sun altitude, 1 below −18°, linear between                               |
 | Seeing       | added with the seeing model (later phase)                                             |
 
-B_dark is the natural sky (21.6 mag/arcsec²) until the light-pollution layer exists. Hours follow
+B_dark is the natural sky (22.0 mag/arcsec²) until the light-pollution layer exists. Hours follow
 the site's local clock (half-hour zones included) and are sampled at mid-hour.
 
 ## Model agreement
@@ -102,5 +102,26 @@ the site's local clock (half-hour zones included) and are sampled at mid-hour.
 Total cloud cover from Open-Meteo's best match plus ECMWF IFS 0.25°, GFS and ICON for the same hour;
 spread (max − min) ≤ 20 points = high, ≤ 45 = medium, otherwise low.
 
-_Later phases add: live T/P refraction in the engine, sky brightness and limiting magnitude
-(Schaefer 1990 / Crumey 2014), the seeing estimate and the light-pollution model._
+## Realism layer in the 3D sky
+
+All values below are recomputed for the time shown and passed to the patched engine
+(`engine/patches/0002`). The Physics panel on the page shows the live numbers.
+
+| Effect              | Input                                                                                                                      | Method                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Refraction          | forecast station pressure and temperature                                                                                  | engine's Saemundsson formula (patched, see above) with live P/T                                                                                                                                                                                                                                                                                                      |
+| Star/planet dimming | k from Rayleigh + CAMS AOD + ozone                                                                                         | Δm = k · X(alt), Kasten–Young airmass, per star, every frame                                                                                                                                                                                                                                                                                                         |
+| Reddening           | same inputs                                                                                                                | E(B−V) per airmass = k_B − k_V: Rayleigh at 0.44 µm (Hansen & Travis), aerosol with Ångström α = 1.3, ozone Chappuis ≈ 10 % in B                                                                                                                                                                                                                                     |
+| Sky brightness      | Sun, Moon, k                                                                                                               | zenith: natural 22.0 + Schaefer (1993) twilight + Krisciunas & Schaefer moonlight; the engine's own Schaefer model draws the whole dome with the same k                                                                                                                                                                                                              |
+| Faintest star       | zenith sky brightness                                                                                                      | Hecht threshold as in Schaefer (1990); matches the Birriel et al. (2014) form to 0.02 mag in dark skies and Crumey (2014) to 0.4 mag in bright skies. Stars dimmer than this (after extinction and telescope gain) are hidden                                                                                                                                        |
+| Milky Way           | sky luminance                                                                                                              | the engine fades it by contrast with the average sky brightness                                                                                                                                                                                                                                                                                                      |
+| Clouds              | low/mid/high cover at the site and at 16 points 35/100 km away (one multi-location Open-Meteo call); 850/500/250 hPa winds | layers at 1.5 / 4.5 / 9 km; each line of sight meets its layer at the right distance and bearing; noise only decides _where_ inside that area the cloud is, thresholded so the covered fraction equals the forecast (tested over the dome); layers drift with the forecast wind; colours follow Sun/Moon light (and city glow once the light-pollution layer exists) |
+| Horizon             | Copernicus DEM GLO-30, overview 3 (≈ 240 m) within 90 km                                                                   | ray-march per 0.5° of azimuth; curvature with terrestrial refraction κ = 0.13; first 300 m skipped (surface model = trees/roofs); eye at the known site elevation + 1.7 m. Checked: Pic du Midi summit sees −2.1° to the north (dip over the plains) and +0.7° toward the higher Pyrenean peaks                                                                      |
+
+Limits: the visual limit uses the zenith sky brightness (the Moon-side of the sky is brighter than
+that); cloud _shapes_ are illustrative even though their amount, height, direction and drift come
+from the forecast; until the light-pollution map exists the sky assumes a natural dark site; on
+high mountain sites, Open-Meteo's low cloud (up to 3 km altitude) may actually lie below the
+observer, but it is always drawn above (a cloud-base model is a possible later improvement).
+
+_Later phases add: the seeing estimate, satellite cloud placement and the light-pollution model._

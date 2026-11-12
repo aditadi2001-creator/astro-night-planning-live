@@ -222,6 +222,71 @@ export async function loadAir(
   };
 }
 
+/** Rings sampled around the site for placing clouds in the right direction. */
+export const CLOUD_RINGS_KM = [35, 100] as const;
+const BEARINGS = [0, 45, 90, 135, 180, 225, 270, 315] as const;
+
+/** Point `distKm` away from (lat, lon) on bearing `brgDeg` (great circle). */
+export function destination(lat: number, lon: number, brgDeg: number, distKm: number) {
+  const R = 6371;
+  const d = distKm / R;
+  const b = (brgDeg * Math.PI) / 180;
+  const p1 = (lat * Math.PI) / 180;
+  const l1 = (lon * Math.PI) / 180;
+  const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(b));
+  const l2 =
+    l1 +
+    Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));
+  return { lat: (p2 * 180) / Math.PI, lon: (((l2 * 180) / Math.PI + 540) % 360) - 180 };
+}
+
+export interface CloudRing {
+  points: { az: number; dist: number }[];
+  /** hours[k].layers[i] = cover (%) at points[i]. */
+  hours: { t: number; low: (number | null)[]; mid: (number | null)[]; high: (number | null)[] }[];
+}
+
+/**
+ * Low/mid/high cloud at 16 points (8 bearings × 35 and 100 km) in ONE
+ * multi-location request, so the sky view can place clouds where they are.
+ */
+export async function loadCloudRing(
+  lat: number,
+  lon: number,
+  signal: AbortSignal,
+  force = false,
+): Promise<Cached<CloudRing>> {
+  const points = CLOUD_RINGS_KM.flatMap((dist) => BEARINGS.map((az) => ({ az, dist })));
+  const coords = points.map((p) => destination(roundCoord(lat), roundCoord(lon), p.az, p.dist));
+  const url = `${FORECAST}?${q({
+    latitude: coords.map((c) => roundCoord(c.lat)).join(','),
+    longitude: coords.map((c) => roundCoord(c.lon)).join(','),
+    hourly: 'cloud_cover_low,cloud_cover_mid,cloud_cover_high',
+    models: 'best_match',
+    timeformat: 'unixtime',
+    past_days: 1,
+    forecast_days: 2,
+  })}`;
+  const r = await fetchJson<RawForecast[] | RawForecast>(key('ring', lat, lon), url, {
+    maxAgeMs: force ? 0 : TTL * 2,
+    signal,
+  });
+  const list = Array.isArray(r.data) ? r.data : [r.data];
+  const times = list[0]?.hourly.time ?? [];
+  return {
+    ...r,
+    data: {
+      points,
+      hours: times.map((t, i) => ({
+        t: t * 1000,
+        low: list.map((p) => v(p.hourly.cloud_cover_low, i)),
+        mid: list.map((p) => v(p.hourly.cloud_cover_mid, i)),
+        high: list.map((p) => v(p.hourly.cloud_cover_high, i)),
+      })),
+    },
+  };
+}
+
 /** Row for the hour containing `t` (rows are hourly, starting on the hour). */
 export function hourAt<T extends { t: number }>(rows: readonly T[], t: number): T | null {
   let best: T | null = null;

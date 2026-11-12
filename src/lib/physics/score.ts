@@ -19,7 +19,8 @@
  * The weights are physics-based but the "typical target" is a simplification:
  * the score answers "how good is this hour in general", not for one object.
  */
-import { moonSkyBrightness, magToNl, KS_DARK_SKY_MAG } from './moonlight';
+import { moonSkyBrightness, magToNl } from './moonlight';
+import { NATURAL_SKY_MAG } from './skybrightness';
 
 export interface HourConditions {
   /** Cloud cover in percent. */
@@ -67,7 +68,7 @@ export function moonFactor(c: HourConditions): number {
     { phaseAngle: c.moonPhaseAngle, moonAlt: c.moonAlt, targetAlt: 45, separation: 90 },
     c.extinction,
   );
-  const bDark = magToNl(c.darkSkyMag ?? KS_DARK_SKY_MAG);
+  const bDark = magToNl(c.darkSkyMag ?? NATURAL_SKY_MAG);
   return Math.sqrt(bDark / (bDark + bMoon));
 }
 

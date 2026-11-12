@@ -1,5 +1,8 @@
 <script lang="ts">
-  interface LayerState {
+  export interface LayerState {
+    clouds: boolean;
+    haze: boolean;
+    terrain: boolean;
     constellations: boolean;
   }
   let { layers = $bindable() }: { layers: LayerState } = $props();
@@ -7,8 +10,25 @@
 
 <fieldset class="card">
   <legend>Layers</legend>
+  <label><input type="checkbox" bind:checked={layers.clouds} /> Live clouds</label>
+  <label
+    ><input type="checkbox" bind:checked={layers.haze} /> Haze &amp; humidity (extinction, reddening,
+    sky brightness)</label
+  >
+  <label><input type="checkbox" bind:checked={layers.terrain} /> Terrain horizon</label>
   <label><input type="checkbox" bind:checked={layers.constellations} /> Constellations</label>
-  <p class="hint">Clouds, haze and light pollution layers arrive with live data.</p>
+  <label class="off"
+    ><input type="checkbox" disabled /> Light pollution
+    <span>(yearly map, coming later)</span></label
+  >
+  <label class="off"
+    ><input type="checkbox" disabled /> Sky surveys
+    <span>(off by default, coming later)</span></label
+  >
+  <label class="off"
+    ><input type="checkbox" disabled /> Satellite map
+    <span>(off by default, coming later)</span></label
+  >
 </fieldset>
 
 <style>
@@ -18,9 +38,11 @@
     border-radius: var(--radius);
     padding: 10px 14px 12px;
     margin: 0;
+    display: grid;
+    gap: 2px;
   }
   legend {
-    font-size: 14px;
+    font-size: 13px;
     color: var(--muted);
     font-weight: 600;
     text-transform: uppercase;
@@ -37,10 +59,12 @@
     width: 18px;
     height: 18px;
     accent-color: var(--accent);
+    flex: none;
   }
-  .hint {
-    margin: 4px 0 0;
-    font-size: 12px;
+  .off {
     color: var(--muted);
+  }
+  .off span {
+    font-size: 12px;
   }
 </style>

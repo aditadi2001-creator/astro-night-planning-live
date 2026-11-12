@@ -63,6 +63,16 @@ def main() -> None:
     shutil.copytree(moon_src, moon_dst)
     print("moon texture copied")
 
+    # The engine asks its flat "zero" landscape for a description; ship one so
+    # the request does not fall through to the site's index.html.
+    zero = OUT / "landscapes" / "zero"
+    zero.mkdir(parents=True, exist_ok=True)
+    (zero / "description.en.utf8").write_text(
+        "Flat mathematical horizon. The real terrain silhouette is drawn from the "
+        "Copernicus DEM where available.\n",
+        encoding="utf-8",
+    )
+
 
 if __name__ == "__main__":
     main()

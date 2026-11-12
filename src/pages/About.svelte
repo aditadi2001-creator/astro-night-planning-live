@@ -6,6 +6,7 @@
     'Transparency: V-band extinction from Rayleigh scattering (Hansen & Travis 1974), CAMS aerosol optical depth and ozone.',
     'Moonlight: Krisciunas & Schaefer (1991).',
     'Dew risk: dew-point spread versus typical radiative cooling of optics (an estimate).',
+    'In the 3D sky: every star and planet is dimmed and reddened by the live extinction along its line of sight, faint stars below the eye threshold for the current sky brightness are hidden (Schaefer 1990, Crumey 2014), cloud layers are placed by the forecast at the site and 35–100 km around it, and the horizon is the real terrain from the Copernicus DEM.',
     'Imaging score: clouds × transparency × Moon × darkness as relative signal-to-noise factors; models ECMWF, GFS and ICON give the agreement indicator.',
   ];
 </script>

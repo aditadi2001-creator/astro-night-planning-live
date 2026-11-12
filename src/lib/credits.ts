@@ -246,6 +246,31 @@ export const CREDITS: Credit[] = [
     status: 'live',
   },
   {
+    id: 'copernicus-dem',
+    name: 'Copernicus DEM GLO-30 (terrain horizon)',
+    url: 'https://registry.opendata.aws/copernicus-dem/',
+    license: 'Copernicus DEM GLO-30 public licence (free of charge, any use)',
+    attribution:
+      'Terrain horizon produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved. The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30.',
+    shortCredit: 'Terrain: Copernicus WorldDEM-30 © DLR e.V., © Airbus DS',
+    usage:
+      'The browser reads a few overview blocks around the site (via our Worker, since the bucket has no CORS) to compute the real horizon silhouette. Nothing is stored by us.',
+    kind: 'data',
+    status: 'live',
+    notes: 'Modified data: the elevation model is resampled and turned into a horizon profile.',
+  },
+  {
+    id: 'geotiff-js',
+    name: 'geotiff.js',
+    url: 'https://github.com/geotiffjs/geotiff.js',
+    license: 'MIT',
+    attribution: 'geotiff.js, MIT License.',
+    shortCredit: 'GeoTIFF reading: geotiff.js',
+    usage: 'Reads the elevation model with HTTP range requests.',
+    kind: 'library',
+    status: 'live',
+  },
+  {
     id: 'hipparcos',
     name: 'Hipparcos catalogue',
     url: 'https://www.cosmos.esa.int/web/hipparcos',

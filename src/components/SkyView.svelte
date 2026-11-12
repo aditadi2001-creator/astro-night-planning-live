@@ -2,12 +2,20 @@
   import { onMount } from 'svelte';
   import type { Place } from '../lib/astro/sky';
   import {
+    altAzAt,
     describe,
+    setAtmosphere,
     setObserver,
+    setSkyLayer,
+    SKY_LAYER,
     startEngine,
+    type EngineAtmosphere,
     type ObjectInfo,
     type Stel,
   } from '../lib/engine/stel';
+  import { renderClouds, type CloudInput } from '../lib/sky/clouds';
+  import CloudWorker from '../lib/sky/clouds.worker.ts?worker';
+  import { renderTerrain, type Rgb } from '../lib/sky/horizon';
 
   interface Props {
     place: Place;
@@ -16,8 +24,26 @@
     /** Following the real clock (sky runs) or a chosen moment (sky frozen). */
     live: boolean;
     constellations: boolean;
+    /** Live atmosphere for extinction, refraction and the visual limit (null = engine defaults). */
+    atmosphere: EngineAtmosphere | null;
+    /** Cloud field inputs without the texture size (null = no clouds layer). */
+    clouds: Omit<CloudInput, 'width' | 'height'> | null;
+    /** Apparent horizon altitude per azimuth bin (null = flat horizon). */
+    horizon: Float32Array | null;
+    groundColor: Rgb;
+    oncursor?: (p: { alt: number; az: number } | null) => void;
   }
-  let { place, time, live, constellations }: Props = $props();
+  let {
+    place,
+    time,
+    live,
+    constellations,
+    atmosphere,
+    clouds,
+    horizon,
+    groundColor,
+    oncursor,
+  }: Props = $props();
 
   let canvas: HTMLCanvasElement;
   let stel = $state<Stel | null>(null);
@@ -49,6 +75,10 @@
         c.milkyway.visible = true;
         c.dsos.visible = true;
         c.cardinals.visible = true;
+        // Keep the engine's flat "zero" ground on: it makes the engine hide stars
+        // and labels below 0 deg. Our terrain layer (drawn after it) adds the
+        // real silhouette above that and covers the flat ground's colour.
+        c.landscapes.visible = true;
         s.change((_obj, attr) => {
           if (attr === 'selection') {
             selected = c.selection ? describe(s, c.selection) : null;
@@ -86,6 +116,79 @@
     cons.lines_visible = constellations;
     cons.labels_visible = constellations;
   });
+
+  $effect(() => {
+    if (!stel) return;
+    if (atmosphere) {
+      setAtmosphere(stel, atmosphere);
+    } else {
+      setAtmosphere(stel, {
+        pressure: null,
+        temperature: null,
+        k: 0,
+        dbv: 0,
+        limitMag: Number.NaN,
+      });
+    }
+  });
+
+  // Cloud texture: regenerate only when its inputs change (drift time is
+  // quantised by the caller), in a Web Worker so dragging the sky stays smooth.
+  const CW = 512;
+  const CH = 128;
+  let worker: Worker | null = null;
+  let jobId = 0;
+  function cloudWorker(): Worker | null {
+    if (worker) return worker;
+    try {
+      worker = new CloudWorker();
+      worker.onmessage = (e: MessageEvent<{ id: number; img: Uint8ClampedArray }>) => {
+        // Only the newest job counts; older results are dropped.
+        if (e.data.id === jobId && stel && clouds) {
+          setSkyLayer(stel, SKY_LAYER.clouds, e.data.img, CW, CH, 0, 90);
+        }
+      };
+    } catch {
+      worker = null; // very old browser: fall back to the main thread
+    }
+    return worker;
+  }
+  $effect(() => {
+    if (!stel) return;
+    const s = stel;
+    if (!clouds) {
+      jobId++;
+      setSkyLayer(s, SKY_LAYER.clouds, null, 0, 0, 0, 0);
+      return;
+    }
+    const input = $state.snapshot({ ...clouds, width: CW, height: CH }) as CloudInput;
+    const id = ++jobId;
+    const w = cloudWorker();
+    if (w) {
+      w.postMessage({ id, input });
+    } else {
+      setSkyLayer(s, SKY_LAYER.clouds, renderClouds(input), CW, CH, 0, 90);
+    }
+  });
+  onMount(() => () => worker?.terminate());
+
+  $effect(() => {
+    if (!stel) return;
+    const profile = horizon ?? new Float32Array(720);
+    const img = renderTerrain(profile, groundColor, 2048, 512, -90, 30);
+    setSkyLayer(stel, SKY_LAYER.terrain, img, 2048, 512, -90, 30);
+  });
+
+  let raf = 0;
+  function onPointerMove(e: PointerEvent) {
+    if (!stel || !oncursor) return;
+    const x = e.offsetX;
+    const y = e.offsetY;
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      if (stel) oncursor?.(altAzAt(stel, x, y));
+    });
+  }
 
   // Refresh the info panel while an object is selected (it moves with time).
   $effect(() => {
@@ -141,6 +244,8 @@
     class="sky"
     tabindex="0"
     onkeydown={onKey}
+    onpointermove={onPointerMove}
+    onpointerleave={() => oncursor?.(null)}
     aria-label="Interactive 3D sky. Drag or use arrow keys to look around; scroll, pinch or +/- to zoom; tap an object for details."
   ></canvas>
 

@@ -54,6 +54,22 @@ export function zenithExtinction(
   return { rayleigh, aerosol, ozone, total: rayleigh + aerosol + ozone };
 }
 
+/**
+ * B−V colour excess per airmass, E = k_B − k_V, used to redden stars low in
+ * the sky. Rayleigh from the same Hansen & Travis law at 0.44 µm; aerosol with
+ * Ångström exponent α = 1.3 (typical continental aerosol; Open-Meteo gives only
+ * AOD at 550 nm); ozone Chappuis absorption is ~10 % as strong in B as in V.
+ */
+export function colourExcessPerAirmass(pressureHPa: number, aod550: number, ozoneDU = 300): number {
+  const rB = rayleighTau(0.44, pressureHPa);
+  const rV = rayleighTau(V_WAVELENGTH_UM, pressureHPa);
+  const aV = Math.max(0, aod550);
+  const aB = aV * (0.44 / 0.55) ** -1.3;
+  const oV = ozoneTau(ozoneDU);
+  const oB = 0.1 * oV;
+  return MAG_PER_TAU * (rB - rV + (aB - aV) + (oB - oV));
+}
+
 export type TransparencyClass = 'excellent' | 'good' | 'average' | 'poor' | 'bad';
 
 /**

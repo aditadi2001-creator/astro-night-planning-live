@@ -53,6 +53,30 @@ artifact.
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `0001-refraction-rotate-vector.patch` | Upstream raised only the vector's z component to the refracted altitude and then renormalised, which shrinks refraction by cos²(alt): at 42° only 0.66′ of the correct 1.10′ was applied, at 60° only 0.17′ of 0.58′. The patch rotates the vector in the vertical plane, and adds Meeus's zenith term in arcmin (upstream added 0.0019279 **degrees**). Verified in the browser: the engine now matches `src/lib/physics/refraction.ts` to 0.0001′ from 0° to 89°. |
 
+### `0002-live-atmosphere-extinction-skylayers.patch`
+
+Adds what the realism layer needs, all settable from JavaScript (`src/lib/engine/stel.ts`):
+
+| Core property                                   | Effect                                                                                                                                                                                                             |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `refraction_pressure`, `refraction_temperature` | Live station pressure and air temperature for refraction (upstream: pressure from elevation, fixed 15 °C).                                                                                                         |
+| `extinction_k`                                  | V-band zenith extinction. Every star and planet (Sun and Moon included) is dimmed by k·X, X from Kasten–Young (1989); the engine's Schaefer sky-brightness model uses the same k instead of its built-in estimate. |
+| `extinction_dbv`                                | B−V colour excess per airmass: stars redden toward the horizon.                                                                                                                                                    |
+| `visual_limit_mag`                              | Naked-eye threshold of the sky background. Stars fainter than it (after extinction and the engine's own telescope gain when zoomed) are hidden, with a 0.6 mag fade.                                               |
+
+New module `src/modules/skylayers.c` with two alt–az RGBA texture layers filled from JS:
+`skyclouds` (render order 36, after stars/planets/atmosphere) and `skyterrain` (41, after
+everything else, allowed below the horizon). Exported functions: `skylayers_set`,
+`skylayers_win_to_altaz` (cursor → alt/az), `skylayers_stat` (debug counters).
+
+Two engine behaviours the module works around:
+
+- `paint_quad` does not split quads at the projection discontinuity behind the viewer, so cells
+  outside the viewport are skipped with `painter_is_cap_clipped` (otherwise one cell can smear over
+  the whole screen).
+- The OBSERVED frame is left-handed; quads must be wound with azimuth decreasing across a cell or
+  they are back-face culled. The texture matrix mirrors u to match.
+
 ## License
 
 SWE is AGPL-3.0. Because this site links it into a network service, the whole site is AGPL-3.0 and

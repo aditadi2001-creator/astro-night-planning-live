@@ -1,0 +1,430 @@
+diff --git a/src/core.c b/src/core.c
+index e5e3f0e..9cc7daa 100644
+--- a/src/core.c
++++ b/src/core.c
+@@ -174,6 +174,11 @@ static void core_set_default(void)
+     core->star_scale_screen_factor = 0.5;
+     core->star_relative_scale = 1.1;
+     core->bortle_index = 3;
++    core->refraction_pressure = NAN;
++    core->refraction_temperature = 15;
++    core->extinction_k = 0;
++    core->extinction_dbv = 0;
++    core->visual_limit_mag = NAN;
+ 
+     core->lwmax_min = 0.052;
+     core->max_point_radius = 50.0;
+@@ -278,7 +283,11 @@ static void update_refraction(double dt, bool on)
+     core->refraction.target = on;
+     fader_update(&core->refraction, dt);
+     tsl = 15 + 273.15;  // Let say we have a see level temp of 15 deg C.
+-    obs->pressure = 1013.25 * exp(-obs->hm / (29.3 * tsl));
++    if (isfinite(core->refraction_pressure) && core->refraction_pressure > 0)
++        obs->pressure = core->refraction_pressure;
++    else
++        obs->pressure = 1013.25 * exp(-obs->hm / (29.3 * tsl));
++    obs->temperature = core->refraction_temperature;
+     obs->pressure *= core->refraction.value;
+ }
+ 
+@@ -365,6 +374,20 @@ static bool is_below_horizon_hidden(void)
+     return direction[2] >= 0;
+ }
+ 
++/*
++ * Function: core_extinction_airmass
++ * Kasten & Young (1989) relative airmass for an OBSERVED-frame direction.
++ * Returns 40 below the horizon.
++ */
++double core_extinction_airmass(const double observed_dir[3])
++{
++    double alt_deg = asin(fmin(1.0, fmax(-1.0, observed_dir[2]))) * DR2D;
++    double z;
++    if (alt_deg < 0) return 40.0;
++    z = 90.0 - alt_deg;
++    return 1.0 / (cos(z * DD2R) + 0.50572 * pow(96.07995 - z, -1.6364));
++}
++
+ // Get point for mag without any radius lower limit.
+ static void core_get_point_for_mag_(
+         double mag, double *radius, double *luminance)
+@@ -1033,6 +1056,14 @@ static obj_klass_t core_klass = {
+         PROPERTY(tonemapper_p, TYPE_FLOAT, MEMBER(core_t, tonemapper_p)),
+         PROPERTY(display_limit_mag, TYPE_FLOAT,
+                  MEMBER(core_t, display_limit_mag)),
++        PROPERTY(refraction_pressure, TYPE_FLOAT,
++                 MEMBER(core_t, refraction_pressure)),
++        PROPERTY(refraction_temperature, TYPE_FLOAT,
++                 MEMBER(core_t, refraction_temperature)),
++        PROPERTY(extinction_k, TYPE_FLOAT, MEMBER(core_t, extinction_k)),
++        PROPERTY(extinction_dbv, TYPE_FLOAT, MEMBER(core_t, extinction_dbv)),
++        PROPERTY(visual_limit_mag, TYPE_FLOAT,
++                 MEMBER(core_t, visual_limit_mag)),
+         PROPERTY(center_hints_mag_offset, TYPE_FLOAT,
+                  MEMBER(core_t, center_hints_mag_offset)),
+         PROPERTY(flip_view_vertical, TYPE_BOOL,
+diff --git a/src/core.h b/src/core.h
+index b7e8c9f..963fddf 100644
+--- a/src/core.h
++++ b/src/core.h
+@@ -51,6 +51,8 @@ struct task
+ /* Type: core_t
+  * Contains all the modules and global state of the program.
+  */
++double core_extinction_airmass(const double observed_dir[3]);
++
+ struct core
+ {
+     obj_t           obj;
+@@ -69,6 +71,19 @@ struct core
+     // of zoom/exposure levels. Set to e.g. 99 to practically disable.
+     double          display_limit_mag;
+ 
++    // Astro Night Planning: live atmosphere inputs (set from JS).
++    // Station pressure (hPa) and temperature (C) for refraction; NaN pressure
++    // means: estimate it from the elevation.
++    double          refraction_pressure;
++    double          refraction_temperature;
++    // V-band zenith extinction (mag/airmass) and B-V colour excess per
++    // airmass. 0 disables (engine defaults).
++    double          extinction_k;
++    double          extinction_dbv;
++    // Naked-eye limiting magnitude of the sky background (before extinction
++    // and telescope gain). NaN disables.
++    double          visual_limit_mag;
++
+     // Extra hints mag offset applied around the center of the screen, to
+     // show more labels near the center if needed.  See
+     // core_get_hints_mat_offset for detail on the algo used.
+diff --git a/src/modules/atmosphere.c b/src/modules/atmosphere.c
+index e1de764..d2cd906 100644
+--- a/src/modules/atmosphere.c
++++ b/src/modules/atmosphere.c
+@@ -162,6 +162,12 @@ static void prepare_skybrightness(
+                           15, 40,
+                           vec3_sep(moon_pos, zenith),
+                           vec3_sep(sun_pos, zenith));
++    // Use the live extinction (Rayleigh + CAMS aerosol + ozone) if provided.
++    if (core->extinction_k > 0) {
++        sb->K = core->extinction_k;
++        sb->C3 = exp(-0.4 * sb->K * sb->airmass_moon * log(10.0));
++        sb->C4 = exp(-0.4 * sb->K * sb->airmass_sun * log(10.0));
++    }
+ }
+ 
+ static float compute_lum(void *user, const float pos[3])
+diff --git a/src/modules/planets.c b/src/modules/planets.c
+index e19c51f..7887df2 100644
+--- a/src/modules/planets.c
++++ b/src/modules/planets.c
+@@ -1198,6 +1198,14 @@ static void planet_render(const planet_t *planet, const painter_t *painter_)
+     if (!painter.obs->space && planet->id == EARTH) return;
+ 
+     vmag = planet_get_vmag(planet, painter.obs);
++    if (core->extinction_k > 0) {
++        double pv_ext[2][3], dir_ext[3];
++        planet_get_pvo(planet, painter.obs, pv_ext);
++        convert_frame(painter.obs, FRAME_ICRF, FRAME_OBSERVED, false,
++                      pv_ext[0], dir_ext);
++        vec3_normalize(dir_ext, dir_ext);
++        vmag += core->extinction_k * core_extinction_airmass(dir_ext);
++    }
+     orbit_visible = should_render_orbit(planet, &painter);
+ 
+     if (    planet->id != MOON && !orbit_visible &&
+diff --git a/src/modules/skylayers.c b/src/modules/skylayers.c
+new file mode 100644
+index 0000000..3662560
+--- /dev/null
++++ b/src/modules/skylayers.c
+@@ -0,0 +1,204 @@
++/* Astro Night Planning additions to Stellarium Web Engine (AGPL-3.0).
++ *
++ * Two alt-az texture layers fed from JavaScript:
++ *
++ *   skyclouds   (render order 36: after stars, planets and the atmosphere,
++ *                before the landscape) - the forecast cloud deck.
++ *   skyterrain  (render order 41: after everything that lives in the sky) -
++ *                the real terrain silhouette and ground below it.
++ *
++ * Each layer is an equirectangular RGBA image in the OBSERVED frame:
++ * column u = azimuth (0 = north, increasing through east) over 0..360 deg,
++ * row v from alt_min (first row) to alt_max (last row).
++ *
++ * JS API: skylayers_set(layer, ptr, w, h, alt_min_deg, alt_max_deg)
++ *         with layer 0 = clouds, 1 = terrain. Width/height should be
++ *         powers of two.
++ */
++
++#include "swe.h"
++
++typedef struct {
++    texture_t *tex;
++    double alt_min, alt_max; // radians
++} layer_data_t;
++
++static layer_data_t g_layers[2];
++// Debug counters for the last frame: [layer][0]=tested, [1]=clipped, [2]=drawn.
++static int g_stats[2][3];
++
++EMSCRIPTEN_KEEPALIVE
++int skylayers_stat(int layer, int what) { return g_stats[layer & 1][what % 3]; }
++
++typedef struct skylayer {
++    obj_t   obj;
++    fader_t visible;
++    int     index;
++} skylayer_t;
++
++typedef struct {
++    const layer_data_t *layer;
++    double u0, du, v0, dv;
++} cell_t;
++
++// Map a cell's uv (0..1) to a direction in the OBSERVED frame.
++static void cell_map(const uv_map_t *map, const double v[2], double out[4])
++{
++    const cell_t *c = map->user;
++    // The OBSERVED frame is left-handed: walk azimuth backwards across the
++    // cell so the quad keeps the winding the renderer expects (otherwise it
++    // is back-face culled). The texture matrix mirrors u to match.
++    double az = (c->u0 + (1.0 - v[0]) * c->du) * 2 * M_PI;
++    double t = c->v0 + v[1] * c->dv;
++    double alt = c->layer->alt_min + t * (c->layer->alt_max - c->layer->alt_min);
++    vec3_from_sphe(az, alt, out);
++    out[3] = 0.0; // at infinity
++}
++
++static int skylayer_update(obj_t *obj, double dt)
++{
++    skylayer_t *sl = (skylayer_t*)obj;
++    return fader_update(&sl->visible, dt);
++}
++
++static int skylayer_render(obj_t *obj, const painter_t *painter_)
++{
++    skylayer_t *sl = (skylayer_t*)obj;
++    const layer_data_t *layer = &g_layers[sl->index];
++    painter_t painter;
++    const int NU = 72; // 5 deg of azimuth per cell
++    int i, j, nv;
++    double uv[3][3], cap[4], half_az, half_alt, alt_c;
++    cell_t cell;
++    uv_map_t map = {.map = cell_map, .user = &cell};
++
++    g_stats[sl->index][0] = g_stats[sl->index][1] = g_stats[sl->index][2] = 0;
++    if (!layer->tex || sl->visible.value == 0.0) return 0;
++    // The terrain layer is the ground itself: it must draw below the horizon
++    // even when the engine hides everything else there.
++    painter_t base = *painter_;
++    if (sl->index == 1) base.flags &= ~PAINTER_HIDE_BELOW_HORIZON;
++    // About 10 deg of altitude per cell.
++    nv = (int)ceil((layer->alt_max - layer->alt_min) / (10 * DD2R));
++    if (nv < 1) nv = 1;
++    cell.layer = layer;
++    cell.du = 1.0 / NU;
++    cell.dv = 1.0 / nv;
++    half_az = M_PI / NU;
++    half_alt = (layer->alt_max - layer->alt_min) / nv / 2;
++    for (i = 0; i < NU; i++) {
++        for (j = 0; j < nv; j++) {
++            cell.u0 = i * cell.du;
++            cell.v0 = j * cell.dv;
++            // Skip cells outside the viewport. This matters: paint_quad does
++            // not split quads at the projection discontinuity behind the
++            // viewer, so such a cell would be smeared over the whole screen.
++            alt_c = layer->alt_min + (j + 0.5) * cell.dv *
++                    (layer->alt_max - layer->alt_min);
++            vec3_from_sphe((i + 0.5) * cell.du * 2 * M_PI, alt_c, cap);
++            cap[3] = cos(sqrt(half_az * half_az + half_alt * half_alt) * 1.1);
++            g_stats[sl->index][0]++;
++            if (painter_is_cap_clipped(&base, FRAME_OBSERVED, cap)) {
++                g_stats[sl->index][1]++;
++                continue;
++            }
++            g_stats[sl->index][2]++;
++            painter = base;
++            painter.color[3] *= sl->visible.value;
++            mat3_set_identity(uv);
++            mat3_itranslate(uv, cell.u0 + cell.du, cell.v0);
++            mat3_iscale(uv, -cell.du, cell.dv, 1.0);
++            painter_set_texture(&painter, PAINTER_TEX_COLOR, layer->tex, uv);
++            paint_quad(&painter, FRAME_OBSERVED, &map, 4);
++        }
++    }
++    return 0;
++}
++
++static int skyclouds_init(obj_t *obj, json_value *args)
++{
++    skylayer_t *sl = (skylayer_t*)obj;
++    sl->index = 0;
++    fader_init(&sl->visible, true);
++    return 0;
++}
++
++static int skyterrain_init(obj_t *obj, json_value *args)
++{
++    skylayer_t *sl = (skylayer_t*)obj;
++    sl->index = 1;
++    fader_init(&sl->visible, true);
++    return 0;
++}
++
++EMSCRIPTEN_KEEPALIVE
++void skylayers_set(int index, const uint8_t *data, int w, int h,
++                   double alt_min_deg, double alt_max_deg)
++{
++    layer_data_t *l;
++    if (index < 0 || index > 1) return;
++    l = &g_layers[index];
++    if (!data || w <= 0 || h <= 0) {
++        texture_release(l->tex);
++        l->tex = NULL;
++        return;
++    }
++    if (l->tex && l->tex->w == w && l->tex->h == h) {
++        texture_set_data(l->tex, data, w, h, 4);
++    } else {
++        texture_release(l->tex);
++        l->tex = texture_from_data(data, w, h, 4, 0, 0, w, h, 0);
++    }
++    l->alt_min = alt_min_deg * DD2R;
++    l->alt_max = alt_max_deg * DD2R;
++}
++
++/*
++ * Window position (CSS pixels, origin top-left) to azimuth / altitude in the
++ * OBSERVED frame (radians, refraction included). Returns 0 if the point is
++ * outside the projection. Used for the "airmass at cursor" readout.
++ */
++EMSCRIPTEN_KEEPALIVE
++int skylayers_win_to_altaz(double x, double y, double *out)
++{
++    projection_t proj;
++    double p[3] = {x, y, 0}, v[3], o[3], az, alt;
++    core_get_proj(&proj);
++    if (!unproject(&proj, p, v)) return 0;
++    convert_frame(core->observer, FRAME_VIEW, FRAME_OBSERVED, true, v, o);
++    vec3_normalize(o, o);
++    vec3_to_sphe(o, &az, &alt);
++    out[0] = az;
++    out[1] = alt;
++    return 1;
++}
++
++static obj_klass_t skyclouds_klass = {
++    .id = "skyclouds",
++    .size = sizeof(skylayer_t),
++    .flags = OBJ_IN_JSON_TREE | OBJ_MODULE,
++    .init = skyclouds_init,
++    .update = skylayer_update,
++    .render = skylayer_render,
++    .render_order = 36,
++    .attributes = (attribute_t[]) {
++        PROPERTY(visible, TYPE_BOOL, MEMBER(skylayer_t, visible.target)),
++        {}
++    },
++};
++OBJ_REGISTER(skyclouds_klass)
++
++static obj_klass_t skyterrain_klass = {
++    .id = "skyterrain",
++    .size = sizeof(skylayer_t),
++    .flags = OBJ_IN_JSON_TREE | OBJ_MODULE,
++    .init = skyterrain_init,
++    .update = skylayer_update,
++    .render = skylayer_render,
++    .render_order = 41,
++    .attributes = (attribute_t[]) {
++        PROPERTY(visible, TYPE_BOOL, MEMBER(skylayer_t, visible.target)),
++        {}
++    },
++};
++OBJ_REGISTER(skyterrain_klass)
+diff --git a/src/modules/stars.c b/src/modules/stars.c
+index 1f86afa..e721414 100644
+--- a/src/modules/stars.c
++++ b/src/modules/stars.c
+@@ -681,21 +681,42 @@ static int render_visitor(stars_t *stars, survey_t *survey,
+ 
+         (*illuminance) += s->illuminance;
+ 
++        // Atmospheric extinction and reddening along the line of sight.
++        double vmag_obs = s->vmag, bv_obs = isnan(s->bv) ? 0 : s->bv;
++        double fade = 1.0;
++        if (core->extinction_k > 0) {
++            double vo[3], X;
++            convert_frame(painter.obs, FRAME_ASTROM, FRAME_OBSERVED, true,
++                          v, vo);
++            vec3_normalize(vo, vo);
++            X = core_extinction_airmass(vo);
++            vmag_obs += core->extinction_k * X;
++            bv_obs += core->extinction_dbv * X;
++        }
++        // Hide stars fainter than the eye threshold for this sky, and fade
++        // the last 0.6 mag so they do not pop in and out.
++        if (isfinite(core->visual_limit_mag)) {
++            double excess = vmag_obs - core->telescope.gain_mag -
++                            core->visual_limit_mag;
++            if (excess > 0.3) continue;
++            fade = fmin(1.0, (0.3 - excess) / 0.6);
++        }
++
+         // No need to recompute the point size and luminance if the last
+-        // star had the same vmag (often the case since we sort by vmag).
+-        if (s->vmag != vmag) {
+-            vmag = s->vmag;
++        // star had the same observed vmag.
++        if (vmag_obs != vmag) {
++            vmag = vmag_obs;
+             core_get_point_for_mag(vmag, &size, &luminance);
+         }
+         if (size == 0.0 || luminance == 0.0)
+             continue;
+ 
+-        bv_to_rgb(isnan(s->bv) ? 0 : s->bv, color);
++        bv_to_rgb(bv_obs, color);
+         points[n] = (point_t) {
+             .pos = {p_win[0], p_win[1]},
+             .size = size,
+             .color = {color[0] * 255, color[1] * 255, color[2] * 255,
+-                      luminance * 255},
++                      luminance * fade * 255},
+             // This makes very faint stars not selectable
+             .obj = (luminance > 0.5 && size > 1) ? &s->obj : NULL,
+         };
+diff --git a/src/observer.c b/src/observer.c
+index c097f32..a0ff56a 100644
+--- a/src/observer.c
++++ b/src/observer.c
+@@ -113,6 +113,7 @@ static void observer_compute_hash(const observer_t *obs, uint64_t* hash_partial,
+     H(hm);
+     H(horizon);
+     H(pressure);
++    H(temperature);
+     H(space);
+     *hash_partial = v;
+     H(ro2m);
+@@ -229,7 +230,8 @@ static void observer_update_full(observer_t *obs)
+     if (!obs->space)
+         eraPvmpv(obs->obs_pvb, obs->earth_pvb, obs->obs_pvg);
+     // Update refraction constants.
+-    refraction_prepare(obs->pressure, 15, 0.5, &obs->refa, &obs->refb);
++    refraction_prepare(obs->pressure, obs->temperature, 0.5,
++                       &obs->refa, &obs->refb);
+     update_nutation_precession_mat(obs);
+ 
+     update_matrices(obs);
+diff --git a/src/observer.h b/src/observer.h
+index d7a885b..b658dca 100644
+--- a/src/observer.h
++++ b/src/observer.h
+@@ -27,6 +27,7 @@ struct observer
+     double horizon;     // altitude of horizon (used for rise/set).
+ 
+     double pressure;    // Control the refraction.  Zero for no refraction.
++    double temperature; // Air temperature (C) for refraction.
+ 
+     /* Mount orientation rotation.
+      * Set to the identity (default) for an az/alt mount.

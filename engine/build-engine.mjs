@@ -152,11 +152,23 @@ const objDir = join(src, 'build', 'obj');
 mkdirSync(objDir, { recursive: true });
 const jobs = Math.max(1, cpus().length);
 const objects = [];
+// An object is only reusable if it is newer than its source AND every header
+// and embedded asset (a changed struct in a header must rebuild everything).
+const newestHeader = (function walk(dir) {
+  let t = 0;
+  for (const e of readdirSync(join(src, dir), { withFileTypes: true })) {
+    const p = `${dir}/${e.name}`;
+    if (e.isDirectory()) t = Math.max(t, walk(p));
+    else if (/\.(h|inl)$/.test(e.name)) t = Math.max(t, statSync(join(src, p)).mtimeMs);
+  }
+  return t;
+})('src');
 const queue = sources
   .map((s) => {
     const obj = join(objDir, s.replace(/[\\/]/g, '__') + '.o');
     objects.push(obj);
-    const fresh = existsSync(obj) && statSync(obj).mtimeMs > statSync(join(src, s)).mtimeMs;
+    const objTime = existsSync(obj) ? statSync(obj).mtimeMs : 0;
+    const fresh = objTime > statSync(join(src, s)).mtimeMs && objTime > newestHeader;
     return fresh ? null : { s, obj };
   })
   .filter(Boolean);
