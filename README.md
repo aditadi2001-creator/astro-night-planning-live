@@ -11,7 +11,8 @@ transparency, haze, light pollution, the Moon and darkness times.
   satellite night lights underestimate LED light.
 - **License: [AGPL-3.0](LICENSE)**, required by Stellarium Web Engine.
 
-> Status: **Phase 1 of 11** (project setup and sky-engine trial build). See [Roadmap](#roadmap).
+> Status: **Phase 2 of 11 done** (3D sky with self-hosted catalogs and time controls). See
+> [Roadmap](#roadmap).
 
 ## Quick start
 
@@ -62,7 +63,8 @@ site's Credits page. Only openly licensed sources that need no permission reques
 ## Methods
 
 See [docs/methods.md](docs/methods.md). Implemented so far: Kasten–Young airmass, Bennett and
-Saemundsson refraction with live temperature and pressure correction.
+Saemundsson refraction with live temperature and pressure correction, a patched engine refraction,
+position cross-checks against Astronomy Engine and JPL Horizons, and darkness times.
 
 ## Cloudflare R2: cost rules
 
@@ -92,7 +94,7 @@ exist.
 ## Roadmap
 
 1. ✅ Setup, CI, license, trial build of Stellarium Web Engine
-2. 3D sky with self-hosted catalogs, time controls
+2. ✅ 3D sky with self-hosted catalogs, time controls
 3. Live conditions (Open-Meteo weather + air quality), condition cards, tonight timeline
 4. Realism layer: extinction, sky brightness, limiting magnitude, clouds, Moon, terrain horizon
 5. R2 bucket + Worker (range requests, caching, CORS, 7Timer proxy) — needs your OK

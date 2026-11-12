@@ -34,6 +34,10 @@ The two fits agree with each other to about 0.12′ (7″), far below typical se
 - **Cross-check:** for Altair from Greenwich on 2026-11-12 18:11:02 UTC the engine's geometric
   altitude/azimuth agree with an independent Astronomy Engine calculation (Hipparcos position and
   proper motion) to 4.7″ / 2.6″.
+- **Planets (engine vs JPL Horizons):** Sydney, 2026-11-12 12:00 UT, geometric (airless). Sun,
+  Moon and Mars agree with Astronomy Engine to ≤ 2″; against JPL Horizons the engine is ~20″ off
+  for Jupiter and ~17″ for Saturn (Astronomy Engine: ~3″ and ~12″). That is smaller than Jupiter's
+  disc and irrelevant for framing, but it is the engine's accuracy limit for the outer planets.
 - **Cards:** Sun, Moon and planets in the side cards come from Astronomy Engine (topocentric,
   aberration-corrected) with our own refraction.
 - **Darkness times:** astronomical dusk/dawn (Sun at −18°) from Astronomy Engine's altitude search;

@@ -1,0 +1,9 @@
+obs_title                = Stars: Hipparcos + Gaia DR3 subset
+obs_description          = Hipparcos (ESA 1997) and Gaia DR3 (ESA/Gaia/DPAC) to V 10.0
+type                     = stars
+hips_tile_format         = eph
+hips_order_min           = 0
+hips_order               = 4
+min_vmag                 = -2
+max_vmag                 = 10.0
+hips_release_date        = 2026-11-12T00:00Z
