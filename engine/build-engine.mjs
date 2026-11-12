@@ -56,13 +56,19 @@ for (const p of existsSync(patchDir)
   console.log(`patch ${p}: applied`);
 }
 
-// 1. Embed shaders, fonts, textures into src/assets (upstream tools/make-assets.py).
-// The script insists on being called as ./tools/make-assets.py and assumes '/'
-// path separators, so on Windows we keep the .inl files committed upstream.
-if (isWin) {
-  console.log('Windows: using the pre-generated src/assets/*.inl from upstream.');
+// 1. Shaders, fonts and textures are embedded in src/assets/*.inl, which upstream
+// commits. Our patches change no asset, so by default we use those files as-is.
+// Set SWE_MAKE_ASSETS=1 to regenerate them with upstream tools/make-assets.py.
+// That script refuses to run unless __file__ is exactly "./tools/make-assets.py"
+// (Python >= 3.9 makes it absolute) and assumes '/' separators, so we run it
+// through runpy with __file__ set the way it expects (POSIX only).
+if (process.env.SWE_MAKE_ASSETS === '1' && !isWin) {
+  const code =
+    "import runpy,sys; sys.argv=['./tools/make-assets.py']; " +
+    "runpy.run_path('./tools/make-assets.py', init_globals={'__file__': './tools/make-assets.py'}, run_name='__main__')";
+  run(python, ['-c', code], { cwd: src });
 } else {
-  run(python, ['./tools/make-assets.py'], { cwd: src });
+  console.log('Using the pre-generated src/assets/*.inl from upstream.');
 }
 
 // 2. Same source list as SConstruct.
