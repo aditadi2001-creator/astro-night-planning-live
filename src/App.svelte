@@ -405,6 +405,9 @@
           dbv,
           // Long exposure reaches ~4 mag deeper than the eye against the same sky.
           limitMag: limitMag + (layers.longExposure ? 4 : 0),
+          // The site's Bortle class drives the engine's sky glow and Milky Way contrast;
+          // with the light-pollution layer off, a pristine sky.
+          bortle: layers.lightpollution ? (siteLight?.bortle ?? 3) : 1,
         }
       : null,
   );
@@ -424,7 +427,9 @@
   // (Bortle 9 is ~0.016 cd/m², ~90× a natural sky), brighter towards the horizon.
   const skyGlow = $derived.by(() => {
     if (!siteLight || domeStrength <= 0) return null;
-    const a = Math.min(0.35, 0.065 * Math.log(1 + Math.max(0, siteLight.ratio))) * domeStrength;
+    // The engine adds a uniform glow for the Bortle class (atmosphere.c); this veil now
+    // mainly supplies the brightening towards the horizon, so it is 40 % of the full value.
+    const a = Math.min(0.15, 0.026 * Math.log(1 + Math.max(0, siteLight.ratio))) * domeStrength;
     return a > 0.01
       ? { rgb: [128, 102, 86] as [number, number, number], zenithA: Math.round(a * 100) / 100 }
       : null;
@@ -675,6 +680,11 @@
     gotoSky(t.ra, t.dec, Math.min(60, fov));
   }
 
+  /** Scroll a section into view when it is switched on (satellite map). */
+  function scrollWhenShown(node: HTMLElement) {
+    setTimeout(() => node.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+  }
+
   function setTime(t: Date, isLive: boolean) {
     live = isLive;
     shown = t;
@@ -838,7 +848,9 @@
 
       {#if layers.satmap}
         {#await import('./components/SatelliteMap.svelte') then { default: SatelliteMap }}
-          <SatelliteMap {place} {tz} />
+          <div id="satmap" use:scrollWhenShown>
+            <SatelliteMap {place} {tz} />
+          </div>
         {:catch}
           <p class="note">
             The satellite map could not be loaded. Check the connection and try again.

@@ -4,6 +4,7 @@
 // are left out of the install download and cached when first used.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { engineVersion } from './engine-version.mjs';
 
 const STATIC = [
   '/',
@@ -13,9 +14,9 @@ const STATIC = [
   '/icons/icon-512.png',
   '/icons/maskable-512.png',
   '/icons/apple-touch-icon.png',
-  '/engine/stellarium-web-engine.js',
-  '/engine/stellarium-web-engine.wasm',
 ];
+// Same versioned URLs the page requests (scripts/engine-version.mjs).
+const ENGINE = ['engine/stellarium-web-engine.js', 'engine/stellarium-web-engine.wasm'];
 
 export function pwa() {
   let base = '/';
@@ -42,6 +43,7 @@ export function pwa() {
       }
       const list = [
         ...STATIC.map((p) => base + p.replace(/^\//, '')),
+        ...ENGINE.map((p) => `${base}${p}?v=${engineVersion()}`),
         ...[...files]
           .filter((f) => !f.endsWith('.map'))
           .sort()
@@ -53,8 +55,7 @@ export function pwa() {
         hash.update(f);
         hash.update(c.type === 'chunk' ? c.code : String(c.source.length));
       }
-      for (const p of STATIC.slice(7))
-        hash.update(readFileSync(new URL(`../public${p}`, import.meta.url)));
+      hash.update(engineVersion());
       // The worker's own code is part of the version too.
       const template = readFileSync(new URL('../src/pwa/sw-template.js', import.meta.url), 'utf8');
       hash.update(template);

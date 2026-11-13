@@ -2,9 +2,10 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { pwa } from './scripts/pwa-plugin.mjs';
+import { engineVersionPlugin } from './scripts/engine-version.mjs';
 
 export default defineConfig({
-  plugins: [svelte(), pwa()],
+  plugins: [svelte(), engineVersionPlugin(), pwa()],
   server: {
     // Dev only: the Copernicus DEM bucket sends no CORS headers. In production
     // the browser goes through our data Worker (VITE_DATA_BASE + /dem).

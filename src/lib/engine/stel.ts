@@ -85,13 +85,15 @@ type EngineFactory = (opts: {
 import { GAIA_DEEP_URL } from '../config';
 
 const BASE = import.meta.env.BASE_URL;
+/** Content hash of the engine files (scripts/engine-version.mjs): JS and WASM always match. */
+const ENGINE_V = typeof __ENGINE_V__ === 'string' ? __ENGINE_V__ : 'dev';
 export const SKYDATA = `${BASE}skydata/`;
 
 /** Load the engine module and initialise it on `canvas`. */
 export async function startEngine(canvas: HTMLCanvasElement): Promise<Stel> {
   // The engine is a prebuilt static file in /public. Vite refuses to import
   // from there, so fetch it (cacheable like any asset) and import a Blob URL.
-  const res = await fetch(`${BASE}engine/stellarium-web-engine.js`);
+  const res = await fetch(`${BASE}engine/stellarium-web-engine.js?v=${ENGINE_V}`);
   if (!res.ok) throw new Error(`engine script: HTTP ${res.status}`);
   const blobUrl = URL.createObjectURL(new Blob([await res.text()], { type: 'text/javascript' }));
   let mod: { default: EngineFactory };
@@ -103,7 +105,7 @@ export async function startEngine(canvas: HTMLCanvasElement): Promise<Stel> {
   return new Promise((resolve, reject) => {
     try {
       mod.default({
-        wasmFile: `${BASE}engine/stellarium-web-engine.wasm`,
+        wasmFile: `${BASE}engine/stellarium-web-engine.wasm?v=${ENGINE_V}`,
         canvas,
         translateFn: (_domain, str) => str,
         onReady: (stel) => {
@@ -184,6 +186,11 @@ export interface EngineAtmosphere {
   dbv: number;
   /** Naked-eye limiting magnitude of the sky background (before extinction). */
   limitMag: number;
+  /**
+   * Bortle class of the site (1–9). The engine adds matching sky glow to its
+   * atmosphere, and a brighter sky fades the Milky Way (engine milkyway.c).
+   */
+  bortle?: number;
 }
 
 interface EngineHeap {
@@ -203,6 +210,7 @@ export function setAtmosphere(stel: Stel, a: EngineAtmosphere): void {
   c.extinction_k = a.k;
   c.extinction_dbv = a.dbv;
   c.visual_limit_mag = a.limitMag;
+  if (a.bortle != null) c.bortle_index = Math.round(Math.min(9, Math.max(1, a.bortle)));
 }
 
 export const SKY_LAYER = { clouds: 0, terrain: 1 } as const;

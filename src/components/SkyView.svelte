@@ -79,6 +79,69 @@
   }: Props = $props();
 
   let canvas: HTMLCanvasElement;
+  let wrap: HTMLDivElement;
+  let full = $state(false);
+
+  // ---- fullscreen ---------------------------------------------------------------
+  function toggleFull() {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void wrap?.requestFullscreen?.().catch(() => undefined);
+  }
+  onMount(() => {
+    const on = () => (full = document.fullscreenElement === wrap);
+    document.addEventListener('fullscreenchange', on);
+    return () => document.removeEventListener('fullscreenchange', on);
+  });
+
+  // ---- zoom on the centre of the screen (as in Stellarium), not on the cursor -----
+  onMount(() => {
+    const zoomBy = (f: number) => {
+      if (!stel) return;
+      const fov = Math.min(185 * stel.D2R, Math.max((0.2 / 60) * stel.D2R, stel.core.fov * f));
+      stel.zoomTo(fov, 0.1);
+    };
+    const onWheel = (e: Event) => {
+      if (!(e.target instanceof HTMLCanvasElement)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const dy = e instanceof WheelEvent ? e.deltaY * (e.deltaMode === 1 ? 33 : 1) : 0;
+      zoomBy(Math.exp(Math.max(-300, Math.min(300, dy)) * 0.0015));
+    };
+    // Two-finger pinch: zoom about the centre too (one finger still drags the sky).
+    let pinch = 0;
+    const dist = (t: TouchList) =>
+      Math.hypot(
+        (t[0]?.clientX ?? 0) - (t[1]?.clientX ?? 0),
+        (t[0]?.clientY ?? 0) - (t[1]?.clientY ?? 0),
+      );
+    const onTouch = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        pinch = 0;
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      const d = dist(e.touches);
+      if (e.type === 'touchmove' && pinch > 0 && d > 0) zoomBy(pinch / d);
+      pinch = d;
+    };
+    const opt = { capture: true, passive: false } as const;
+    wrap.addEventListener('wheel', onWheel, opt);
+    wrap.addEventListener('mousewheel', onWheel, opt);
+    wrap.addEventListener('touchstart', onTouch, opt);
+    wrap.addEventListener('touchmove', onTouch, opt);
+    return () => {
+      wrap.removeEventListener('wheel', onWheel, opt);
+      wrap.removeEventListener('mousewheel', onWheel, opt);
+      wrap.removeEventListener('touchstart', onTouch, opt);
+      wrap.removeEventListener('touchmove', onTouch, opt);
+    };
+  });
+
+  /** Centre the view on the selected object and keep it there (Stellarium "go to"). */
+  function gotoSelected() {
+    if (stel?.core.selection) stel.pointAndLock(stel.core.selection, 1);
+  }
   let stel = $state<Stel | null>(null);
   let status = $state<'loading' | 'ready' | 'error'>('loading');
   let errorMsg = $state('');
@@ -393,6 +456,13 @@
       case 'Escape':
         clearSelection();
         break;
+      case ' ':
+        gotoSelected();
+        break;
+      case 'f':
+      case 'F':
+        toggleFull();
+        break;
       default:
         return;
     }
@@ -400,7 +470,16 @@
   }
 </script>
 
-<div class="wrap">
+<div class="wrap" class:full bind:this={wrap}>
+  <div class="tools">
+    {#if selected}<button
+        onclick={gotoSelected}
+        title="Centre and track the selected object (space bar)">Go to</button
+      >{/if}
+    <button onclick={toggleFull} aria-pressed={full} title="Full screen (F)"
+      >{full ? 'Exit full screen' : 'Full screen'}</button
+    >
+  </div>
   <canvas
     bind:this={canvas}
     class="sky"
@@ -424,6 +503,7 @@
     <section class="info" aria-live="polite" aria-label="Selected object">
       <header>
         <h3>{selected.name}</h3>
+        <button class="goto" onclick={gotoSelected}>Go to</button>
         <button class="close" onclick={clearSelection} aria-label="Close details">×</button>
       </header>
       {#if selected.type}<p class="type">{selected.type}</p>{/if}
@@ -460,6 +540,25 @@
 </div>
 
 <style>
+  .tools {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 3;
+    display: flex;
+    gap: 6px;
+  }
+  .tools button,
+  .goto {
+    background: rgb(13 18 32 / 0.8);
+    font-size: 13px;
+    min-height: 32px;
+    padding: 4px 10px;
+  }
+  .wrap.full {
+    border-radius: 0;
+    border: none;
+  }
   .wrap {
     position: relative;
     height: 100%;
