@@ -111,8 +111,9 @@ One Worker, `astro-night-planning-live-data` (code in [`worker/`](worker/)), on 
 plan**, bound to one R2 bucket, `astro-night-planning-live-data`. The browser never reads R2
 directly and never lists the bucket.
 
-Live at `https://astro-night-planning-live-data.aditadi2001.workers.dev` (build the site with
-`VITE_DATA_BASE` set to that URL). Deploy only with
+Live at `https://astro-night-planning-live-data.aditadi2001.workers.dev`. Production builds pick
+that URL up from the committed [`.env.production`](.env.production) (`VITE_DATA_BASE`, public, no
+secrets); `npm run dev` leaves it unset and uses the Vite DEM proxy instead. Deploy only with
 `npx wrangler deploy --config worker/wrangler.jsonc`. The free plan caps CPU at 10 ms per request
 on its own; custom CPU limits are a paid setting, so the config sets none.
 
@@ -142,7 +143,7 @@ each internal call is billed as a separate request, which would double usage.)
 
 | Storage                            | Size                                      | Notes                                                             |
 | ---------------------------------- | ----------------------------------------- | ----------------------------------------------------------------- |
-| Deep star layer (Gaia DR3, V ≤ 14) | ~0.28 GB                                  | 16.8 M stars × ~17 bytes (measured 17.4 B/star on a test build)   |
+| Deep star layer (Gaia DR3, V ≤ 14) | 0.198 GB (uploaded)                       | 12.4 M stars with 10 < V ≤ 14, 25,987 tiles, 15.9 bytes/star      |
 | Light pollution PMTiles (Phase 8)  | ≤ 2 GB                                    | resolution chosen to fit                                          |
 | Hourly satellite clouds (Phase 6)  | ≤ 0.7 GB                                  | 24 h kept × ≤ 30 MB per hour                                      |
 | Small JSON etc.                    | < 0.01 GB                                 |                                                                   |
