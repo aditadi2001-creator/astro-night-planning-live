@@ -8,6 +8,8 @@
   import DataStatus from './components/DataStatus.svelte';
   import Layers, { type LayerState, type SurveyStatus } from './components/Layers.svelte';
   import Extras from './components/Extras.svelte';
+  import WeekAhead from './components/WeekAhead.svelte';
+  import { weekAhead } from './lib/clouds/week';
   import {
     AURORA_MIN_LAT,
     loadAurora,
@@ -33,7 +35,8 @@
     type ModelClouds,
     type Weather,
   } from './lib/data/openmeteo';
-  import { buildRow, buildTimeline, moonEvents, nightWindow, twilight } from './lib/conditions';
+  import { buildRow, buildTimeline, moonEvents, twilight } from './lib/conditions';
+  import { estimateClouds, timelineEnd, timelineStart, type SatObs } from './lib/clouds/estimate';
   import { colourExcessPerAirmass, zenithExtinction } from './lib/physics/extinction';
   import { limitingMagnitude, zenithSkyBrightness } from './lib/physics/skybrightness';
   import { cloudColors, type CloudInput } from './lib/sky/clouds';
@@ -293,15 +296,33 @@
   // ---- derived conditions ---------------------------------------------------------
   // Recompute at most once a minute in live mode (inputs are hourly).
   const minute = $derived(Math.floor(shown.getTime() / 60_000) * 60_000);
-  const row = $derived(buildRow(minute, place, weather, models, air, darkSkyMag));
+  const mean = (a: readonly number[]) =>
+    a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  // ---- clouds: model consensus, corrected by the satellite, recorded for past hours ----
+  const utcOff = $derived(weather?.utcOffsetSeconds ?? 0);
+  const satObs = $derived.by<SatObs[]>(() => {
+    if (!satellite) return [];
+    return (satellite.history ?? [])
+      .map((h) => {
+        const w = weather ? hourAt(weather.hours, h.time) : null;
+        const sk = w?.temperature != null ? w.temperature + 273.15 : Number.NaN;
+        return { time: h.time, frac: irCloudFraction(h.site, sk) ?? 0, meanK: mean(h.site) };
+      })
+      .filter((o) => Number.isFinite(o.frac));
+  });
+  const nowMin = $derived(Math.floor(now.getTime() / 600_000) * 600_000);
+  const cloudAt = (t: number) => estimateClouds(t, nowMin, models, weather, satObs);
+  const hourStart = (t: number) =>
+    Math.floor((t + utcOff * 1000) / 3600_000) * 3600_000 - utcOff * 1000;
+  const row = $derived(
+    buildRow(minute, place, weather, models, air, darkSkyMag, cloudAt(hourStart(minute))),
+  );
   const tw = $derived(twilight(place, new Date(minute)));
   // ---- satellite + model "clouds now" ---------------------------------------------
   const satWeight = $derived(satellite ? satelliteWeight((minute - satellite.time) / 3600_000) : 0);
   const surfaceK = $derived(
     row.weather?.temperature != null ? row.weather.temperature + 273.15 : Number.NaN,
   );
-  const mean = (a: readonly number[]) =>
-    a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
   const satPoint = (bt: readonly number[]): SatPoint => ({
     frac: irCloudFraction(bt, surfaceK),
     meanK: mean(bt),
@@ -315,7 +336,8 @@
           meanK: satSite.meanK,
           time: satellite.time,
           weight: satWeight,
-          now: cloudsNow(row.weather?.cloud ?? null, satSite.frac, satWeight),
+          // The hour's figure already holds the satellite correction (clouds/estimate.ts).
+          now: row.cloud?.total ?? cloudsNow(row.weather?.cloud ?? null, satSite.frac, satWeight),
         }
       : null,
   );
@@ -369,7 +391,8 @@
     return {
       // Observed cloud from the satellite moves the forecast towards reality,
       // direction by direction (weight fades with the image's age).
-      center: satSite ? blendLayers(center, satSite, satWeight) : center,
+      // The site's layers already carry the satellite correction (clouds/estimate.ts).
+      center: row.cloud ? center : satSite ? blendLayers(center, satSite, satWeight) : center,
       samples:
         satRing.length === samples.length ? blendSamples(samples, satRing, satWeight) : samples,
       wind: { low: wind(850), mid: wind(500), high: wind(250) },
@@ -398,10 +421,20 @@
       : null,
   );
 
-  const timeline = $derived.by(() => {
-    const win = nightWindow(place, new Date(Math.floor(now.getTime() / 600_000) * 600_000));
-    return win ? buildTimeline(place, win, weather, models, air, darkSkyMag) : [];
-  });
+  // Seven nights of model clouds (recomputed every 10 minutes at most).
+  const week = $derived(weekAhead(place, models, weather, satObs, nowMin, utcOff));
+  // Three hours back (recorded) to the coming 05:00 (forecast).
+  const timeline = $derived(
+    buildTimeline(
+      place,
+      { start: timelineStart(nowMin, utcOff), end: timelineEnd(nowMin, utcOff) },
+      weather,
+      models,
+      air,
+      darkSkyMag,
+      cloudAt,
+    ),
+  );
 
   $effect(() => {
     const t = setInterval(() => {
@@ -500,8 +533,11 @@
         {tz}
         shown={shown.getTime()}
         {sevenTimer}
+        now={nowMin}
         onpick={(t) => setTime(new Date(t), false)}
       />
+
+      <WeekAhead nights={week} {tz} />
 
       <ConditionCards
         {row}

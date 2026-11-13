@@ -4,7 +4,7 @@
  *
  * Per location we make three calls, each merging all its variables:
  *   1. forecast, best_match model: surface + cloud layers + pressure levels
- *   2. forecast, 3 other models: total cloud only (model agreement)
+ *   2. forecast, 8 global models: cloud layers for 7 days (consensus, agreement, week ahead)
  *   3. air quality (CAMS): AOD, dust, PM, AQI
  * Coordinates are rounded to 0.01° (~1 km) so nearby visitors share caches.
  */
@@ -18,12 +18,33 @@ const GEOCODE = 'https://geocoding-api.open-meteo.com/v1/search';
 export const LEVELS = [850, 700, 500, 300, 250, 200] as const;
 export type Level = (typeof LEVELS)[number];
 
-export const AGREEMENT_MODELS = ['ecmwf_ifs025', 'gfs_seamless', 'icon_seamless'] as const;
+/**
+ * Global models whose median is the cloud forecast. No single model is right
+ * everywhere (in Bangalore on 13 Nov 2026 they ranged from 0 % to 100 % for the
+ * same evening), so the median of eight is used, corrected by the satellite.
+ */
+export const CONSENSUS_MODELS = [
+  'ecmwf_ifs025',
+  'gfs_seamless',
+  'icon_seamless',
+  'jma_seamless',
+  'meteofrance_seamless',
+  'ukmo_seamless',
+  'gem_seamless',
+  'cma_grapes_global',
+] as const;
+/** @deprecated kept for older imports; same list as CONSENSUS_MODELS. */
+export const AGREEMENT_MODELS = CONSENSUS_MODELS;
 export const MODEL_LABELS: Record<string, string> = {
   best_match: 'Best match',
-  ecmwf_ifs025: 'ECMWF IFS',
+  ecmwf_ifs025: 'ECMWF',
   gfs_seamless: 'GFS',
   icon_seamless: 'ICON',
+  jma_seamless: 'JMA',
+  meteofrance_seamless: 'Météo-France',
+  ukmo_seamless: 'UK Met Office',
+  gem_seamless: 'GEM',
+  cma_grapes_global: 'CMA',
 };
 
 const SURFACE = [
@@ -85,8 +106,20 @@ export interface Weather {
   hours: WeatherHour[];
 }
 
+export interface LayerCover {
+  low: number | null;
+  mid: number | null;
+  high: number | null;
+}
+
 export interface ModelClouds {
-  hours: { t: number; byModel: Record<string, number | null> }[];
+  hours: {
+    t: number;
+    /** Total cloud cover (%) per model. */
+    byModel: Record<string, number | null>;
+    /** Cloud layers (%) per model. */
+    layers: Record<string, LayerCover>;
+  }[];
 }
 
 export interface AirHour {
@@ -171,27 +204,44 @@ export async function loadWeather(
   return { ...r, data: parseWeather(r.data) };
 }
 
+export function parseModelClouds(raw: RawForecast): ModelClouds {
+  const h = raw.hourly;
+  return {
+    hours: h.time.map((t, i) => ({
+      t: t * 1000,
+      byModel: Object.fromEntries(CONSENSUS_MODELS.map((m) => [m, v(h[`cloud_cover_${m}`], i)])),
+      layers: Object.fromEntries(
+        CONSENSUS_MODELS.map((m) => [
+          m,
+          {
+            low: v(h[`cloud_cover_low_${m}`], i),
+            mid: v(h[`cloud_cover_mid_${m}`], i),
+            high: v(h[`cloud_cover_high_${m}`], i),
+          },
+        ]),
+      ),
+    })),
+  };
+}
+
 export async function loadModelClouds(
   lat: number,
   lon: number,
   signal: AbortSignal,
   force = false,
 ): Promise<Cached<ModelClouds>> {
-  const url = `${FORECAST}?${q({ ...base(lat, lon), models: AGREEMENT_MODELS.join(','), hourly: 'cloud_cover' })}`;
-  const r = await fetchJson<RawForecast>(key('models', lat, lon), url, {
+  const url = `${FORECAST}?${q({
+    ...base(lat, lon),
+    forecast_days: 7,
+    models: CONSENSUS_MODELS.join(','),
+    hourly: 'cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high',
+  })}`;
+  const r = await fetchJson<ModelClouds, RawForecast>(key('models7', lat, lon), url, {
     maxAgeMs: force ? 0 : TTL,
     signal,
+    transform: parseModelClouds,
   });
-  const h = r.data.hourly;
-  return {
-    ...r,
-    data: {
-      hours: h.time.map((t, i) => ({
-        t: t * 1000,
-        byModel: Object.fromEntries(AGREEMENT_MODELS.map((m) => [m, v(h[`cloud_cover_${m}`], i)])),
-      })),
-    },
-  };
+  return r;
 }
 
 export async function loadAir(

@@ -17,6 +17,7 @@ import { zenithExtinction, type ExtinctionParts } from './physics/extinction';
 import { dewRisk, type DewRisk } from './physics/dew';
 import { imagingScore, modelAgreement, type Agreement, type ScoreParts } from './physics/score';
 import { estimateSeeing, type SeeingEstimate, type WindAt } from './physics/seeing';
+import type { CloudEstimate } from './clouds/estimate';
 
 export interface HourRow {
   t: number;
@@ -34,6 +35,8 @@ export interface HourRow {
   /** Our seeing forecast (estimate) for this hour. */
   seeing: SeeingEstimate | null;
   score: ScoreParts | null;
+  /** Cloud figure used for this hour (consensus, satellite-corrected or observed). */
+  cloud: CloudEstimate | null;
 }
 
 const KMH = 1 / 3.6;
@@ -67,6 +70,8 @@ export function buildRow(
   air: Air | null,
   /** Moonless zenith brightness at the site (SQM) from the light-pollution map. */
   darkSkyMag?: number,
+  /** Cloud estimate replacing the single-model cloud cover (clouds/estimate.ts). */
+  cloud?: CloudEstimate | null,
 ): HourRow {
   const date = new Date(t);
   const obs = new Astronomy.Observer(place.lat, place.lon, place.elevation);
@@ -74,13 +79,22 @@ export function buildRow(
   const moonAlt = altitude(Astronomy.Body.Moon, obs, date);
   const moonPhaseAngle = Astronomy.Illumination(Astronomy.Body.Moon, date).phase_angle;
 
-  const w = weather ? hourAt(weather.hours, t) : null;
+  const w0 = weather ? hourAt(weather.hours, t) : null;
+  const w =
+    w0 && cloud
+      ? {
+          ...w0,
+          cloud: cloud.total,
+          cloudLow: cloud.low,
+          cloudMid: cloud.mid,
+          cloudHigh: cloud.high,
+        }
+      : w0;
   const a = air ? hourAt(air.hours, t) : null;
   const m = models ? hourAt(models.hours, t) : null;
-  const modelClouds: Record<string, number | null> = {
-    best_match: w?.cloud ?? null,
-    ...(m?.byModel ?? {}),
-  };
+  const modelClouds: Record<string, number | null> = m?.byModel
+    ? { ...m.byModel }
+    : { best_match: w0?.cloud ?? null };
   const { agreement, spread } = modelAgreement(Object.values(modelClouds));
 
   const aod = a?.aod ?? null;
@@ -126,6 +140,7 @@ export function buildRow(
     dew,
     seeing,
     score,
+    cloud: cloud ?? null,
   };
 }
 
@@ -160,16 +175,18 @@ export function buildTimeline(
   models: ModelClouds | null,
   air: Air | null,
   darkSkyMag?: number,
+  /** Cloud estimate per hour start (clouds/estimate.ts); single-model cover without it. */
+  cloudAt?: (hourStart: number) => CloudEstimate | null,
 ): HourRow[] {
   const rows: HourRow[] = [];
   // Align to the site's local hours (e.g. :30 UTC in India), which is also the
   // grid Open-Meteo returns with timezone=auto.
   const off = (weather?.utcOffsetSeconds ?? 0) * 1000;
   const first = Math.floor((win.start + off) / 3600_000) * 3600_000 - off;
-  for (let t = first; t < win.end && rows.length < 24; t += 3600_000) {
+  for (let t = first; t < win.end && rows.length < 36; t += 3600_000) {
     // Evaluate astronomy at the middle of the hour (or the window edges).
     const mid = Math.min(Math.max(t + 1800_000, win.start), win.end);
-    const row = buildRow(mid, place, weather, models, air, darkSkyMag);
+    const row = buildRow(mid, place, weather, models, air, darkSkyMag, cloudAt?.(t) ?? null);
     rows.push({ ...row, t });
   }
   return rows;

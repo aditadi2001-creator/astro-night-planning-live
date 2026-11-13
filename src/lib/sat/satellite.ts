@@ -17,6 +17,8 @@ export interface SatelliteSample {
   site: number[];
   /** Same, at each ring point (order of ringPoints()). */
   ring: number[][];
+  /** Site brightness temperatures for the newest and up to 4 earlier hours, newest first. */
+  history: { hour: string; time: number; site: number[] }[];
 }
 
 export async function loadSatellite(
@@ -30,12 +32,27 @@ export async function loadSatellite(
   if (!newest) throw new Error('No satellite hours published yet');
   const places = [{ lat, lon }, ...ringPoints(lat, lon)];
   const bt = await samplePlaces(newest.hour, places, signal);
+  // Earlier hours at the site only (one tile each), for the "recorded" timeline hours.
+  const earlier = await Promise.all(
+    idx.data.hours.slice(1, 5).map(async (h) => {
+      try {
+        const v = await samplePlaces(h.hour, [{ lat, lon }], signal);
+        return { hour: h.hour, time: Date.parse(h.time), site: v[0] ?? [] };
+      } catch {
+        return null;
+      }
+    }),
+  );
   return {
     data: {
       hour: newest.hour,
       time: Date.parse(newest.time),
       site: bt[0] ?? [],
       ring: bt.slice(1),
+      history: [
+        { hour: newest.hour, time: Date.parse(newest.time), site: bt[0] ?? [] },
+        ...earlier.filter((x): x is NonNullable<typeof x> => !!x && x.site.length > 0),
+      ],
     },
     fetchedAt: idx.fetchedAt,
     ...(idx.stale ? { stale: true } : {}),

@@ -10,19 +10,31 @@
     shown: number;
     /** 7Timer! second opinion (3-hourly), if loaded. */
     sevenTimer?: SevenTimer | null;
+    /** The real clock: earlier hours are shown as recorded. */
+    now?: number;
     onpick: (t: number) => void;
   }
-  let { rows, tz, shown, sevenTimer = null, onpick }: Props = $props();
+  let { rows, tz, shown, sevenTimer = null, now = Date.now(), onpick }: Props = $props();
+  const isPast = (r: HourRow) => r.t + 3600_000 <= now;
+  const pct = (v: number | null | undefined) => (v == null ? '—' : `${Math.round(v)}%`);
+  const kindLabel = (r: HourRow) =>
+    r.cloud?.kind === 'observed'
+      ? 'recorded by satellite'
+      : r.cloud?.kind === 'nowcast'
+        ? `forecast corrected by the satellite (${Math.round((r.cloud.satWeight ?? 0) * 100)}% satellite)`
+        : 'median of the forecast models';
 
   /** 7Timer! point that falls inside this hour (they come every 3 hours). */
   const stIn = (r: HourRow) =>
     sevenTimer?.points.find((p) => p.t >= r.t && p.t < r.t + 3600_000) ?? null;
 
   const best = $derived(
-    rows.reduce<HourRow | null>(
-      (b, r) => ((r.score?.score ?? -1) > (b?.score?.score ?? -1) ? r : b),
-      null,
-    ),
+    rows
+      .filter((r) => !isPast(r))
+      .reduce<HourRow | null>(
+        (b, r) => ((r.score?.score ?? -1) > (b?.score?.score ?? -1) ? r : b),
+        null,
+      ),
   );
 
   function scoreClass(s: number | undefined): string {
@@ -37,7 +49,7 @@
 
 <section class="timeline" aria-labelledby="tl-title">
   <header>
-    <h2 id="tl-title">Tonight</h2>
+    <h2 id="tl-title">Last 3 hours → 5 AM</h2>
     {#if best?.score && best.score.score > 0}
       <p class="best">
         Best hour: <strong>{fmtHour(best.t, tz)}</strong> (score {best.score.score})
@@ -65,7 +77,7 @@
           <tr>
             <th scope="row">Hour</th>
             {#each rows as r (r.t)}
-              <th scope="col" class:now={isShown(r)}>
+              <th scope="col" class:now={isShown(r)} class:past={isPast(r)}>
                 <button
                   onclick={() => onpick(r.t + 1800_000)}
                   aria-label={`Show ${fmtHour(r.t, tz)}`}
@@ -80,7 +92,7 @@
           <tr class="score-row">
             <th scope="row">Score</th>
             {#each rows as r (r.t)}
-              <td class:now={isShown(r)}>
+              <td class:now={isShown(r)} class:past={isPast(r)}>
                 <span
                   class="bar {scoreClass(r.score?.score)}"
                   style:--h={`${r.score?.score ?? 0}%`}
@@ -93,7 +105,41 @@
           <tr>
             <th scope="row">Clouds</th>
             {#each rows as r (r.t)}
-              <td class:now={isShown(r)}>{r.weather?.cloud ?? '—'}%</td>
+              <td class:now={isShown(r)} class:past={isPast(r)} title={kindLabel(r)}>
+                <strong>{pct(r.weather?.cloud)}</strong>
+                {#if r.cloud?.kind === 'observed'}<span class="kind">rec.</span>
+                {:else if r.cloud?.kind === 'nowcast'}<span class="kind">sat.</span>{/if}
+              </td>
+            {/each}
+          </tr>
+          <tr class="layer">
+            <th scope="row">Low</th>
+            {#each rows as r (r.t)}
+              <td class:now={isShown(r)} class:past={isPast(r)}>{pct(r.weather?.cloudLow)}</td>
+            {/each}
+          </tr>
+          <tr class="layer">
+            <th scope="row">Mid</th>
+            {#each rows as r (r.t)}
+              <td class:now={isShown(r)} class:past={isPast(r)}>{pct(r.weather?.cloudMid)}</td>
+            {/each}
+          </tr>
+          <tr class="layer">
+            <th scope="row" title="High cloud is mostly thin cirrus: stars often show through it">
+              High (thin)
+            </th>
+            {#each rows as r (r.t)}
+              <td class:now={isShown(r)} class:past={isPast(r)}>{pct(r.weather?.cloudHigh)}</td>
+            {/each}
+          </tr>
+          <tr class="layer">
+            <th scope="row" title="Lowest and highest total cloud among the 8 models">Range</th>
+            {#each rows as r (r.t)}
+              <td class:now={isShown(r)} class:past={isPast(r)} class="muted">
+                {r.cloud?.min != null && r.cloud?.max != null
+                  ? `${Math.round(r.cloud.min)}–${Math.round(r.cloud.max)}`
+                  : '—'}
+              </td>
             {/each}
           </tr>
           <tr>
@@ -149,9 +195,12 @@
       Score = clouds × transparency × Moon × darkness × seeing, each as a relative signal-to-noise
       factor for sky-limited imaging. Seeing is a forecast estimate from upper-air winds (our model;
       7Timer! every 3 h as a second opinion), never a measurement. Scores rate each hour for this
-      site; its light pollution is in the Sky quality card. Cloud models (ECMWF, GFS, ICON, best
-      match): <span class="dot high"></span> agree <span class="dot medium"></span> partly
-      <span class="dot low"></span> disagree. Weather data by Open-Meteo.com.
+      site; its light pollution is in the Sky quality card. Clouds: the median of 8 global models
+      (ECMWF, GFS, ICON, JMA, Météo-France, UK Met Office, GEM, CMA), pulled towards the newest
+      satellite image for the next few hours (<em>sat.</em>); earlier hours are what the satellite
+      recorded (<em>rec.</em>). High cloud is mostly thin cirrus and counts as 60 % in the score.
+      Models: <span class="dot high"></span> agree <span class="dot medium"></span> partly
+      <span class="dot low"></span> disagree. Weather data by Open-Meteo.com; satellite NOAA GMGSI.
     </p>
   {:else}
     <p class="note">The forecast for tonight will appear here.</p>
@@ -159,6 +208,20 @@
 </section>
 
 <style>
+  .past {
+    opacity: 0.55;
+  }
+  .kind {
+    display: block;
+    font-size: 10px;
+    color: var(--muted);
+    font-style: normal;
+  }
+  .layer td,
+  .layer th {
+    font-size: 12px;
+    color: var(--muted);
+  }
   .see {
     font-variant-numeric: tabular-nums;
     border-bottom: 2px solid transparent;
