@@ -60,16 +60,28 @@ def token() -> str:
     return t
 
 
+def _get_json(urls: list[str]) -> dict:
+    """GET JSON, retrying: the LAADS listing API sometimes answers 404/5xx for a moment."""
+    last: Exception | None = None
+    for attempt in range(6):
+        for url in urls:
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": UA})
+                with urllib.request.urlopen(req, timeout=120) as r:
+                    return json.load(r)
+            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+                last = e
+        time.sleep(5 * (attempt + 1))
+    raise RuntimeError(f"LAADS listing failed: {last}")
+
+
 def list_tiles(year: int) -> list[dict]:
-    req = urllib.request.Request(f"{BASE}/{year}/001.json", headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return json.load(r)["content"]
+    return _get_json([f"{BASE}/{year}/001.json", f"{BASE}/{year}/001/.json"])["content"]
 
 
 def latest_year() -> int:
-    req = urllib.request.Request(f"{BASE}.json", headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return max(int(i["name"]) for i in json.load(r)["content"] if i["name"].isdigit())
+    d = _get_json([f"{BASE}.json", f"{BASE}/.json"])
+    return max(int(i["name"]) for i in d["content"] if i["name"].isdigit())
 
 
 def tile_id(name: str) -> str:
