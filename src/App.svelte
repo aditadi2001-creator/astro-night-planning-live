@@ -6,7 +6,7 @@
   import ConditionCards from './components/ConditionCards.svelte';
   import Timeline from './components/Timeline.svelte';
   import DataStatus from './components/DataStatus.svelte';
-  import Layers, { type LayerState, type SurveyStatus } from './components/Layers.svelte';
+  import LayerBar, { type LayerState, type SurveyStatus } from './components/LayerBar.svelte';
   import Extras from './components/Extras.svelte';
   import WeekAhead from './components/WeekAhead.svelte';
   import { weekAhead } from './lib/clouds/week';
@@ -482,7 +482,10 @@
 </script>
 
 <a class="skip" href="#main">Skip to content</a>
-<TopBar {place} {now} {tz} bind:night onplace={setPlace} />
+<div class="head">
+  <TopBar {place} {now} {tz} bind:night onplace={setPlace} />
+  <LayerBar bind:layers {surveyStatus} />
+</div>
 
 <main id="main">
   {#if route === '#/credits'}
@@ -572,7 +575,6 @@
       {/if}
 
       <div class="pair">
-        <Layers bind:layers {surveyStatus} />
         <PhysicsPanel
           extinction={ext}
           {dbv}
@@ -607,6 +609,12 @@
     z-index: 30;
     background: var(--panel);
     padding: 8px;
+  }
+  /* Top bar + layer switches stay in reach while scrolling. */
+  .head {
+    position: sticky;
+    top: 0;
+    z-index: 15;
   }
   main {
     padding: var(--gap);

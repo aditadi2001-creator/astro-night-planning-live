@@ -370,7 +370,7 @@ export interface GeoResult {
 }
 
 export async function searchPlaces(name: string, signal: AbortSignal): Promise<GeoResult[]> {
-  const url = `${GEOCODE}?${q({ name, count: 8, language: 'en', format: 'json' })}`;
+  const url = `${GEOCODE}?${q({ name, count: 15, language: 'en', format: 'json' })}`;
   const r = await fetchJson<{ results?: GeoResult[] }>(`geo:${name.toLowerCase()}`, url, {
     maxAgeMs: 7 * 24 * 3600_000,
     retries: 1,

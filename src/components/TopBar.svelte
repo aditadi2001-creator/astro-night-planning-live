@@ -64,9 +64,6 @@
     padding: 8px var(--gap);
     border-bottom: 1px solid var(--line);
     background: var(--panel);
-    position: sticky;
-    top: 0;
-    z-index: 15;
   }
   .brand {
     display: flex;

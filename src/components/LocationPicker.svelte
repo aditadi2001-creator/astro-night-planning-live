@@ -2,6 +2,8 @@
   import type { Place } from '../lib/astro/sky';
   import { loadSavedPlaces, locateMe, saveSavedPlaces } from '../lib/location';
   import { searchPlaces, type GeoResult } from '../lib/data/openmeteo';
+  import { formatLatLon, parseCoordinates, type LatLon } from '../lib/geo/coords';
+  import { elevationAt, reverseOsm, searchOsm, type OsmPlace } from '../lib/geo/places';
 
   interface Props {
     place: Place;
@@ -15,6 +17,13 @@
   let searching = $state(false);
   let message = $state('');
   let saved = $state<Place[]>(loadSavedPlaces());
+  let osm = $state<OsmPlace[]>([]);
+  let osmState = $state<'idle' | 'loading' | 'done' | 'error'>('idle');
+  let latText = $state('');
+  let lonText = $state('');
+  let busy = $state(false);
+  const typed = $derived(parseCoordinates(query));
+  const fields = $derived(latText && lonText ? parseCoordinates(`${latText}, ${lonText}`) : null);
   let input: HTMLInputElement;
   let ctrl: AbortController | null = null;
   let debounce: ReturnType<typeof setTimeout> | null = null;
@@ -26,7 +35,9 @@
   function onInput() {
     if (debounce) clearTimeout(debounce);
     const q = query.trim();
-    if (q.length < 2) {
+    osm = [];
+    osmState = 'idle';
+    if (q.length < 2 || parseCoordinates(q)) {
       results = [];
       return;
     }
@@ -59,6 +70,47 @@
       ...(r.timezone ? { timezone: r.timezone } : {}),
     });
     onclose();
+  }
+
+  async function moreOsm() {
+    const q = query.trim();
+    if (q.length < 2) return;
+    ctrl?.abort();
+    ctrl = new AbortController();
+    osmState = 'loading';
+    try {
+      osm = await searchOsm(q, ctrl.signal);
+      osmState = 'done';
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === 'AbortError')) osmState = 'error';
+    }
+  }
+
+  /** Coordinates → place, with the exact ground height and a nearby name when available. */
+  async function useCoords(c: LatLon, known?: OsmPlace) {
+    busy = true;
+    message = 'Looking up the ground height…';
+    const sig = new AbortController();
+    const timer = setTimeout(() => sig.abort(), 6000);
+    try {
+      const [elev, near] = await Promise.all([
+        elevationAt(c.lat, c.lon, sig.signal),
+        known ? Promise.resolve(known) : reverseOsm(c.lat, c.lon, sig.signal),
+      ]);
+      const nearText = near ? [near.name, near.detail].filter(Boolean).join(', ') : '';
+      onplace({
+        name: known?.name ?? formatLatLon(c, 4),
+        detail: known ? known.detail : nearText ? `near ${nearText}` : '',
+        lat: c.lat,
+        lon: c.lon,
+        elevation: Math.round(elev ?? 0),
+        ...(elev == null ? { needsElevation: true } : {}),
+      });
+      onclose();
+    } finally {
+      clearTimeout(timer);
+      busy = false;
+    }
   }
 
   async function gps() {
@@ -120,6 +172,17 @@
     </button>
   </div>
 
+  {#if typed}
+    <ul class="list" aria-label="Coordinates">
+      <li>
+        <button class="item" onclick={() => typed && useCoords(typed)} disabled={busy}>
+          <strong>Use these coordinates</strong>
+          <span class="coords">{formatLatLon(typed, 5)}</span>
+        </button>
+      </li>
+    </ul>
+  {/if}
+
   {#if searching}<p class="msg" role="status">Searching…</p>{/if}
   {#if message}<p class="msg" role="status">{message}</p>{/if}
 
@@ -141,6 +204,69 @@
     </ul>
     <p class="credit-line">Search: Open-Meteo geocoding (GeoNames, CC BY 4.0)</p>
   {/if}
+
+  {#if query.trim().length >= 2 && !typed}
+    <div class="row actions">
+      <button onclick={moreOsm} disabled={osmState === 'loading'}>
+        {osmState === 'loading'
+          ? 'Searching OpenStreetMap…'
+          : 'Search more places (villages, peaks, observatories)'}
+      </button>
+    </div>
+    {#if osmState === 'error'}
+      <p class="msg" role="status">OpenStreetMap search is unavailable right now.</p>
+    {/if}
+    {#if osmState === 'done' && !osm.length}
+      <p class="msg" role="status">OpenStreetMap found nothing either.</p>
+    {/if}
+    {#if osm.length}
+      <ul class="list" aria-label="OpenStreetMap results">
+        {#each osm as r (`${r.lat},${r.lon}`)}
+          <li>
+            <button
+              class="item"
+              onclick={() => useCoords({ lat: r.lat, lon: r.lon }, r)}
+              disabled={busy}
+            >
+              <strong>{r.name}</strong>
+              <span>{[r.kind, r.detail].filter(Boolean).join(' · ')}</span>
+              <span class="coords">{r.lat.toFixed(4)}°, {r.lon.toFixed(4)}°</span>
+            </button>
+          </li>
+        {/each}
+      </ul>
+      <p class="credit-line">Places: © OpenStreetMap contributors (ODbL), via Nominatim</p>
+    {/if}
+  {/if}
+
+  <details class="coord-box">
+    <summary>Enter coordinates</summary>
+    <form
+      class="coord-form"
+      onsubmit={(e) => {
+        e.preventDefault();
+        if (fields) void useCoords(fields);
+      }}
+    >
+      <label>
+        Latitude
+        <input bind:value={latText} placeholder="12.9716 or 12°58′18″N" autocomplete="off" />
+      </label>
+      <label>
+        Longitude
+        <input bind:value={lonText} placeholder="77.5946 or 77°35′41″E" autocomplete="off" />
+      </label>
+      <button type="submit" disabled={!fields || busy}>Go</button>
+    </form>
+    <p class="msg">
+      {#if latText && lonText && !fields}
+        Not a valid latitude/longitude.
+      {:else}
+        Decimal degrees (south and west negative) or degrees, minutes, seconds with N/S/E/W. You can
+        also paste "lat, lon" (for example from a map app) into the search box.
+      {/if}
+    </p>
+  </details>
 
   {#if saved.length}
     <h3>Saved places</h3>
@@ -233,6 +359,32 @@
     font-size: 13px;
     color: var(--muted);
     margin: 12px 0 0;
+  }
+  .coord-box {
+    margin-top: 10px;
+    font-size: 14px;
+  }
+  .coord-box summary {
+    cursor: pointer;
+    color: var(--muted);
+  }
+  .coord-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 6px;
+    align-items: end;
+    margin-top: 6px;
+  }
+  .coord-form label {
+    display: grid;
+    gap: 2px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  @media (max-width: 420px) {
+    .coord-form {
+      grid-template-columns: 1fr;
+    }
   }
   .msg,
   .privacy {
