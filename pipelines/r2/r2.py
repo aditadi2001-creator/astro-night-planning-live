@@ -20,6 +20,9 @@ Usage:
     python r2.py publish-hourly <dir with YYYYMMDDHH.pmtiles> [--keep-hours 24]
         one listing for everything: prune hours older than --keep-hours, guard,
         upload the new hours, write data/clouds-latest.json (3 Class A ops/hour)
+    python r2.py keep-lp-year <year>
+        after a verified yearly light-pollution switch: delete the other years'
+        lightpollution/lp-*.pmtiles and lprad-*.pmtiles (deletes are free)
     python r2.py delete <key>
 """
 
@@ -225,6 +228,23 @@ def cmd_publish_hourly(s3, bucket: str, folder: Path, keep_hours: int) -> None:
     print(f"bucket now ~{total / GB:.3f} GB (target {TARGET / GB:.0f} GB, hard limit {HARD_LIMIT / GB:.0f} GB)")
 
 
+LP_RE = re.compile(r"^lightpollution/(lp|lprad)-(\d{4})\.pmtiles$")
+
+
+def plan_keep_lp_year(objects: list[Obj], year: int) -> list[str]:
+    """Light-pollution archives of other years (to delete once `year` is verified)."""
+    return [o.key for o in objects if (m := LP_RE.match(o.key)) and int(m.group(2)) != year]
+
+
+def cmd_keep_lp_year(s3, bucket: str, year: int) -> None:
+    objs = list_objects(s3, bucket)
+    if not any(o.key == f"lightpollution/lp-{year}.pmtiles" for o in objs):
+        sys.exit(f"REFUSED: lightpollution/lp-{year}.pmtiles is not in the bucket; keeping everything.")
+    for k in plan_keep_lp_year(objs, year):
+        s3.delete_object(Bucket=bucket, Key=k)
+        print(f"deleted previous year: {k}")
+
+
 def cmd_prune_hourly(s3, bucket: str, keep_hours: int) -> None:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=keep_hours)
     removed = 0
@@ -253,6 +273,8 @@ def main() -> None:
     ph = sub.add_parser("publish-hourly")
     ph.add_argument("folder")
     ph.add_argument("--keep-hours", type=int, default=24)
+    ky = sub.add_parser("keep-lp-year")
+    ky.add_argument("year", type=int)
     de = sub.add_parser("delete")
     de.add_argument("key")
     a = ap.parse_args()
@@ -267,6 +289,8 @@ def main() -> None:
         cmd_prune_hourly(s3, bucket, a.keep_hours)
     elif a.cmd == "publish-hourly":
         cmd_publish_hourly(s3, bucket, Path(a.folder), a.keep_hours)
+    elif a.cmd == "keep-lp-year":
+        cmd_keep_lp_year(s3, bucket, a.year)
     elif a.cmd == "delete":
         s3.delete_object(Bucket=bucket, Key=a.key)
         print(f"deleted {a.key}")

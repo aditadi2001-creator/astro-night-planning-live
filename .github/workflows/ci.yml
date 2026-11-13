@@ -46,3 +46,6 @@ jobs:
       - name: GMGSI cloud tiler tests
         working-directory: pipelines/clouds
         run: pip install numpy pillow && python -m unittest test_gmgsi -v
+      - name: Light-pollution model tests
+        working-directory: pipelines/lightpollution
+        run: pip install numpy pillow pmtiles && python -m unittest test_model test_pipeline -v

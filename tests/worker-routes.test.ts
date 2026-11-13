@@ -21,6 +21,12 @@ describe('worker routes are strict allow-lists', () => {
       kind: 'clouds',
       hour: '2026111214',
     });
+    expect(parseTile('/tiles/lprad-2025/6/40/22.webp')).toEqual({
+      dataset: { kind: 'lprad', year: 2025 },
+      z: 6,
+      x: 40,
+      y: 22,
+    });
     expect(parseTile('/tiles/clouds-2026111214/3/8/2.webp')).toBeNull(); // x out of range
     expect(parseTile('/tiles/../secret/1/1/1.webp')).toBeNull();
     expect(parseTile('/tiles/anything-else/1/0/0.webp')).toBeNull();

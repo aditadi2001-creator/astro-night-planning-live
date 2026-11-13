@@ -5,11 +5,18 @@
  */
 
 export type DatasetRef =
-  { kind: 'lightpollution'; year: number } | { kind: 'clouds'; hour: string }; // YYYYMMDDHH (UTC)
+  | { kind: 'lightpollution'; year: number } // modelled sky brightness, zoom 0–8
+  | { kind: 'lprad'; year: number } // night-lights radiance for light domes, zoom 0–6
+  | { kind: 'clouds'; hour: string }; // YYYYMMDDHH (UTC)
 
 export const DATASETS = {
   lightpollution: {
     key: (d: DatasetRef) => `lightpollution/lp-${(d as { year: number }).year}.pmtiles`,
+    type: 'image/webp',
+    cache: 'public, max-age=31536000, immutable',
+  },
+  lprad: {
+    key: (d: DatasetRef) => `lightpollution/lprad-${(d as { year: number }).year}.pmtiles`,
     type: 'image/webp',
     cache: 'public, max-age=31536000, immutable',
   },
@@ -28,20 +35,22 @@ export interface TileRef {
   y: number;
 }
 
-/** /tiles/lightpollution-2025/7/64/42.webp, /tiles/clouds-2026111214/5/10/12.webp */
+/** /tiles/lightpollution-2025/7/64/42.webp, /tiles/lprad-2025/6/1/2.webp, /tiles/clouds-2026111214/5/10/12.webp */
 export function parseTile(path: string): TileRef | null {
   const m =
-    /^\/tiles\/(lightpollution-(\d{4})|clouds-(\d{10}))\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})\.(webp|png)$/.exec(
+    /^\/tiles\/(lightpollution-(\d{4})|lprad-(\d{4})|clouds-(\d{10}))\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})\.(webp|png)$/.exec(
       path,
     );
   if (!m) return null;
-  const z = Number(m[4]);
-  const x = Number(m[5]);
-  const y = Number(m[6]);
+  const z = Number(m[5]);
+  const x = Number(m[6]);
+  const y = Number(m[7]);
   if (z > 16 || x >= 2 ** z || y >= 2 ** z) return null;
   const dataset: DatasetRef = m[2]
     ? { kind: 'lightpollution', year: Number(m[2]) }
-    : { kind: 'clouds', hour: m[3] ?? '' };
+    : m[3]
+      ? { kind: 'lprad', year: Number(m[3]) }
+      : { kind: 'clouds', hour: m[4] ?? '' };
   return { dataset, z, x, y };
 }
 

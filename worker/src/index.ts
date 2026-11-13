@@ -37,6 +37,9 @@ export interface Env {
 const DEM_ORIGIN = 'https://copernicus-dem-30m.s3.amazonaws.com';
 const SEVEN_TIMER = 'https://www.7timer.info/bin/api.pl';
 
+/** The archive is not in R2 (yet): a 404, not a server error. */
+class MissingArchive extends Error {}
+
 /** PMTiles source reading byte ranges from an R2 object. */
 class R2Source implements Source {
   constructor(
@@ -48,7 +51,7 @@ class R2Source implements Source {
   }
   async getBytes(offset: number, length: number): Promise<RangeResponse> {
     const obj = await this.bucket.get(this.key, { range: { offset, length } });
-    if (!obj) throw new Error(`missing ${this.key}`);
+    if (!obj) throw new MissingArchive(this.key);
     const data = await obj.arrayBuffer();
     return { data, etag: obj.etag };
   }
@@ -80,7 +83,15 @@ async function serveTile(env: Env, path: string): Promise<Response> {
   const t = parseTile(path);
   if (!t) return notFound();
   const ds = DATASETS[t.dataset.kind];
-  const tile = await archive(env, ds.key(t.dataset)).getZxy(t.z, t.x, t.y);
+  const key = ds.key(t.dataset);
+  let tile;
+  try {
+    tile = await archive(env, key).getZxy(t.z, t.x, t.y);
+  } catch (e) {
+    if (!(e instanceof MissingArchive)) throw e;
+    archives.delete(key); // pick the file up once it is uploaded
+    return notFound('public, max-age=60');
+  }
   if (!tile) return notFound(ds.cache);
   return respond(tile.data, 200, { 'Content-Type': ds.type, 'Cache-Control': ds.cache });
 }

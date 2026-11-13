@@ -8,7 +8,7 @@ import r2
 import json
 from datetime import datetime, timezone
 
-from r2 import GB, Obj, latest_json, plan_hourly, plan_upload
+from r2 import GB, Obj, latest_json, plan_hourly, plan_keep_lp_year, plan_upload
 
 
 class Guard(unittest.TestCase):
@@ -81,3 +81,12 @@ class Hourly(unittest.TestCase):
         d = json.loads(latest_json(["2026111303", "2026111302"]))
         self.assertEqual(d["hours"][0], {"hour": "2026111303", "time": "2026-11-13T03:00:00Z"})
         self.assertEqual(d["maxzoom"], 5)
+
+
+class LightPollutionYear(unittest.TestCase):
+    def test_deletes_only_other_years_light_pollution(self) -> None:
+        objs = [Obj("lightpollution/lp-2024.pmtiles", 1), Obj("lightpollution/lprad-2024.pmtiles", 1),
+                Obj("lightpollution/lp-2025.pmtiles", 1), Obj("lightpollution/lprad-2025.pmtiles", 1),
+                Obj("stars/gaia-deep-v1.pmtiles", 1), Obj("data/lightpollution.json", 1)]
+        self.assertEqual(plan_keep_lp_year(objs, 2025),
+                         ["lightpollution/lp-2024.pmtiles", "lightpollution/lprad-2024.pmtiles"])
