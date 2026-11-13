@@ -14,13 +14,17 @@
  *                 moonlight at a typical target 45° high and 90° from the Moon.
  *   darkness      0 above −12° Sun altitude, 1 below −18°, linear between
  *                 (astronomical twilight still brightens the sky).
- *   seeing        not yet included (added with the seeing model).
+ *   seeing        SNR ∝ 1/FWHM for background-limited point sources; the star
+ *                 image is the seeing combined with ~1.5″ from optics/guiding
+ *                 (seeing.ts, seeingFactor). 1 at 0.8″, 0.68 at 2″. Seeing is
+ *                 our own forecast estimate; without it the factor is 1.
  *
  * The weights are physics-based but the "typical target" is a simplification:
  * the score answers "how good is this hour in general", not for one object.
  */
 import { moonSkyBrightness, magToNl } from './moonlight';
 import { NATURAL_SKY_MAG } from './skybrightness';
+import { seeingFactor } from './seeing';
 
 export interface HourConditions {
   /** Cloud cover in percent. */
@@ -35,6 +39,8 @@ export interface HourConditions {
   moonPhaseAngle: number;
   /** Zenith brightness without Moon, V mag/arcsec² (natural sky until the light-pollution layer exists). */
   darkSkyMag?: number;
+  /** Forecast seeing FWHM, arcsec (optional). */
+  seeing?: number | null;
 }
 
 export interface ScoreParts {
@@ -42,6 +48,7 @@ export interface ScoreParts {
   transparency: number;
   moon: number;
   darkness: number;
+  seeing: number;
   score: number;
 }
 
@@ -78,8 +85,11 @@ export function imagingScore(c: HourConditions): ScoreParts {
     transparency: transparencyFactor(c.extinction),
     moon: moonFactor(c),
     darkness: darknessFactor(c.sunAlt),
+    seeing: c.seeing != null && Number.isFinite(c.seeing) ? seeingFactor(c.seeing) : 1,
   };
-  const score = Math.round(100 * parts.clouds * parts.transparency * parts.moon * parts.darkness);
+  const score = Math.round(
+    100 * parts.clouds * parts.transparency * parts.moon * parts.darkness * parts.seeing,
+  );
   return { ...parts, score };
 }
 

@@ -256,7 +256,7 @@ lifecycle rule).
 4. ✅ Realism layer: extinction, sky brightness, limiting magnitude, clouds, Moon, terrain horizon
 5. ✅ R2 bucket + Worker (range requests, caching, CORS, 7Timer proxy); deep Gaia star layer
 6. ✅ Satellite clouds (GIBS map, GMGSI hourly PMTiles, satellite + model "clouds now")
-7. Seeing model + 7Timer second opinion
+7. ✅ Seeing model (Hufnagel–Valley from upper winds) + 7Timer second opinion
 8. Light pollution pipeline (Black Marble → sky glow → PMTiles)
 9. Optional HiPS sky surveys
 10. PWA, night-vision mode, ISS passes, aurora, polish, accessibility, speed

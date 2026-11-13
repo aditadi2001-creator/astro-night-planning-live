@@ -38,6 +38,7 @@
   import type { EngineAtmosphere } from './lib/engine/stel';
   import { GMGSI_INDEX_URL } from './lib/sat/gmgsi';
   import { loadSatellite, type SatelliteSample } from './lib/sat/satellite';
+  import { SEVEN_TIMER_ENABLED, loadSevenTimer, type SevenTimer } from './lib/data/seventimer';
   import {
     blendLayers,
     blendSamples,
@@ -73,6 +74,8 @@
     ring: LiveSource<CloudRing>;
     /** Infrared satellite around the site (only with the data Worker). */
     satellite: LiveSource<SatelliteSample> | null;
+    /** 7Timer! second opinion via the data Worker (updates every 3 h). */
+    sevenTimer: LiveSource<SevenTimer> | null;
   };
   let sources = $state<Sources | null>(null);
 
@@ -102,12 +105,16 @@
             3 * 3600_000,
           )
         : null,
+      sevenTimer: SEVEN_TIMER_ENABLED
+        ? new LiveSource('7timer', (sig, f) => loadSevenTimer(lat, lon, sig, f), 3 * 3600_000)
+        : null,
     };
     sources = s;
     // Loaders answer from the cache when it is fresh, and fall back to the last
     // good copy (marked stale) when the network fails.
     const stops = [s.weather.start(), s.models.start(), s.air.start(), s.ring.start()];
     if (s.satellite) stops.push(s.satellite.start());
+    if (s.sevenTimer) stops.push(s.sevenTimer.start());
     return () => stops.forEach((stop) => stop());
   });
 
@@ -116,6 +123,7 @@
   const air = $derived(sources?.air.data ?? null);
   const ring = $derived(sources?.ring.data ?? null);
   const satellite = $derived(sources?.satellite?.data ?? null);
+  const sevenTimer = $derived(sources?.sevenTimer?.data ?? null);
 
   // ---- terrain horizon (Copernicus DEM, cached per site) ----------------------------
   let siteHorizon = $state<SiteHorizon | null>(null);
@@ -328,6 +336,7 @@
               { label: 'Air quality', source: sources.air },
               { label: 'Cloud field', source: sources.ring },
               ...(sources.satellite ? [{ label: 'Satellite', source: sources.satellite }] : []),
+              ...(sources.sevenTimer ? [{ label: '7Timer!', source: sources.sevenTimer }] : []),
             ]}
           />
         {/if}
@@ -351,6 +360,7 @@
         rows={timeline}
         {tz}
         shown={shown.getTime()}
+        {sevenTimer}
         onpick={(t) => setTime(new Date(t), false)}
       />
 
@@ -360,6 +370,7 @@
         {tw}
         {tz}
         satellite={satSummary}
+        {sevenTimer}
         loading={sources?.weather.status === 'loading'}
       />
 

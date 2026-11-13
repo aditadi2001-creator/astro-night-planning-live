@@ -1,15 +1,22 @@
 <script lang="ts">
   import type { HourRow } from '../lib/conditions';
   import { fmtHour } from '../lib/time/format';
+  import { seeingClassText, type SevenTimer } from '../lib/data/seventimer';
 
   interface Props {
     rows: HourRow[];
     tz: string | undefined;
     /** Currently shown time, to highlight its column. */
     shown: number;
+    /** 7Timer! second opinion (3-hourly), if loaded. */
+    sevenTimer?: SevenTimer | null;
     onpick: (t: number) => void;
   }
-  let { rows, tz, shown, onpick }: Props = $props();
+  let { rows, tz, shown, sevenTimer = null, onpick }: Props = $props();
+
+  /** 7Timer! point that falls inside this hour (they come every 3 hours). */
+  const stIn = (r: HourRow) =>
+    sevenTimer?.points.find((p) => p.t >= r.t && p.t < r.t + 3600_000) ?? null;
 
   const best = $derived(
     rows.reduce<HourRow | null>(
@@ -51,8 +58,8 @@
     <div class="scroll" role="region" aria-label="Hourly forecast, scroll sideways" tabindex="0">
       <table>
         <caption class="visually-hidden">
-          Hourly imaging score (0–100) with cloud cover, transparency, Moon and model agreement.
-          Select an hour to show it in the sky.
+          Hourly imaging score (0–100) with cloud cover, transparency, forecast seeing, Moon and
+          model agreement. Select an hour to show it in the sky.
         </caption>
         <thead>
           <tr>
@@ -96,6 +103,29 @@
             {/each}
           </tr>
           <tr>
+            <th scope="row">Seeing</th>
+            {#each rows as r (r.t)}
+              <td class:now={isShown(r)}>
+                {#if r.seeing}
+                  <span class="see s{r.seeing.rating}" title={`${r.seeing.label} (estimate)`}
+                    >{r.seeing.arcsec.toFixed(1)}″</span
+                  >
+                {:else}—{/if}
+              </td>
+            {/each}
+          </tr>
+          {#if sevenTimer}
+            <tr>
+              <th scope="row">7Timer!</th>
+              {#each rows as r (r.t)}
+                {@const p = stIn(r)}
+                <td class:now={isShown(r)} class="muted"
+                  >{p?.seeing ? seeingClassText(p.seeing) : ''}</td
+                >
+              {/each}
+            </tr>
+          {/if}
+          <tr>
             <th scope="row">Moon</th>
             {#each rows as r (r.t)}
               <td class:now={isShown(r)} class="muted"
@@ -116,8 +146,9 @@
       </table>
     </div>
     <p class="note">
-      Score = clouds × transparency × Moon × darkness, each as a relative signal-to-noise factor for
-      sky-limited imaging. Seeing joins the score in a later update. Cloud models (ECMWF, GFS, ICON,
+      Score = clouds × transparency × Moon × darkness × seeing, each as a relative signal-to-noise
+      factor for sky-limited imaging. Seeing is a forecast estimate from upper-air winds (our model;
+      7Timer! every 3 h as a second opinion), never a measurement. Cloud models (ECMWF, GFS, ICON,
       best match): <span class="dot high"></span> agree <span class="dot medium"></span> partly
       <span class="dot low"></span> disagree. Weather data by Open-Meteo.com.
     </p>
@@ -127,6 +158,21 @@
 </section>
 
 <style>
+  .see {
+    font-variant-numeric: tabular-nums;
+    border-bottom: 2px solid transparent;
+  }
+  .see.s5,
+  .see.s4 {
+    border-color: var(--good);
+  }
+  .see.s3 {
+    border-color: var(--warn);
+  }
+  .see.s2,
+  .see.s1 {
+    border-color: var(--bad);
+  }
   .timeline {
     background: var(--panel);
     border: 1px solid var(--line);

@@ -99,9 +99,10 @@ export const CREDITS: Credit[] = [
     license: 'Free for non-commercial use',
     attribution: 'Seeing/transparency forecast by 7Timer! (https://www.7timer.info).',
     shortCredit: 'Second opinion: 7Timer!',
-    usage: 'Seeing and transparency forecast classes, used as a second opinion.',
+    usage:
+      'Seeing and transparency forecast classes every 3 hours, shown as a second opinion next to our own seeing estimate (fetched through the data Worker, cached 3 h).',
     kind: 'data',
-    status: 'planned',
+    status: 'live',
   },
   {
     id: 'nasa-gibs',

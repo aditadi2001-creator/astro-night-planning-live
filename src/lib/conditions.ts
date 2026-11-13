@@ -16,6 +16,7 @@ import {
 import { zenithExtinction, type ExtinctionParts } from './physics/extinction';
 import { dewRisk, type DewRisk } from './physics/dew';
 import { imagingScore, modelAgreement, type Agreement, type ScoreParts } from './physics/score';
+import { estimateSeeing, type SeeingEstimate, type WindAt } from './physics/seeing';
 
 export interface HourRow {
   t: number;
@@ -30,7 +31,27 @@ export interface HourRow {
   cloudSpread: number | null;
   modelClouds: Record<string, number | null>;
   dew: { risk: DewRisk; spread: number; margin: number } | null;
+  /** Our seeing forecast (estimate) for this hour. */
+  seeing: SeeingEstimate | null;
   score: ScoreParts | null;
+}
+
+const KMH = 1 / 3.6;
+
+/** Seeing estimate from the hour's model winds (Open-Meteo gives km/h). */
+export function seeingForHour(w: WeatherHour | null, elevation: number): SeeingEstimate | null {
+  if (!w) return null;
+  const at = (speed: number | null, dir: number | null): WindAt | null =>
+    speed == null || dir == null ? null : { speed: speed * KMH, dir };
+  const upper = ([500, 300, 250, 200] as const)
+    .map((l) => at(w.upper[l].speed, w.upper[l].dir))
+    .filter((x): x is WindAt => x != null);
+  return estimateSeeing({
+    upper,
+    w850: at(w.upper[850].speed, w.upper[850].dir),
+    w10: at(w.wind, w.windDir),
+    elevation,
+  });
 }
 
 function altitude(body: Astronomy.Body, obs: Astronomy.Observer, date: Date): number {
@@ -70,6 +91,8 @@ export function buildRow(
       ? dewRisk(w.temperature, w.dewPoint, w.cloud ?? 0, w.wind ?? 0)
       : null;
 
+  const seeing = seeingForHour(w, place.elevation);
+
   const score =
     w && w.cloudLow != null && w.cloudMid != null && w.cloudHigh != null
       ? imagingScore({
@@ -81,6 +104,7 @@ export function buildRow(
           sunAlt,
           moonAlt,
           moonPhaseAngle,
+          seeing: seeing?.arcsec ?? null,
         })
       : null;
 
@@ -97,6 +121,7 @@ export function buildRow(
     cloudSpread: spread,
     modelClouds,
     dew,
+    seeing,
     score,
   };
 }

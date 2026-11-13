@@ -6,6 +6,12 @@
   import { moonPhaseName } from '../lib/astro/sky';
   import { fmtTime } from '../lib/time/format';
   import * as Astronomy from 'astronomy-engine';
+  import {
+    TRANSPARENCY_CLASSES,
+    seeingClassText,
+    sevenTimerAt,
+    type SevenTimer,
+  } from '../lib/data/seventimer';
 
   interface Props {
     row: HourRow | null;
@@ -20,9 +26,18 @@
       weight: number;
       now: number | null;
     } | null;
+    /** 7Timer! second opinion (seeing, transparency), if loaded. */
+    sevenTimer?: SevenTimer | null;
     loading: boolean;
   }
-  let { row, moon, tw, tz, satellite = null, loading }: Props = $props();
+  let { row, moon, tw, tz, satellite = null, sevenTimer = null, loading }: Props = $props();
+
+  const st = $derived(sevenTimer && row ? sevenTimerAt(sevenTimer, row.t) : null);
+  const transpText = (c: number) => {
+    const r = TRANSPARENCY_CLASSES[c - 1];
+    if (!r) return '—';
+    return r[1] === Infinity ? `>${r[0]}` : r[0] === 0 ? `<${r[1]}` : `${r[0]}–${r[1]}`;
+  };
 
   /** "1 h 10 min" between the image and the time shown. */
   const ago = (ms: number) => {
@@ -159,25 +174,60 @@
           air {row.extinction.rayleigh.toFixed(2)} · aerosol {row.extinction.aerosol.toFixed(2)} · ozone
           {row.extinction.ozone.toFixed(2)}
         </dd>
+        {#if st?.transparency}
+          <dt>7Timer! (2nd opinion)</dt>
+          <dd>{transpText(st.transparency)} mag/airmass</dd>
+        {/if}
       </dl>
     {:else}
       <p class="muted">{loading ? 'Loading aerosol forecast…' : 'Aerosol data unavailable.'}</p>
     {/if}
   </Card>
 
-  <Card title="Seeing" tag="coming soon" credit="Upper-air winds: Open-Meteo.com">
-    {#if w}
+  <Card
+    title="Seeing"
+    tag="forecast · estimate"
+    credit="Upper-air winds: Open-Meteo.com · second opinion: 7Timer! ASTRO (7timer.info)"
+  >
+    {#if row?.seeing}
+      <p class="big">
+        ≈{row.seeing.range[0].toFixed(1)}–{row.seeing.range[1].toFixed(1)}″
+        <span class="sub">FWHM</span>
+      </p>
+      <p class="rating">
+        {row.seeing.label}
+        <span class="sub">({row.seeing.rating}/5)</span>
+      </p>
       <dl>
-        <dt>Jet stream (250 hPa)</dt>
-        <dd>{n(w.upper[250].speed, 0, ' km/h')} {compass(w.upper[250].dir)}</dd>
-        <dt>200 / 300 hPa</dt>
-        <dd>{n(w.upper[200].speed, 0)} / {n(w.upper[300].speed, 0, ' km/h')}</dd>
+        <dt>Jet stream</dt>
+        <dd>
+          {w
+            ? `250 hPa ${n(w.upper[250].speed, 0, ' km/h')} ${compass(w.upper[250].dir)} · `
+            : ''}rms 5–12 km {(row.seeing.jetMs * 3.6).toFixed(0)} km/h → {row.seeing.parts.jet.toFixed(
+            2,
+          )}″
+        </dd>
+        <dt>Lower air</dt>
+        <dd>
+          {row.seeing.shearMs != null
+            ? `${(row.seeing.shearMs * 3.6).toFixed(0)} km/h shear`
+            : 'no shear data'} → {row.seeing.parts.lower.toFixed(2)}″
+        </dd>
+        <dt>Ground layer</dt>
+        <dd>{row.seeing.parts.ground.toFixed(1)}″ assumed (local, not forecastable)</dd>
+        <dt>7Timer!</dt>
+        <dd>
+          {st?.seeing ? `${seeingClassText(st.seeing)} (class ${st.seeing}/8)` : 'not loaded'}
+        </dd>
       </dl>
+      <p class="muted small">
+        {#if row.sunAlt > -6}Daytime: ground heating makes real seeing worse than this night-time
+          model.
+        {/if}No free source measures live seeing; both values are forecasts from model winds.
+      </p>
+    {:else}
+      <p class="muted">{loading ? 'Loading upper-air winds…' : 'Upper-air winds unavailable.'}</p>
     {/if}
-    <p class="muted">
-      A seeing estimate from these winds (and a 7Timer! second opinion) arrives in a later update.
-      No free source measures live seeing.
-    </p>
   </Card>
 
   <Card title="Sky quality (SQM / Bortle)" tag="coming soon">

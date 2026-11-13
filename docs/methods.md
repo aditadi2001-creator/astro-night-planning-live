@@ -92,10 +92,35 @@ relative SNR factors:
 | Transparency | 10^(−0.4 (k − 0.15) · 1.5): light lost vs. a clean site at airmass 1.5                |
 | Moon         | √(B_dark / (B_dark + B_moon)), K&S moonlight for a target 45° high, 90° from the Moon |
 | Darkness     | 0 above −12° Sun altitude, 1 below −18°, linear between                               |
-| Seeing       | added with the seeing model (later phase)                                             |
+| Seeing       | 1.70″ / √(ε² + 1.5²): SNR ∝ 1/FWHM, star image = seeing ε ⊕ 1.5″ optics/guiding       |
 
 B_dark is the natural sky (22.0 mag/arcsec²) until the light-pollution layer exists. Hours follow
 the site's local clock (half-hour zones included) and are sampled at mid-hour.
+
+## Seeing (forecast estimate) — Hufnagel–Valley profile, Fried (1966)
+
+`src/lib/physics/seeing.ts`. Seeing cannot be measured by any free source, so this is a forecast
+from model winds, labelled as such everywhere. Optical turbulence C_n²(h) integrates to
+J = ∫C_n² dh; then r₀ = (0.423 k² J)^(−3/5) and FWHM ε = 0.98 λ/r₀ (λ = 500 nm, zenith).
+
+J has three parts, each from the Hufnagel–Valley (1980) profile
+C_n² = 0.00594 (v/27)² (10⁻⁵h)¹⁰ e^(−h/1000) + 2.7·10⁻¹⁶ e^(−h/1500) + A e^(−h/100):
+
+| Part              | Our input                                                                               | Integral J           |
+| ----------------- | --------------------------------------------------------------------------------------- | -------------------- |
+| Jet stream        | v = rms of the 500, 300, 250, 200 hPa winds (Hufnagel: rms wind 5–20 km)                | 2.1555·10⁻¹³ (v/27)² |
+| Lower troposphere | × e^(−H/1500) for site height H; × (1 + (S/12 m/s)²) ≤ 4, S = 10 m–850 hPa vector shear | 4.05·10⁻¹³ × factors |
+| Ground layer      | not forecastable (local terrain, buildings, cooling ground)                             | fixed: the J of 0.7″ |
+
+Check: the HV 5/7 reference (v = 21 m/s, A = 1.7·10⁻¹⁴) gives r₀ = 5.0 cm and 2.0″, as published
+(unit-tested). Rating: ≤1.0″ excellent (5), ≤1.5″ good (4), ≤2.0″ average (3), ≤2.75″ poor (2),
+else bad (1); shown as a ±20 % range. Night-time model: daytime convection is not included, and
+tube currents or dome seeing never are.
+
+Second opinion: 7Timer! ASTRO (GFS-based, every 3 h, 72 h ahead) through the data Worker, which
+caches each 0.1° location for 3 h. Its classes 1–8 are shown in arcseconds as documented by 7Timer!:
+<0.5, 0.5–0.75, 0.75–1, 1–1.25, 1.25–1.5, 1.5–2, 2–2.5, >2.5″; its transparency classes
+(<0.3 … >1 mag/airmass) appear next to our aerosol-based value.
 
 ## Model agreement
 

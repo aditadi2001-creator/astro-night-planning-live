@@ -51,8 +51,13 @@ describe('tonight', () => {
     expect(rows.length).toBeGreaterThanOrEqual(14);
     expect(rows.length).toBeLessThanOrEqual(15);
     // Clear sky in the middle of the night with a crescent Moon down: high score.
+    // Calm upper winds at a sea-level site: good (not excellent) seeing, which
+    // costs a few points (SNR ∝ 1/FWHM).
     const midnight = rows.find((r) => new Date(r.t).getUTCHours() === 0);
-    expect(midnight?.score?.score).toBeGreaterThan(80);
+    expect(midnight?.seeing?.rating).toBe(4);
+    expect(midnight?.score?.seeing).toBeGreaterThan(0.85); // ~1.17″ → 0.89
+    expect(midnight?.score?.seeing).toBeLessThan(1);
+    expect(midnight?.score?.score).toBeGreaterThan(75);
     // Overcast night scores 0.
     const cloudy = buildTimeline(
       greenwich,
