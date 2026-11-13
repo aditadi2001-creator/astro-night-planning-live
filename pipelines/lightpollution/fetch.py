@@ -7,8 +7,9 @@ clear message and nothing is uploaded, so the site keeps its existing map.
 
 Each tile is a 10°×10° HDF5 file (median ~75 MB, ~53 GB for the world). We
 need one dataset of it, AllAngle_Composite_Snow_Free (uint16, 0.1 nW cm⁻² sr⁻¹
-per count), so each file is read with HTTP range requests where the server
-allows it, and downloaded whole otherwise. Only the extracted layer is kept,
+per count). Each file is streamed to a temporary file (whole downloads were
+faster than HTTP range reads in a test: 9 s vs 33 s), the layer is extracted
+and the file deleted at once. Only the extracted layer is kept,
 as raw/<year>/hHHvVV.npz (radiance in nW cm⁻² sr⁻¹, float32). The HDF5 files
 are deleted at once; nothing raw ever goes to R2.
 
@@ -169,17 +170,7 @@ def fetch_one(name: str, year: int, tok: str, out: Path) -> tuple[str, str, floa
     headers = {"Authorization": f"Bearer {tok}", "User-Agent": UA}
     t0 = time.time()
     rad = None
-    how = "range"
-    try:
-        import fsspec
-
-        fs = fsspec.filesystem("http", headers=headers, client_kwargs={"trust_env": True})
-        with fs.open(url, "rb", block_size=4 * 2**20, cache_type="blockcache") as fh:
-            rad = _read_layer(fh)
-    except TokenError:
-        raise
-    except Exception as e:  # no range support or a hiccup: download the whole file
-        how = f"full ({type(e).__name__})"
+    how = "full"
     if rad is None:
         opener = _opener()
         req = urllib.request.Request(url, headers=headers)

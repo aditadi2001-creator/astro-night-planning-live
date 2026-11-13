@@ -2,6 +2,4 @@ numpy>=2.1
 h5py>=3.12
 pillow>=11
 pmtiles>=3.4
-fsspec[http]>=2024.10
-aiohttp>=3.10
 boto3>=1.35
