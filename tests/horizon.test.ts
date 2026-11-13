@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { horizonDip, horizonProfile, renderTerrain } from '../src/lib/sky/horizon';
+import {
+  domeAlpha,
+  domeAt,
+  horizonDip,
+  horizonProfile,
+  renderTerrain,
+} from '../src/lib/sky/horizon';
 
 const flat = () => 0;
 const R_EFF = 6_371_000 / (1 - 0.13);
@@ -39,5 +45,38 @@ describe('terrain horizon', () => {
     const alphaAt = (alt: number) => img[(Math.floor(alt + 90) * 64 + 10) * 4 + 3] ?? 0;
     expect(alphaAt(0)).toBe(255);
     expect(alphaAt(10)).toBe(0);
+  });
+});
+
+describe('light domes on the horizon', () => {
+  it('maps brightness to a capped opacity', () => {
+    expect(domeAlpha(0)).toBe(0);
+    expect(domeAlpha(1)).toBeCloseTo(0.058, 3);
+    expect(domeAlpha(10)).toBeCloseTo(0.451, 3);
+    expect(domeAlpha(1000)).toBe(0.75);
+  });
+
+  it('interpolates sectors around the compass', () => {
+    const domes = new Array<number>(36).fill(0);
+    domes[9] = 10; // 90°–100° (centre 95°)
+    expect(domeAt(domes, 95)).toBeCloseTo(10, 9);
+    expect(domeAt(domes, 270)).toBe(0);
+    expect(domeAt(domes, 100)).toBeCloseTo(5, 9);
+  });
+
+  it('paints glow above the horizon only, towards the dome, only at night', () => {
+    const profile = new Float32Array(720); // flat horizon
+    const domes = new Array<number>(36).fill(0);
+    domes[9] = 20; // east
+    const w = 360;
+    const h = 120; // 1° per row from −90° to +30°
+    const lit = renderTerrain(profile, [0, 0, 0], w, h, -90, 30, { domes, strength: 1 });
+    const alpha = (az: number, alt: number) => lit[(Math.floor(alt + 90) * w + az) * 4 + 3] ?? 0;
+    expect(alpha(95, 2)).toBeGreaterThan(100); // east, just above the horizon
+    expect(alpha(95, 25)).toBeLessThan(alpha(95, 2)); // fades with height
+    expect(alpha(275, 2)).toBe(0); // nothing to the west
+    expect(alpha(95, -10)).toBe(255); // ground stays opaque
+    const day = renderTerrain(profile, [0, 0, 0], w, h, -90, 30, { domes, strength: 0 });
+    expect(day[(92 * w + 95) * 4 + 3]).toBe(0);
   });
 });

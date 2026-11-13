@@ -85,9 +85,10 @@
     </dd>
   </dl>
   <p class="note">
-    Sky brightness assumes a natural 22.0 mag/arcsec² sky until the light-pollution map is added.
-    Methods: Kasten &amp; Young airmass, Hansen &amp; Travis Rayleigh + CAMS aerosol, Krisciunas
-    &amp; Schaefer moonlight, Schaefer twilight and limiting magnitude.
+    Sky brightness starts from the yearly light-pollution model at the site (natural 22.0
+    mag/arcsec² when the layer is off or the map is unavailable). Methods: Kasten &amp; Young
+    airmass, Hansen &amp; Travis Rayleigh + CAMS aerosol, Krisciunas &amp; Schaefer moonlight,
+    Schaefer twilight and limiting magnitude.
   </p>
 </Card>
 

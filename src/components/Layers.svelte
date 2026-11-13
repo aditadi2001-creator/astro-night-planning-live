@@ -5,6 +5,7 @@
     terrain: boolean;
     constellations: boolean;
     satmap: boolean;
+    lightpollution: boolean;
   }
   let { layers = $bindable() }: { layers: LayerState } = $props();
 </script>
@@ -18,9 +19,9 @@
   >
   <label><input type="checkbox" bind:checked={layers.terrain} /> Terrain horizon</label>
   <label><input type="checkbox" bind:checked={layers.constellations} /> Constellations</label>
-  <label class="off"
-    ><input type="checkbox" disabled /> Light pollution
-    <span>(yearly map, coming later)</span></label
+  <label
+    ><input type="checkbox" bind:checked={layers.lightpollution} /> Light pollution
+    <span class="hint">(yearly map, light domes)</span></label
   >
   <label class="off"
     ><input type="checkbox" disabled /> Sky surveys

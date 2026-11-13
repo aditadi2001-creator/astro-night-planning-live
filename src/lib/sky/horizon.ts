@@ -64,9 +64,41 @@ export function horizonDip(eyeAboveGroundM: number): number {
 
 export type Rgb = [number, number, number];
 
+/** Light domes to paint above the horizon (from the light-pollution map). */
+export interface DomeGlow {
+  /** Artificial / natural brightness near the horizon per 10° of azimuth from north. */
+  domes: readonly number[];
+  /** 0–1: how dark the sky is (domes are invisible in daylight and twilight). */
+  strength: number;
+}
+
+/** Warm mix of sodium and white LED street light. */
+const GLOW_RGB: Rgb = [255, 176, 110];
+
+/**
+ * Opacity of a light dome: 1 − e^(−0.06 r) for brightness r times the
+ * natural sky, capped at 0.75 so stars near the horizon stay visible.
+ * As bright as the natural sky → 0.06; 10× → 0.45; 30× → 0.75.
+ */
+export function domeAlpha(ratio: number): number {
+  return Math.min(0.75, 1 - Math.exp(-0.06 * Math.max(0, ratio)));
+}
+
+/** Dome brightness at azimuth az (degrees), linear between 10° sectors. */
+export function domeAt(domes: readonly number[], az: number): number {
+  const n = domes.length;
+  if (!n) return 0;
+  const pos = ((((az / 360) * n - 0.5) % n) + n) % n;
+  const i0 = Math.floor(pos);
+  const t = pos - i0;
+  return (domes[i0] ?? 0) * (1 - t) + (domes[(i0 + 1) % n] ?? 0) * t;
+}
+
 /**
  * Ground texture for the engine's terrain layer: rows from altitude −90° to
- * +30°, opaque below the profile with a 1-pixel anti-aliased edge.
+ * +30°, opaque below the profile with a 1-pixel anti-aliased edge. With
+ * `glow`, light domes are painted above the horizon line, fading with height
+ * (e-folding over 8° of altitude).
  */
 export function renderTerrain(
   profile: Float32Array,
@@ -75,6 +107,7 @@ export function renderTerrain(
   height = 512,
   altMin = -90,
   altMax = 30,
+  glow: DomeGlow | null = null,
 ): Uint8ClampedArray {
   const out = new Uint8ClampedArray(width * height * 4);
   const bins = profile.length;
@@ -85,10 +118,23 @@ export function renderTerrain(
     const i1 = (i0 + 1) % bins;
     const t = pos - Math.floor(pos);
     const hz = (profile[i0] ?? 0) * (1 - t) + (profile[i1] ?? 0) * t;
+    const dome = glow && glow.strength > 0 ? domeAt(glow.domes, ((i + 0.5) / width) * 360) : 0;
     for (let j = 0; j < height; j++) {
       const alt = altMin + (j + 0.5) * step;
       const cover = Math.min(1, Math.max(0, (hz - alt) / step + 0.5));
-      if (cover <= 0) continue;
+      if (cover <= 0) {
+        if (dome > 0 && alt > hz) {
+          const a = domeAlpha(dome * Math.exp(-(alt - hz) / 8)) * (glow?.strength ?? 0);
+          if (a > 0.004) {
+            const k = (j * width + i) * 4;
+            out[k] = GLOW_RGB[0];
+            out[k + 1] = GLOW_RGB[1];
+            out[k + 2] = GLOW_RGB[2];
+            out[k + 3] = a * 255;
+          }
+        }
+        continue;
+      }
       const k = (j * width + i) * 4;
       out[k] = color[0];
       out[k + 1] = color[1];

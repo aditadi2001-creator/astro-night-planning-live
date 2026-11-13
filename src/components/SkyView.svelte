@@ -15,7 +15,7 @@
   } from '../lib/engine/stel';
   import { renderClouds, type CloudInput } from '../lib/sky/clouds';
   import CloudWorker from '../lib/sky/clouds.worker.ts?worker';
-  import { renderTerrain, type Rgb } from '../lib/sky/horizon';
+  import { renderTerrain, type DomeGlow, type Rgb } from '../lib/sky/horizon';
 
   interface Props {
     place: Place;
@@ -31,6 +31,8 @@
     /** Apparent horizon altitude per azimuth bin (null = flat horizon). */
     horizon: Float32Array | null;
     groundColor: Rgb;
+    /** Light domes from the light-pollution map (null = none). */
+    glow?: DomeGlow | null;
     oncursor?: (p: { alt: number; az: number } | null) => void;
   }
   let {
@@ -42,6 +44,7 @@
     clouds,
     horizon,
     groundColor,
+    glow = null,
     oncursor,
   }: Props = $props();
 
@@ -175,7 +178,7 @@
   $effect(() => {
     if (!stel) return;
     const profile = horizon ?? new Float32Array(720);
-    const img = renderTerrain(profile, groundColor, 2048, 512, -90, 30);
+    const img = renderTerrain(profile, groundColor, 2048, 512, -90, 30, glow);
     setSkyLayer(stel, SKY_LAYER.terrain, img, 2048, 512, -90, 30);
   });
 

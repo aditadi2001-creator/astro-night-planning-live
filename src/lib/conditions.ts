@@ -65,6 +65,8 @@ export function buildRow(
   weather: Weather | null,
   models: ModelClouds | null,
   air: Air | null,
+  /** Moonless zenith brightness at the site (SQM) from the light-pollution map. */
+  darkSkyMag?: number,
 ): HourRow {
   const date = new Date(t);
   const obs = new Astronomy.Observer(place.lat, place.lon, place.elevation);
@@ -105,6 +107,7 @@ export function buildRow(
           moonAlt,
           moonPhaseAngle,
           seeing: seeing?.arcsec ?? null,
+          ...(darkSkyMag != null ? { darkSkyMag } : {}),
         })
       : null;
 
@@ -156,6 +159,7 @@ export function buildTimeline(
   weather: Weather | null,
   models: ModelClouds | null,
   air: Air | null,
+  darkSkyMag?: number,
 ): HourRow[] {
   const rows: HourRow[] = [];
   // Align to the site's local hours (e.g. :30 UTC in India), which is also the
@@ -165,7 +169,7 @@ export function buildTimeline(
   for (let t = first; t < win.end && rows.length < 24; t += 3600_000) {
     // Evaluate astronomy at the middle of the hour (or the window edges).
     const mid = Math.min(Math.max(t + 1800_000, win.start), win.end);
-    const row = buildRow(mid, place, weather, models, air);
+    const row = buildRow(mid, place, weather, models, air, darkSkyMag);
     rows.push({ ...row, t });
   }
   return rows;

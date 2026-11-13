@@ -10,6 +10,9 @@
 import { DATA_BASE } from '../config';
 import { fetchJson, type Cached } from '../data/cache';
 import { kelvinFromGrey } from './ir';
+import { decodeTile, pixelFor } from '../data/tiles';
+
+export { pixelFor };
 
 export interface GmgsiIndex {
   hours: { hour: string; time: string }[];
@@ -29,53 +32,6 @@ export async function loadGmgsiIndex(
     maxAgeMs: force ? 0 : 10 * 60_000,
     signal,
   });
-}
-
-/** Web Mercator tile and pixel (0–255) containing a place at zoom z. */
-export function pixelFor(lat: number, lon: number, z: number) {
-  const n = 2 ** z;
-  const x = ((lon + 180) / 360) * n;
-  const phi = (Math.max(-85, Math.min(85, lat)) * Math.PI) / 180;
-  const y = ((1 - Math.log(Math.tan(Math.PI / 4 + phi / 2)) / Math.PI) / 2) * n;
-  const tx = Math.min(n - 1, Math.floor(x));
-  const ty = Math.min(n - 1, Math.floor(y));
-  return {
-    tx,
-    ty,
-    px: Math.min(255, Math.floor((x - tx) * 256)),
-    py: Math.min(255, Math.floor((y - ty) * 256)),
-  };
-}
-
-// Decoded tiles: a handful is enough (one site needs 1–4 tiles at zoom 4).
-const decoded = new Map<string, Promise<ImageData | null>>();
-
-async function decodeTile(url: string, signal: AbortSignal): Promise<ImageData | null> {
-  const res = await fetch(url, { signal });
-  if (res.status === 404) return null; // no data there (polar caps)
-  if (!res.ok) throw new Error(`GMGSI tile: HTTP ${res.status}`);
-  const bmp = await createImageBitmap(await res.blob());
-  const canvas =
-    typeof OffscreenCanvas !== 'undefined'
-      ? new OffscreenCanvas(bmp.width, bmp.height)
-      : Object.assign(document.createElement('canvas'), { width: bmp.width, height: bmp.height });
-  const ctx = canvas.getContext('2d', { willReadFrequently: true }) as
-    CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
-  if (!ctx) return null;
-  ctx.drawImage(bmp, 0, 0);
-  bmp.close();
-  return ctx.getImageData(0, 0, canvas.width, canvas.height);
-}
-
-function tile(url: string, signal: AbortSignal): Promise<ImageData | null> {
-  let p = decoded.get(url);
-  if (!p) {
-    p = decodeTile(url, signal);
-    decoded.set(url, p);
-    p.catch(() => decoded.delete(url));
-    while (decoded.size > 12) decoded.delete(decoded.keys().next().value as string);
-  }
-  return p;
 }
 
 /**
@@ -103,7 +59,7 @@ export async function samplePlaces(
           if (gy < 0 || gy >= n * 256) continue;
           const tx = Math.floor(gx / 256);
           const ty = Math.floor(gy / 256);
-          const img = await tile(
+          const img = await decodeTile(
             tpl.replace('{z}', String(z)).replace('{x}', String(tx)).replace('{y}', String(ty)),
             signal,
           );

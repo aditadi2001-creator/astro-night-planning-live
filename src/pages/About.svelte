@@ -7,7 +7,10 @@
     'Moonlight: Krisciunas & Schaefer (1991).',
     'Dew risk: dew-point spread versus typical radiative cooling of optics (an estimate).',
     'In the 3D sky: every star and planet is dimmed and reddened by the live extinction along its line of sight, faint stars below the eye threshold for the current sky brightness are hidden (Schaefer 1990, Crumey 2014), cloud layers are placed by the forecast at the site and 35–100 km around it, and the horizon is the real terrain from the Copernicus DEM.',
-    'Imaging score: clouds × transparency × Moon × darkness as relative signal-to-noise factors; models ECMWF, GFS and ICON give the agreement indicator.',
+    'Imaging score: clouds × transparency × Moon × darkness × seeing as relative signal-to-noise factors; models ECMWF, GFS and ICON give the agreement indicator.',
+    'Seeing (a forecast): Hufnagel–Valley turbulence profile driven by the jet-stream wind and low-level wind shear, Fried (1966) for the arcsecond value; 7Timer! as a second opinion.',
+    'Satellite clouds: NOAA GMGSI and NASA GIBS thermal infrared; a pixel counts as cloud when it is well below the surface temperature, blended with the forecast and fading as the image ages.',
+    'Light pollution (yearly): NASA Black Marble VNP46A4 night lights spread with a Garstang / Cinzano–Falchi style distance kernel, calibrated on Globe at Night SQM readings; light domes per compass direction from the same kernel.',
   ];
 </script>
 

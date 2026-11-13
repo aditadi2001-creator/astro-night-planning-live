@@ -12,6 +12,7 @@
     sevenTimerAt,
     type SevenTimer,
   } from '../lib/data/seventimer';
+  import { BORTLE_LABELS, SECTORS, type SiteLight } from '../lib/lp/lightpollution';
 
   interface Props {
     row: HourRow | null;
@@ -28,9 +29,45 @@
     } | null;
     /** 7Timer! second opinion (seeing, transparency), if loaded. */
     sevenTimer?: SevenTimer | null;
+    /** Light pollution at the site from the yearly map (null = none). */
+    light?: SiteLight | null;
+    lightStatus?: string;
+    /** Naked-eye limiting magnitude at the zenith for the time shown. */
+    limitMag?: number | null;
     loading: boolean;
   }
-  let { row, moon, tw, tz, satellite = null, sevenTimer = null, loading }: Props = $props();
+  let {
+    row,
+    moon,
+    tw,
+    tz,
+    satellite = null,
+    sevenTimer = null,
+    light = null,
+    lightStatus = 'off',
+    limitMag = null,
+    loading,
+  }: Props = $props();
+
+  /** The two brightest light-dome directions, e.g. "NE, E". */
+  const domeDirs = (domes: readonly number[]) => {
+    const names = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    const by8 = new Array<number>(8).fill(0);
+    domes.forEach((v, i) => {
+      const az = ((i + 0.5) * 360) / SECTORS;
+      const k = Math.round(az / 45) % 8;
+      by8[k] = (by8[k] ?? 0) + v;
+    });
+    const total = by8.reduce((a, b) => a + b, 0);
+    if (total <= 0) return '';
+    return by8
+      .map((v, i) => [v, i] as const)
+      .sort((a, b) => b[0] - a[0])
+      .filter(([v]) => v > total * 0.2)
+      .slice(0, 2)
+      .map(([, i]) => names[i])
+      .join(', ');
+  };
 
   const st = $derived(sevenTimer && row ? sevenTimerAt(sevenTimer, row.t) : null);
   const transpText = (c: number) => {
@@ -230,11 +267,54 @@
     {/if}
   </Card>
 
-  <Card title="Sky quality (SQM / Bortle)" tag="coming soon">
-    <p class="muted">
-      Needs the yearly light-pollution map, which is built in a later phase. It will be based on
-      NASA Black Marble night lights; note that satellites under-count blue/white LED light.
-    </p>
+  <Card
+    title="Sky quality (SQM / Bortle)"
+    tag="yearly model"
+    credit="Model from NASA Black Marble VNP46A4 night lights · checked against Globe at Night SQM readings (CC BY 4.0)"
+  >
+    {#if light}
+      <p class="big">
+        {light.sqm.toFixed(2)} <span class="sub">mag/arcsec² at the zenith, no Moon</span>
+      </p>
+      <p class="rating">
+        Bortle {light.bortle} <span class="sub">({BORTLE_LABELS[light.bortle]})</span>
+      </p>
+      <dl>
+        <dt>Light pollution</dt>
+        <dd>
+          {light.brightening < 0.05
+            ? 'none detectable'
+            : `${light.brightening.toFixed(2)} mag brighter than a natural sky`}
+        </dd>
+        {#if limitMag != null}
+          <dt>Naked eye</dt>
+          <dd>stars to about mag {limitMag.toFixed(1)} at the zenith (time shown)</dd>
+        {/if}
+        {#if domeDirs(light.domes)}
+          <dt>Light domes</dt>
+          <dd>brightest towards {domeDirs(light.domes)}</dd>
+        {/if}
+      </dl>
+      <p class="muted small">
+        Yearly map ({light.year}), not live. Satellites under-count blue and white LED light, so the
+        real sky may be brighter.{#if light.typicalErrorMag != null}
+          Typical model error ±{light.typicalErrorMag.toFixed(1)} mag against {light.validationN?.toLocaleString(
+            'en',
+          )} real SQM readings.{/if}
+      </p>
+    {:else if lightStatus === 'off'}
+      <p class="muted">
+        Light-pollution layer is off: the natural sky (22.0 mag/arcsec²) is assumed.
+      </p>
+    {:else if lightStatus === 'loading'}
+      <p class="muted">Loading the light-pollution map…</p>
+    {:else}
+      <p class="muted">
+        The light-pollution map isn't available right now; the natural sky (22.0 mag/arcsec²) is
+        assumed. It is a yearly model from NASA Black Marble night lights; satellites under-count
+        blue and white LED light.
+      </p>
+    {/if}
   </Card>
 
   <Card title="Air quality" tag="forecast" credit="CAMS ENSEMBLE data provider · Open-Meteo.com">

@@ -143,8 +143,21 @@ export const CREDITS: Credit[] = [
     usage:
       'Yearly night-lights radiance used to model artificial sky brightness, SQM and Bortle class.',
     kind: 'data',
-    status: 'planned',
+    status: 'live',
     notes: 'Yearly data, not live. Satellite sensors underestimate blue/white LED light.',
+  },
+  {
+    id: 'globe-at-night',
+    name: 'Globe at Night (NSF NOIRLab)',
+    url: 'https://globeatnight.org/maps-data/',
+    license: 'CC BY 4.0',
+    attribution:
+      'Sky brightness measurements: Globe at Night, a program of NSF NOIRLab, CC BY 4.0 (globeatnight.org).',
+    shortCredit: 'Checked against Globe at Night SQM readings (CC BY 4.0)',
+    usage:
+      'Clear-sky SQM meter readings (2022–2025) used to calibrate and validate the light-pollution model.',
+    kind: 'data',
+    status: 'live',
   },
   {
     id: 'noaa-swpc',

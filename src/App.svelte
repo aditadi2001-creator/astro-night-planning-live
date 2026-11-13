@@ -39,6 +39,7 @@
   import { GMGSI_INDEX_URL } from './lib/sat/gmgsi';
   import { loadSatellite, type SatelliteSample } from './lib/sat/satellite';
   import { SEVEN_TIMER_ENABLED, loadSevenTimer, type SevenTimer } from './lib/data/seventimer';
+  import { LP_INFO_URL, loadSiteLight, type SiteLight } from './lib/lp/lightpollution';
   import {
     blendLayers,
     blendSamples,
@@ -63,6 +64,7 @@
     terrain: true,
     constellations: true,
     satmap: false,
+    lightpollution: true,
   });
   let cursor = $state<{ alt: number; az: number } | null>(null);
 
@@ -76,6 +78,8 @@
     satellite: LiveSource<SatelliteSample> | null;
     /** 7Timer! second opinion via the data Worker (updates every 3 h). */
     sevenTimer: LiveSource<SevenTimer> | null;
+    /** Yearly light-pollution map at the site (only with the data Worker). */
+    light: LiveSource<SiteLight> | null;
   };
   let sources = $state<Sources | null>(null);
 
@@ -108,6 +112,15 @@
       sevenTimer: SEVEN_TIMER_ENABLED
         ? new LiveSource('7timer', (sig, f) => loadSevenTimer(lat, lon, sig, f), 3 * 3600_000)
         : null,
+      // Yearly data: look once a day for a new year, keep the last good copy for months.
+      light: LP_INFO_URL
+        ? new LiveSource(
+            'light',
+            (sig, f) => loadSiteLight(lat, lon, sig, f),
+            24 * 3600_000,
+            400 * 24 * 3600_000,
+          )
+        : null,
     };
     sources = s;
     // Loaders answer from the cache when it is fresh, and fall back to the last
@@ -115,6 +128,7 @@
     const stops = [s.weather.start(), s.models.start(), s.air.start(), s.ring.start()];
     if (s.satellite) stops.push(s.satellite.start());
     if (s.sevenTimer) stops.push(s.sevenTimer.start());
+    if (s.light) stops.push(s.light.start());
     return () => stops.forEach((stop) => stop());
   });
 
@@ -124,6 +138,9 @@
   const ring = $derived(sources?.ring.data ?? null);
   const satellite = $derived(sources?.satellite?.data ?? null);
   const sevenTimer = $derived(sources?.sevenTimer?.data ?? null);
+  /** Light pollution at the site, or null (layer off, not published yet, or no Worker). */
+  const siteLight = $derived(layers.lightpollution ? (sources?.light?.data ?? null) : null);
+  const darkSkyMag = $derived(siteLight?.sqm);
 
   // ---- terrain horizon (Copernicus DEM, cached per site) ----------------------------
   let siteHorizon = $state<SiteHorizon | null>(null);
@@ -194,7 +211,7 @@
   // ---- derived conditions ---------------------------------------------------------
   // Recompute at most once a minute in live mode (inputs are hourly).
   const minute = $derived(Math.floor(shown.getTime() / 60_000) * 60_000);
-  const row = $derived(buildRow(minute, place, weather, models, air));
+  const row = $derived(buildRow(minute, place, weather, models, air, darkSkyMag));
   const tw = $derived(twilight(place, new Date(minute)));
   // ---- satellite + model "clouds now" ---------------------------------------------
   const satWeight = $derived(satellite ? satelliteWeight((minute - satellite.time) / 3600_000) : 0);
@@ -233,6 +250,7 @@
       moonAlt: row.moonAlt,
       moonPhaseAngle: row.moonPhaseAngle,
       extinction: ext.total,
+      ...(darkSkyMag != null ? { baseMag: darkSkyMag } : {}),
     }),
   );
   const limitMag = $derived(limitingMagnitude(sky.nl));
@@ -274,17 +292,31 @@
         satRing.length === samples.length ? blendSamples(samples, satRing, satWeight) : samples,
       wind: { low: wind(850), mid: wind(500), high: wind(250) },
       time: driftT,
-      color: cloudColors(lighting.sunAlt, lighting.moonAlt, lighting.moonIllum, 0),
+      // City glow lights clouds from below (orange), scaled by the light pollution.
+      color: cloudColors(
+        lighting.sunAlt,
+        lighting.moonAlt,
+        lighting.moonIllum,
+        siteLight ? Math.min(1, siteLight.brightening / 3.5) : 0,
+      ),
     };
   });
   const ground = $derived(groundColor(lighting.sunAlt, lighting.moonAlt, lighting.moonIllum));
   // Round the colour so the terrain texture is not rebuilt every minute for invisible changes.
   const groundKey = $derived(ground.map((c) => Math.round(c)).join(','));
   const groundRgb = $derived(groundKey.split(',').map(Number) as [number, number, number]);
+  // Light domes appear once the sky darkens after sunset (full strength by −12°).
+  // Rounded so the terrain texture is not rebuilt every minute.
+  const domeStrength = $derived(
+    Math.round(Math.min(1, Math.max(0, (-4 - row.sunAlt) / 8)) * 20) / 20,
+  );
+  const domeGlow = $derived(
+    siteLight && domeStrength > 0 ? { domes: siteLight.domes, strength: domeStrength } : null,
+  );
 
   const timeline = $derived.by(() => {
     const win = nightWindow(place, new Date(Math.floor(now.getTime() / 600_000) * 600_000));
-    return win ? buildTimeline(place, win, weather, models, air) : [];
+    return win ? buildTimeline(place, win, weather, models, air, darkSkyMag) : [];
   });
 
   $effect(() => {
@@ -337,6 +369,7 @@
               { label: 'Cloud field', source: sources.ring },
               ...(sources.satellite ? [{ label: 'Satellite', source: sources.satellite }] : []),
               ...(sources.sevenTimer ? [{ label: '7Timer!', source: sources.sevenTimer }] : []),
+              ...(sources.light ? [{ label: 'Light pollution', source: sources.light }] : []),
             ]}
           />
         {/if}
@@ -352,6 +385,7 @@
           clouds={cloudInput}
           horizon={layers.terrain ? (siteHorizon?.profile ?? null) : null}
           groundColor={groundRgb}
+          glow={domeGlow}
           oncursor={(p) => (cursor = p)}
         />
       </section>
@@ -371,6 +405,9 @@
         {tz}
         satellite={satSummary}
         {sevenTimer}
+        light={siteLight}
+        lightStatus={layers.lightpollution ? (sources?.light?.status ?? 'off') : 'off'}
+        {limitMag}
         loading={sources?.weather.status === 'loading'}
       />
 
