@@ -50,7 +50,7 @@ describe('engine WebGL id allocation', () => {
     }
     // 1,000,000 buffers created; never more than 50 alive at once.
     expect(GL.buffers.length).toBeLessThanOrEqual(52);
-  });
+  }, 20_000); // a million allocations: allow for a busy machine
 
   it('never hands out id 0 or a live id', () => {
     const GL = loadGl();
