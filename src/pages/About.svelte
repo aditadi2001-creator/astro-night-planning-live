@@ -17,6 +17,10 @@
     'Best targets: OpenNGC objects ranked by dark hours above 30° weighted by the cloud forecast, the Moon, contrast against the sky brightness, framing in your camera and brightness.',
     'Aurora: NOAA SWPC OVATION forecast (chance of visible aurora) and the planetary Kp index; the chance in view uses the geometry of an aurora whose lower edge is 110 km high.',
     'Satellite passes: SGP4 orbit propagation (satellite.js) from CelesTrak elements; a pass is visible while the satellite is sunlit and the Sun is 6° or more below the horizon.',
+    'Light-pollution map: our yearly sky-brightness tiles (magnitudes above the natural 22.0 mag/arcsec² sky) recoloured to a Bortle-style palette; the value under a click is read from the same tile, so the map and the site figures always agree.',
+    'Light domes in the 3D sky: the glow of the towns in each 10° of azimuth from the same model, as contrast against the local sky, fading with altitude as e^(−alt/12°), on top of the engine’s uniform Bortle sky glow.',
+    'Ocular view (like Stellarium’s Oculars plugin): the sensor frame at its true angular size at the screen centre; eyepiece true field = apparent field ÷ magnification (telescope focal × Barlow ÷ eyepiece focal); Telrad rings 0.5°, 2° and 4°.',
+    'Object information: hour angle from the local apparent sidereal time, galactic coordinates by the standard ICRS → galactic rotation, constellation by the IAU boundaries (Astronomy Engine), airmass by Kasten & Young.',
     'Optional sky surveys (off by default): HiPS image tiles (Fernique et al. 2015) streamed from CDS or its official mirrors and drawn by the sky engine under the stars; galactic-frame surveys are rotated to ICRS. They are archival photographs, not the live sky.',
   ];
 </script>

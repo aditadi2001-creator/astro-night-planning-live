@@ -11,8 +11,8 @@ transparency, haze, light pollution, the Moon and darkness times.
   satellite night lights underestimate LED light.
 - **License: [AGPL-3.0](LICENSE)**, required by Stellarium Web Engine.
 
-> Status: **Phase 4 of 11 done** (3D sky with realism layer, live weather and air quality,
-> condition cards, tonight timeline). See [Roadmap](#roadmap).
+> Status: **all build phases done**; waiting for the first deploy to Cloudflare Pages. See
+> [Roadmap](#roadmap).
 
 ## Quick start
 
@@ -377,6 +377,16 @@ daytime sky, so it sits in the real sky at your site.
 
 ## Planning tools
 
+### Layout
+
+Every section is a tab under the sticky top bar, so nothing needs scrolling to reach: **Sky** (3D
+sky, layer switches, time controls; object details in a side panel on wide screens) · **Tonight**
+(data status, hourly timeline, condition cards, physics) · **Week** · **Targets** · **Equipment**
+· **Maps** (light pollution, satellite clouds) · **Space** (aurora, ISS and satellite passes) ·
+**About** (methods and credits). Tabs are links (`#/sky`, `#/maps`…), so each can be bookmarked.
+The sky engine stays loaded when another tab is open (moved off-screen at a small size), so
+switching back is instant. Phones fold the time controls behind one button.
+
 ### Clouds: model consensus, satellite correction, recorded hours
 
 One model alone can be far off for a place: in Bangalore on 13 Nov 2026 the default model forecast
@@ -406,15 +416,37 @@ from 0 % to 100 %, and the satellite measured the warm ground (292–297 K). So
 - **Long exposure**: a camera-like view ~4 magnitudes deeper than the eye, still limited by the
   sky brightness at the site. **Deep-sky photos** (on by default): the DSS2 colour survey fades in
   below a 28° field of view, so nebulae and galaxies show as real survey images.
-- **Layer bar** under the top bar (sticky), with the survey options, FOV frame and camera view.
+- **Light domes by direction**: besides the uniform sky glow (the engine's own Bortle model
+  brightens its atmosphere and fades the Milky Way), each 10° of azimuth gets the glow of the towns
+  that way from the yearly model, as contrast against the local sky, fading with altitude as
+  e^(−alt/12°).
+- **Layer bar** at the top of the Sky tab, with the survey options, FOV frame and camera view.
+- **Stellarium-style info** (top left) for the selected object: magnitude, Az/Alt, RA/Dec J2000
+  and of date, hour angle, galactic coordinates, IAU constellation (Astronomy Engine boundaries),
+  distance, size, rise/transit/set and airmass. **Search** finds planets, the Moon and Sun, ~70
+  named bright stars and the 1,160 deep-sky targets (M/NGC/IC or common name); deep-sky objects are
+  reached by their coordinates (the engine cannot select them by name; tap them once there).
+- **View menu**: equatorial and azimuthal grids, meridian, ecliptic, deep-sky markers, cardinal
+  points, atmosphere and ground.
+- **Full screen** (button or F): the layer switches, time controls and ocular toolbar stay
+  available in a panel inside the full-screen sky; "Satellite map" leaves full screen and opens
+  the Maps tab.
 
 ### Equipment, objects and targets
 
 - **My equipment**: three setups (deep sky, planetary, lunar & solar) with telescope, reducer or
   Barlow and camera (17 common models or a custom sensor). Field of view, pixel scale
   (206.265 × µm / mm), Dawes (116/D) and Rayleigh (138/D) limits, sampling against the seeing (or
-  the optics for planetary) and the critical-sampling f-ratio (≈ 5 × pixel µm). "FOV frame" draws
-  each frame on the sky (inverse gnomonic projection) around the tapped object or the view centre.
+  the optics for planetary) and the critical-sampling f-ratio (≈ 5 × pixel µm).
+- **Ocular view** ("FOV frame", like Stellarium's Oculars plugin): the frame stays fixed at the
+  centre of the screen at its true angular size while the sky moves under it, with a crosshair
+  and an information block (telescope, camera, reducer/Barlow, field, pixel scale, image scale in
+  ″/mm, resolution, binning, rotation and position angle). Rotate by −15°, −1°, +1°, +15° (keys
+  `[` `]` and Shift for 15°), or keep the frame at its true position angle (follows celestial
+  north, exact inverse gnomonic projection). **Eyepiece** mode draws the true field (apparent field
+  ÷ magnification, magnification = telescope focal × Barlow ÷ eyepiece focal) with a dark mask,
+  ten eyepiece presets and custom focal length and apparent field; **Telrad** shows 0.5°, 2° and
+  4° rings. "Zoom to frame / eyepiece" (Z) fills the view; O cycles the modes.
 - **Object details** for anything tapped: magnitude, size, distance (parallax / AU), colour class
   from B−V, J2000 and current RA/Dec, altitude/azimuth/airmass, rise/transit/set, the highest point
   and hours above 30° in tonight's darkness, distance from the Moon, and the fit in each frame.
@@ -431,6 +463,10 @@ from 0 % to 100 %, and the satellite measured the warm ground (292–297 K). So
 - Search: Open-Meteo geocoding (15 results), plus OpenStreetMap Nominatim on request for villages,
   peaks and observatories (one request per second, cached, credited); coordinates in decimal or
   D M S with N/S/E/W, typed or pasted, with the ground height from the Open-Meteo elevation API.
+- Maps tab: **light-pollution map** from our own yearly model (grey sky-brightness tiles from the
+  data Worker, recoloured in the browser to a Bortle-style palette), with legend, the zenith SQM
+  and Bortle class of any clicked point and "use this location"; and the satellite cloud map.
+  Both have a full-screen button (F when the map has focus, Esc to leave).
 - Time: ±1 day / hour / 10 min / 1 min, a date-time picker, playback at 1×, 60×, 600× and 3600×,
   and a night slider with jump buttons for sunset, the twilights, darkness, midnight and the Moon.
 
@@ -449,7 +485,9 @@ from 0 % to 100 %, and the satellite measured the warm ground (292–297 K). So
 11. ✅ Planning tools: cloud consensus + satellite nowcast, week ahead, satellite-placed clouds and
     city sky glow, long exposure and deep-sky photos, equipment FOV frames, object details, best
     targets, camera horizon view, worldwide places and coordinates, detailed time controls
-12. Deploy to Cloudflare Pages — needs your OK
+12. ✅ Tabbed redesign, light-pollution map, Stellarium-style info, search, view menu, ocular
+    view (sensor, eyepiece, Telrad), full screen for the sky and both maps, directional light domes
+13. Deploy to Cloudflare Pages — needs your OK
 
 ## Known limits
 
@@ -462,6 +500,10 @@ from 0 % to 100 %, and the satellite measured the warm ground (292–297 K). So
   winds; small clouds (< 5 km) and thin cirrus over a cold surface can be missed.
 - The camera view depends on the phone compass, which is often 5–20° off; use the correction.
 - Equipment results assume a flat, well-focused field; target ranking is a guide, not a promise.
+- Screen-aligned ocular frames are drawn with the scale at the screen centre, so frames wider than
+  ~10° are slightly approximate; "True PA" mode projects every edge exactly.
+- Search cannot select deep-sky objects in the engine by name; it turns the view to them.
+- The phone camera view and full screen on phones need checking on a real phone.
 
 ## License
 
