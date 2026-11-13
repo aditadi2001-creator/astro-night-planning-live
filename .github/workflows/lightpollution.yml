@@ -66,7 +66,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: pipelines/lightpollution/raw
-          key: blackmarble-${{ steps.pick.outputs.year }}-${{ inputs.tiles || 'all' }}-v1
+          key: blackmarble-${{ steps.pick.outputs.year }}-${{ inputs.tiles == '' && 'all' || 'subset' }}-v1
 
       - name: Download night lights (raw HDF5 never leaves the runner)
         if: steps.pick.outputs.skip != 'true'
