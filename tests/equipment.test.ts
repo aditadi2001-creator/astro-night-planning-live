@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETUPS, fmtFov, frameFill, framePolygon, setupStats } from '../src/lib/equipment';
+import {
+  DEFAULT_SETUPS,
+  eyepieceStats,
+  fitFov,
+  fmtFov,
+  frameFill,
+  framePolygon,
+  normRotation,
+  plateScale,
+  setupStats,
+} from '../src/lib/equipment';
 
 describe('setup statistics', () => {
   it('80 mm f/6 + ASI2600 (deep sky)', () => {
@@ -59,5 +69,31 @@ describe('frame on the sky', () => {
     // The long edge now changes declination, not right ascension.
     expect(Math.abs(b[1] - a[1]) / rad).toBeCloseTo(2, 1);
     expect(Math.abs(b[0] - a[0]) / rad).toBeLessThan(0.01);
+  });
+});
+
+describe('ocular view maths', () => {
+  it('eyepiece true field = apparent field / magnification', () => {
+    // 8" SCT f/10 (2032 mm) with a 2× Barlow and a 25 mm 52° Plössl: 162.6×, 0.32°.
+    const st = eyepieceStats(DEFAULT_SETUPS.planetary, { focalMm: 25, afovDeg: 52 });
+    expect(st.magnification).toBeCloseTo(162.56, 2);
+    expect(st.trueFovDeg).toBeCloseTo(52 / 162.56, 4);
+    expect(st.exitPupilMm).toBeCloseTo(203 / 162.56, 3);
+  });
+  it('80 mm f/6 with a 32 mm 52° eyepiece shows 3.47°', () => {
+    const st = eyepieceStats(DEFAULT_SETUPS.deepsky, { focalMm: 32, afovDeg: 52 });
+    expect(st.magnification).toBe(15);
+    expect(st.trueFovDeg).toBeCloseTo(3.4667, 3);
+  });
+  it('rotation wraps to −180…180', () => {
+    expect(normRotation(0)).toBe(0);
+    expect(normRotation(195)).toBe(-165);
+    expect(normRotation(-181)).toBe(179);
+    expect(normRotation(360 + 15)).toBe(15);
+  });
+  it('plate scale and zoom-to-fit', () => {
+    expect(plateScale(DEFAULT_SETUPS.deepsky)).toBeCloseTo(429.72, 1);
+    // A 2° frame at 100 px/° on a 800 px view: 80 % fill needs 320 px/°, so fov / 3.2.
+    expect(fitFov(40, 100, 2, 800)).toBeCloseTo(12.5, 6);
   });
 });

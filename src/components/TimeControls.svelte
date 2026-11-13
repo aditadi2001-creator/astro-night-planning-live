@@ -172,6 +172,8 @@
   .time {
     display: grid;
     gap: 6px;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
   }
   .row {
     display: flex;

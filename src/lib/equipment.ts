@@ -241,3 +241,75 @@ export function framePolygon(
   }
   return pts;
 }
+
+// ---- Stellarium-style ocular view (sky overlay) ------------------------------------
+
+export type OcularMode = 'sensor' | 'eyepiece' | 'telrad';
+
+export interface Eyepiece {
+  name: string;
+  focalMm: number;
+  /** Apparent field of view, degrees. */
+  afovDeg: number;
+}
+
+/** Common eyepieces (typical published apparent fields). */
+export const EYEPIECES: readonly Eyepiece[] = [
+  { name: '40 mm Plössl', focalMm: 40, afovDeg: 44 },
+  { name: '32 mm Plössl', focalMm: 32, afovDeg: 52 },
+  { name: '25 mm Plössl', focalMm: 25, afovDeg: 52 },
+  { name: '20 mm wide 68°', focalMm: 20, afovDeg: 68 },
+  { name: '15 mm Plössl', focalMm: 15, afovDeg: 52 },
+  { name: '13 mm ultra-wide 82°', focalMm: 13, afovDeg: 82 },
+  { name: '10 mm Plössl', focalMm: 10, afovDeg: 52 },
+  { name: '9 mm wide 66°', focalMm: 9, afovDeg: 66 },
+  { name: '6 mm ultra-wide 82°', focalMm: 6, afovDeg: 82 },
+  { name: '4 mm planetary 58°', focalMm: 4, afovDeg: 58 },
+];
+
+/** Telrad finder rings, degrees (diameters). */
+export const TELRAD_RINGS = [0.5, 2, 4] as const;
+
+export interface EyepieceStats {
+  magnification: number;
+  /** True field of view, degrees (apparent field ÷ magnification). */
+  trueFovDeg: number;
+  /** Exit pupil, mm. */
+  exitPupilMm: number;
+}
+
+/** Visual use: magnification = telescope focal (× Barlow) ÷ eyepiece focal; true field = AFOV ÷ magnification. */
+export function eyepieceStats(s: Setup, ep: { focalMm: number; afovDeg: number }): EyepieceStats {
+  const F = Math.max(1, s.focalMm * (s.factor || 1));
+  const magnification = F / Math.max(0.5, ep.focalMm);
+  return {
+    magnification,
+    trueFovDeg: ep.afovDeg / magnification,
+    exitPupilMm: Math.max(1, s.apertureMm) / magnification,
+  };
+}
+
+/** Rotation normalised to −180…+180 degrees. */
+export function normRotation(deg: number): number {
+  const r = (((deg + 180) % 360) + 360) % 360;
+  return Math.round((r - 180) * 100) / 100;
+}
+
+/** Plate scale, arcseconds per millimetre at the focal plane. */
+export const plateScale = (s: Setup) => ARCSEC_PER_RAD / Math.max(1, s.focalMm * (s.factor || 1));
+
+/**
+ * Field of view that makes an object of angular size `sizeDeg` fill `fill`
+ * (0–1) of `viewPx` screen pixels, given the current view (`fovNow` with
+ * `pxPerDeg` at the centre). Scale ∝ 1/fov for the small fields where this is used.
+ */
+export function fitFov(
+  fovNow: number,
+  pxPerDeg: number,
+  sizeDeg: number,
+  viewPx: number,
+  fill = 0.8,
+) {
+  const want = (fill * viewPx) / Math.max(1e-6, sizeDeg);
+  return fovNow * (pxPerDeg / want);
+}

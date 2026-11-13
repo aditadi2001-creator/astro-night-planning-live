@@ -39,6 +39,29 @@
   }
 
   let container: HTMLDivElement;
+  let wrap: HTMLElement;
+  let full = $state(false);
+  function toggleFull() {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void wrap?.requestFullscreen?.().catch(() => undefined);
+  }
+  function onKey(e: KeyboardEvent) {
+    const t = e.target as HTMLElement | null;
+    if (t && /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return;
+    if (e.key === 'f' || e.key === 'F') {
+      e.preventDefault();
+      toggleFull();
+    }
+  }
+  onMount(() => {
+    const onFs = () => {
+      full = document.fullscreenElement === wrap;
+      // MapLibre must measure its new size after entering or leaving full screen.
+      requestAnimationFrame(() => map?.resize());
+    };
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
+  });
   let map: MlMap | null = null;
   let marker: MlMarker | null = null;
   let frames = $state<Frame[]>([]);
@@ -208,6 +231,7 @@
       });
       const dot = document.createElement('div');
       dot.className = 'site-dot';
+      dot.setAttribute('role', 'img');
       dot.setAttribute('aria-label', 'Your location');
       marker = new ml.Marker({ element: dot }).setLngLat([place.lon, place.lat]).addTo(map);
       map.on('load', () => {
@@ -246,8 +270,18 @@
   );
 </script>
 
-<section class="card" aria-labelledby="satmap-title">
-  <h2 id="satmap-title">Satellite clouds <span class="tag">infrared · observed</span></h2>
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<section class="card" class:full bind:this={wrap} aria-labelledby="satmap-title" onkeydown={onKey}>
+  <header>
+    <h2 id="satmap-title">Satellite clouds <span class="tag">infrared · observed</span></h2>
+    <button
+      class="fs"
+      onclick={toggleFull}
+      aria-pressed={full}
+      title="Full screen (F when the map has focus)"
+      >{full ? 'Exit full screen' : 'Full screen'}</button
+    >
+  </header>
   <div class="map" bind:this={container} role="region" aria-label="Satellite cloud map"></div>
 
   {#if status === 'error'}
@@ -297,13 +331,36 @@
     border-radius: var(--radius);
     padding: 12px 14px;
   }
+  .card.full {
+    display: flex;
+    flex-direction: column;
+    border: none;
+    border-radius: 0;
+    height: 100%;
+    overflow-y: auto;
+  }
+  .full .map {
+    flex: 1 0 300px;
+    height: auto;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 0 8px;
+  }
   h2 {
     font-size: 13px;
     color: var(--muted);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    margin: 0 0 8px;
+    margin: 0;
+  }
+  button.fs {
+    font-size: 13px;
+    min-height: 32px;
   }
   .tag {
     margin-left: 8px;

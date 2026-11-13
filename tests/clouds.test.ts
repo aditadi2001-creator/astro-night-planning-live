@@ -76,3 +76,27 @@ describe('cloud coverage matches the forecast fraction', () => {
     expect(Math.max(...Array.from(img.filter((_, k) => k % 4 === 3)))).toBe(0);
   });
 });
+
+describe('light domes in the sky glow', () => {
+  it('a town to the east glows more in the east, and less higher up', () => {
+    const domes = new Array<number>(36).fill(0);
+    domes[9] = 40; // 90–100° azimuth
+    const base = {
+      width: 72,
+      height: 18,
+      center: { low: 0, mid: 0, high: 0 },
+      samples: [],
+      wind: { low: { speed: 0, dir: 0 }, mid: { speed: 0, dir: 0 }, high: { speed: 0, dir: 0 } },
+      time: 0,
+      color: { low: [0, 0, 0], mid: [0, 0, 0], high: [0, 0, 0] },
+    } as unknown as CloudInput;
+    const img = renderClouds({
+      ...base,
+      glow: { rgb: [128, 102, 86], zenithA: 0.05, domes, zenithRatio: 2 },
+    });
+    const a = (az: number, row: number) =>
+      img[(row * 72 + Math.round((az / 360) * 72)) * 4 + 3] ?? 0;
+    expect(a(95, 0)).toBeGreaterThan(a(275, 0) + 20);
+    expect(a(95, 0)).toBeGreaterThan(a(95, 10));
+  });
+});

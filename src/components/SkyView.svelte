@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, type Snippet } from 'svelte';
   import type { Place } from '../lib/astro/sky';
-  import { framePolygon, type SkyFrame } from '../lib/equipment';
+  import type { Setup, SetupKind } from '../lib/equipment';
+  import Oculars from './Oculars.svelte';
+  import SkyInfo from './SkyInfo.svelte';
+  import SkySearch, { type SearchHit } from './SkySearch.svelte';
   import {
     altAzAt,
     describe,
-    icrfToScreen,
-    screenToIcrf,
-    selectionIcrf,
     setAtmosphere,
     setObserver,
     setSkyLayer,
@@ -24,8 +24,10 @@
   import { renderTerrain, type DomeGlow, type Rgb } from '../lib/sky/horizon';
 
   interface Props {
-    /** Camera frames to draw, centred on the selected object (or the view centre). */
-    frames?: SkyFrame[];
+    /** Equipment setups (rotation changes from the ocular toolbar are written back). */
+    setups: Record<SetupKind, Setup>;
+    /** Which setups' frames are shown (the ocular view is on when any is). */
+    shownFrames: Record<SetupKind, boolean>;
     /** Reports the frame centre (RA/Dec degrees, J2000/ICRF) for display elsewhere. */
     onframecenter?: (c: { ra: number; dec: number; target: string | null } | null) => void;
     /** Reports the tapped object (null when cleared). */
@@ -56,6 +58,10 @@
     /** Camera-like rendering: higher exposure, smaller bright-star blobs. */
     longExposure?: boolean;
     oncursor?: (p: { alt: number; az: number } | null) => void;
+    /** Site time zone for rise/set times in the info overlay. */
+    tz?: string | undefined;
+    /** Layer switches and time controls shown inside the sky in full screen. */
+    fullControls?: Snippet;
   }
   let {
     place,
@@ -68,7 +74,8 @@
     groundColor,
     glow = null,
     survey = null,
-    frames = [],
+    setups = $bindable(),
+    shownFrames = $bindable(),
     onframecenter,
     onselect,
     goto = null,
@@ -76,9 +83,15 @@
     deepSky = null,
     longExposure = false,
     oncursor,
+    tz = undefined,
+    fullControls,
   }: Props = $props();
+  // Phones: the full-screen panel starts folded so the sky stays visible.
+  let panelOpen = $state(
+    typeof matchMedia !== 'function' || !matchMedia('(max-width: 640px)').matches,
+  );
 
-  let canvas: HTMLCanvasElement;
+  let canvas = $state<HTMLCanvasElement>() as HTMLCanvasElement;
   let wrap: HTMLDivElement;
   let full = $state(false);
 
@@ -263,73 +276,99 @@
     }
   });
 
-  // ---- equipment frames: projected every ~70 ms while any is shown ----------------
-  let frameShapes = $state<
-    { id: string; label: string; color: string; d: string; lx: number; ly: number }[]
-  >([]);
-  let frameCross = $state('');
-  let lastCenterKey = '';
-  onMount(() => {
-    let timer: ReturnType<typeof setInterval> | null = null;
-    const tick = () => {
-      const s = stel;
-      if (!s || !frames.length || !canvas) {
-        if (frameShapes.length) frameShapes = [];
-        frameCross = '';
-        if (lastCenterKey) {
-          lastCenterKey = '';
-          onframecenter?.(null);
-        }
-        return;
-      }
-      const w = canvas.clientWidth;
-      const h = canvas.clientHeight;
-      const sel = selectionIcrf(s);
-      const c = sel ?? screenToIcrf(s, w / 2, h / 2);
-      if (!c) return;
-      const [ra0, dec0] = s.c2s(c);
-      const shapes = [];
-      for (const f of frames) {
-        const pts = framePolygon(ra0, dec0, f.fovW, f.fovH, f.rotationDeg, 10).map(([ra, dec]) =>
-          icrfToScreen(s, [
-            Math.cos(dec) * Math.cos(ra),
-            Math.cos(dec) * Math.sin(ra),
-            Math.sin(dec),
-          ]),
-        );
-        if (pts.some((p) => !p)) continue;
-        const xy = pts as [number, number][];
-        const d = `M${xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L')}Z`;
-        // Label at the frame's top-most corner.
-        const top = xy.reduce((a, b) => (b[1] < a[1] ? b : a));
-        shapes.push({
-          id: f.id,
-          label: f.label,
-          color: f.color,
-          d,
-          lx: top[0] + 4,
-          ly: Math.max(14, top[1] - 6),
-        });
-      }
-      frameShapes = shapes;
-      const cp = icrfToScreen(s, c);
-      frameCross = cp
-        ? `M${cp[0] - 8},${cp[1]}L${cp[0] + 8},${cp[1]}M${cp[0]},${cp[1] - 8}L${cp[0]},${cp[1] + 8}`
-        : '';
-      const ra = (((s.anp(ra0) * s.R2D) % 360) + 360) % 360;
-      const dec = s.anpm(dec0) * s.R2D;
-      const target = sel ? (selected?.name ?? null) : null;
-      const key = `${ra.toFixed(3)},${dec.toFixed(3)},${target}`;
-      if (key !== lastCenterKey) {
-        lastCenterKey = key;
-        onframecenter?.({ ra, dec, target });
-      }
+  const ocularOn = $derived(Object.values(shownFrames).some(Boolean));
+  let oculars = $state<ReturnType<typeof Oculars>>();
+  let bottomEl = $state<HTMLDivElement>();
+  /** Move a node into another element (the ocular toolbar joins the bottom stack). */
+  function portal(node: HTMLElement, target: HTMLElement | undefined) {
+    target?.appendChild(node);
+    return { destroy: () => node.remove() };
+  }
+
+  // ---- view options (Stellarium-style toolbar) -------------------------------------
+  const VIEW_KEY = 'anp.view.v1';
+  const VIEW_ITEMS = [
+    { key: 'eqGrid', label: 'Equatorial grid' },
+    { key: 'azGrid', label: 'Azimuthal grid' },
+    { key: 'meridian', label: 'Meridian' },
+    { key: 'ecliptic', label: 'Ecliptic' },
+    { key: 'dsos', label: 'Deep-sky markers' },
+    { key: 'cardinals', label: 'Cardinal points' },
+    { key: 'atmosphere', label: 'Atmosphere' },
+    { key: 'ground', label: 'Ground' },
+  ] as const;
+  type ViewKey = (typeof VIEW_ITEMS)[number]['key'];
+  function loadView(): Record<ViewKey, boolean> {
+    const d: Record<ViewKey, boolean> = {
+      eqGrid: false,
+      azGrid: false,
+      meridian: false,
+      ecliptic: false,
+      dsos: true,
+      cardinals: true,
+      atmosphere: true,
+      ground: true,
     };
-    timer = setInterval(tick, 70);
-    return () => {
-      if (timer) clearInterval(timer);
-    };
+    try {
+      return { ...d, ...(JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}') as object) };
+    } catch {
+      return d;
+    }
+  }
+  let view = $state(loadView());
+  let viewOpen = $state(false);
+  $effect(() => {
+    const v = $state.snapshot(view);
+    try {
+      localStorage.setItem(VIEW_KEY, JSON.stringify(v));
+    } catch {
+      /* not remembered */
+    }
+    if (!stel) return;
+    const c = stel.core;
+    c.lines.equatorial.visible = v.eqGrid;
+    c.lines.azimuthal.visible = v.azGrid;
+    c.lines.meridian.visible = v.meridian;
+    c.lines.ecliptic.visible = v.ecliptic;
+    c.dsos.visible = v.dsos;
+    c.cardinals.visible = v.cardinals;
+    c.atmosphere.visible = v.atmosphere;
+    c.landscapes.visible = v.ground;
   });
+
+  // ---- search ------------------------------------------------------------------
+  function lookAtRaDec(raDeg: number, decDeg: number, fovDeg: number) {
+    if (!stel) return;
+    const v = stel.convertFrame(
+      stel.core.observer,
+      'ICRF',
+      'MOUNT',
+      stel.s2c(raDeg * stel.D2R, decDeg * stel.D2R),
+    );
+    stel.lookAt(v, 0.8);
+    stel.zoomTo(fovDeg * stel.D2R, 0.8);
+  }
+  function onSearch(h: SearchHit): boolean {
+    const s = stel;
+    if (!s) return false;
+    if (h.kind === 'dso') {
+      s.core.selection = null;
+      selected = null;
+      lookAtRaDec(h.ra, h.dec, Math.min(60, Math.max(1, h.sizeDeg * 4)));
+      return true;
+    }
+    let obj: ReturnType<Stel['getObj']>;
+    try {
+      obj = s.getObj(h.id) ?? (h.id.startsWith('NAME ') ? null : s.getObj(`NAME ${h.id}`));
+    } catch {
+      obj = null;
+    }
+    if (!obj) return false;
+    s.core.selection = obj;
+    s.pointAndLock(obj, 1);
+    if (s.core.fov * s.R2D > 90) s.zoomTo(40 * s.D2R, 1);
+    return true;
+  }
 
   // Cloud texture: regenerate only when its inputs change (drift time is
   // quantised by the caller), in a Web Worker so dragging the sky stays smooth.
@@ -373,6 +412,10 @@
 
   $effect(() => {
     if (!stel) return;
+    if (!view.ground) {
+      setSkyLayer(stel, SKY_LAYER.terrain, null, 0, 0, 0, 0);
+      return;
+    }
     const profile = horizon ?? new Float32Array(720);
     const img = renderTerrain(profile, groundColor, 2048, 512, -90, 30, glow);
     setSkyLayer(stel, SKY_LAYER.terrain, img, 2048, 512, -90, 30);
@@ -395,7 +438,6 @@
     if (stel?.core.selection) selected = describe(stel, stel.core.selection);
   });
 
-  const fmt = (v: number, d = 1) => `${v.toFixed(d)}°`;
   // Report the selection to the page (for the detailed panel).
   $effect(() => {
     onselect?.(selected);
@@ -408,11 +450,7 @@
     lastGoto = g.n;
     stel.core.selection = null;
     selected = null;
-    const ra = g.ra * stel.D2R;
-    const dec = g.dec * stel.D2R;
-    const v = stel.convertFrame(stel.core.observer, 'ICRF', 'MOUNT', stel.s2c(ra, dec));
-    stel.lookAt(v, 0.8);
-    stel.zoomTo(g.fovDeg * stel.D2R, 0.8);
+    lookAtRaDec(g.ra, g.dec, g.fovDeg);
   });
   let lastClear = 0;
   $effect(() => {
@@ -463,6 +501,23 @@
       case 'F':
         toggleFull();
         break;
+      case '[':
+      case ']':
+      case '{':
+      case '}':
+        if (!oculars) return;
+        oculars.rotate(e.key === '[' ? -1 : e.key === ']' ? 1 : e.key === '{' ? -15 : 15);
+        break;
+      case 'z':
+      case 'Z':
+        if (!oculars) return;
+        oculars.zoomToFit();
+        break;
+      case 'o':
+      case 'O':
+        if (!oculars) return;
+        oculars.cycleMode();
+        break;
       default:
         return;
     }
@@ -472,6 +527,12 @@
 
 <div class="wrap" class:full bind:this={wrap}>
   <div class="tools">
+    <button
+      aria-expanded={viewOpen}
+      aria-controls="sky-view-menu"
+      onclick={() => (viewOpen = !viewOpen)}
+      title="Grids, markers, atmosphere and ground">View {viewOpen ? '▴' : '▾'}</button
+    >
     {#if selected}<button
         onclick={gotoSelected}
         title="Centre and track the selected object (space bar)">Go to</button
@@ -480,6 +541,13 @@
       >{full ? 'Exit full screen' : 'Full screen'}</button
     >
   </div>
+  {#if viewOpen}
+    <div id="sky-view-menu" class="view-menu" role="group" aria-label="View options">
+      {#each VIEW_ITEMS as it (it.key)}
+        <label><input type="checkbox" bind:checked={view[it.key]} /> {it.label}</label>
+      {/each}
+    </div>
+  {/if}
   <canvas
     bind:this={canvas}
     class="sky"
@@ -499,39 +567,43 @@
     </p>
   {/if}
 
-  {#if selected}
-    <section class="info" aria-live="polite" aria-label="Selected object">
-      <header>
-        <h3>{selected.name}</h3>
-        <button class="goto" onclick={gotoSelected}>Go to</button>
-        <button class="close" onclick={clearSelection} aria-label="Close details">×</button>
-      </header>
-      {#if selected.type}<p class="type">{selected.type}</p>{/if}
-      <dl>
-        {#if selected.vmag !== null}<dt>Magnitude</dt>
-          <dd>{selected.vmag.toFixed(2)}</dd>{/if}
-        <dt>Altitude</dt>
-        <dd>{fmt(selected.alt)}{selected.alt < 0 ? ' (below horizon)' : ''}</dd>
-        <dt>Azimuth</dt>
-        <dd>{fmt(selected.az)}</dd>
-        <dt>RA / Dec</dt>
-        <dd>{(selected.ra / 15).toFixed(3)} h / {fmt(selected.dec, 2)}</dd>
-      </dl>
-      {#if selected.otherNames.length}<p class="aka">Also: {selected.otherNames.join(', ')}</p>{/if}
-    </section>
+  <div class="topleft">
+    <SkySearch onpick={onSearch} />
+    {#if selected}
+      <SkyInfo info={selected} {place} {time} {tz} onclose={clearSelection} ongoto={gotoSelected} />
+    {/if}
+  </div>
+
+  {#if ocularOn}
+    <Oculars
+      bind:this={oculars}
+      {stel}
+      {canvas}
+      bind:setups
+      bind:shown={shownFrames}
+      selectedName={selected?.name ?? null}
+      {onframecenter}
+      {portal}
+      {bottomEl}
+    />
   {/if}
 
-  {#if frameShapes.length}
-    <svg class="frames" aria-hidden="true">
-      {#each frameShapes as f (f.id)}
-        <path d={f.d} stroke={f.color} />
-        <text x={f.lx} y={f.ly} fill={f.color}>{f.label}</text>
-      {/each}
-      {#if frameCross}
-        <path class="cross" d={frameCross} />
-      {/if}
-    </svg>
-  {/if}
+  <div class="bottom" bind:this={bottomEl}>
+    {#if full && fullControls}
+      <div class="fs-panel" class:open={panelOpen}>
+        <button
+          class="fs-toggle"
+          aria-expanded={panelOpen}
+          aria-controls="fs-controls"
+          onclick={() => (panelOpen = !panelOpen)}
+          >{panelOpen ? 'Hide layers & time ▾' : 'Layers & time ▴'}</button
+        >
+        <div id="fs-controls" class="fs-body" hidden={!panelOpen}>
+          {@render fullControls()}
+        </div>
+      </div>
+    {/if}
+  </div>
 
   <p class="credit-line credit">
     Stellarium Web Engine (AGPL) · ESA/Hipparcos · ESA/Gaia/DPAC · OpenNGC ·
@@ -548,8 +620,7 @@
     display: flex;
     gap: 6px;
   }
-  .tools button,
-  .goto {
+  .tools button {
     background: rgb(13 18 32 / 0.8);
     font-size: 13px;
     min-height: 32px;
@@ -558,6 +629,37 @@
   .wrap.full {
     border-radius: 0;
     border: none;
+  }
+  /* Full screen: layer switches and time controls float over the bottom of the sky. */
+  .fs-panel {
+    display: grid;
+    justify-items: start;
+    gap: 6px;
+    pointer-events: none;
+  }
+  .fs-panel > * {
+    pointer-events: auto;
+  }
+  .fs-toggle {
+    background: color-mix(in srgb, var(--panel) 82%, transparent);
+    font-size: 13px;
+    min-height: 34px;
+    backdrop-filter: blur(6px);
+  }
+  .fs-body {
+    width: 100%;
+    max-height: min(48vh, 420px);
+    overflow-y: auto;
+    display: grid;
+    gap: 8px;
+    padding: 8px;
+    background: color-mix(in srgb, var(--panel) 80%, transparent);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    backdrop-filter: blur(8px);
+  }
+  .fs-body[hidden] {
+    display: none;
   }
   .wrap {
     position: relative;
@@ -589,77 +691,55 @@
   .overlay.error {
     color: var(--bad);
   }
-  .frames {
+  .topleft {
     position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    overflow: visible;
-  }
-  .frames path {
-    fill: none;
-    stroke-width: 1.6;
-  }
-  .frames .cross {
-    stroke: var(--muted);
-    stroke-width: 1;
-  }
-  .frames text {
-    font-size: 12px;
-    paint-order: stroke;
-    stroke: #000;
-    stroke-width: 3px;
-  }
-  .info {
-    position: absolute;
+    top: 8px;
     left: 8px;
-    bottom: 48px;
-    max-width: min(320px, calc(100% - 16px));
-    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    z-index: 4;
+    display: grid;
+    gap: 6px;
+    justify-items: start;
+    max-height: calc(100% - 90px);
+    overflow-y: auto;
+    scrollbar-width: none;
+    pointer-events: none;
+  }
+  .view-menu {
+    position: absolute;
+    top: 46px;
+    right: 8px;
+    z-index: 5;
+    display: grid;
+    gap: 2px;
+    padding: 8px 10px;
+    font-size: 13px;
+    background: color-mix(in srgb, var(--panel) 92%, transparent);
     border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 10px 12px;
+    border-radius: 10px;
     backdrop-filter: blur(6px);
   }
-  .info header {
+  .view-menu label {
     display: flex;
-    justify-content: space-between;
-    align-items: start;
+    align-items: center;
     gap: 8px;
-  }
-  h3 {
-    margin: 0;
-    font-size: 16px;
-  }
-  .close {
     min-height: 28px;
-    padding: 0 8px;
-    line-height: 1;
+    cursor: pointer;
   }
-  .type {
-    margin: 2px 0 6px;
-    color: var(--accent);
-    font-size: 13px;
+  .view-menu input {
+    accent-color: var(--accent);
   }
-  dl {
+  .bottom {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    bottom: 22px;
+    z-index: 4;
     display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 2px 10px;
-    margin: 0;
-    font-size: 13px;
-    font-variant-numeric: tabular-nums;
+    gap: 6px;
+    pointer-events: none;
   }
-  dt {
-    color: var(--muted);
-  }
-  dd {
-    margin: 0;
-  }
-  .aka {
-    margin: 6px 0 0;
-    font-size: 12px;
-    color: var(--muted);
+  .bottom > :global(*) {
+    pointer-events: auto;
   }
   .credit {
     position: absolute;

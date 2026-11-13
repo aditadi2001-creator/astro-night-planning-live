@@ -32,12 +32,16 @@
     layers = $bindable(),
     surveyStatus = { state: 'off' },
     extra,
+    compact = false,
   }: {
     layers: LayerState;
     surveyStatus?: SurveyStatus;
     /** More toggles from the page (equipment frame, camera view…). */
     extra?: Snippet;
+    /** Inside the full-screen sky: transparent, own element ids. */
+    compact?: boolean;
   } = $props();
+  const pid = $derived(compact ? 'fs-' : '');
 
   type Key =
     | 'clouds'
@@ -96,7 +100,7 @@
   });
 </script>
 
-<nav class="bar" aria-label="Sky layers">
+<nav class="bar" class:compact aria-label={compact ? 'Sky layers (full screen)' : 'Sky layers'}>
   <div class="chips" role="group" aria-label="Show or hide layers">
     {#each items as it (it.key)}
       <button
@@ -113,23 +117,23 @@
 
   {#if layers.surveys}
     <div class="survey" role="group" aria-label="Sky survey options">
-      <label class="field" for="survey-pick">Survey</label>
-      <select id="survey-pick" bind:value={layers.survey}>
+      <label class="field" for={`${pid}survey-pick`}>Survey</label>
+      <select id={`${pid}survey-pick`} bind:value={layers.survey}>
         {#each SURVEYS as s (s.id)}
           <option value={s.id}>{s.label}</option>
         {/each}
       </select>
-      <label class="field" for="survey-opacity">Opacity</label>
+      <label class="field" for={`${pid}survey-opacity`}>Opacity</label>
       <span class="range">
         <input
-          id="survey-opacity"
+          id={`${pid}survey-opacity`}
           type="range"
           min="0.1"
           max="1"
           step="0.05"
           bind:value={layers.surveyOpacity}
         />
-        <output for="survey-opacity">{Math.round(layers.surveyOpacity * 100)}%</output>
+        <output for={`${pid}survey-opacity`}>{Math.round(layers.surveyOpacity * 100)}%</output>
       </span>
       <p class="about">
         {#if current}{current.shows}{current.coverageNote ? ` ${current.coverageNote}` : ''}{/if}
@@ -149,9 +153,20 @@
 
 <style>
   .bar {
-    border-bottom: 1px solid var(--line);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
     background: var(--panel);
-    padding: 6px var(--gap);
+    padding: 6px 8px;
+    min-width: 0;
+  }
+  .bar.compact {
+    border: none;
+    background: transparent;
+    padding: 0;
+  }
+  .compact .chips {
+    flex-wrap: wrap;
+    overflow: visible;
   }
   .chips {
     display: flex;

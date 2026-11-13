@@ -18,6 +18,8 @@
  * altitude 0° (first row) to 90°.
  */
 
+import { domeAt } from './horizon';
+
 export interface CloudSample {
   /** Bearing from the site, degrees from north. */
   az: number;
@@ -62,8 +64,18 @@ export interface CloudInput {
     weight: number;
     ageS: number;
   } | null;
-  /** Artificial sky glow behind the clouds: colour and zenith opacity (0–1). */
-  glow?: { rgb: Rgb; zenithA: number } | null;
+  /**
+   * Artificial sky glow behind the clouds: colour and zenith opacity (0–1), plus
+   * optional light domes per 10° of azimuth from north (artificial / natural
+   * brightness near the horizon) with the site's zenith ratio, so towns rise
+   * towards their real directions and fade with altitude.
+   */
+  glow?: {
+    rgb: Rgb;
+    zenithA: number;
+    domes?: readonly number[];
+    zenithRatio?: number;
+  } | null;
 }
 
 /** Cloud tops cool at the standard lapse rate (K per km). */
@@ -287,6 +299,20 @@ export function renderClouds(input: CloudInput): Uint8ClampedArray {
     const s = Math.sin((Math.max(0.5, ((j + 0.5) / h) * 90) * Math.PI) / 180);
     rowGlow[j] = Math.min(2.2, 1 / Math.sqrt(Math.max(0.03, s)));
   }
+  // Light domes: contrast of each direction against the local sky, fading with
+  // altitude as e^(−alt/12°) (light scattered from towns tens of km away).
+  const domes = input.glow?.domes ?? [];
+  const colDome = new Float32Array(w);
+  const rowDome = new Float32Array(h);
+  if (gz > 0 && domes.length) {
+    const minD = Math.min(...domes);
+    const R = Math.max(0, input.glow?.zenithRatio ?? 0);
+    for (let i = 0; i < w; i++) {
+      const e = (domeAt(domes, ((i + 0.5) / w) * 360) - minD) / (1 + R);
+      colDome[i] = Math.min(0.45, 0.11 * Math.log1p(Math.max(0, e)));
+    }
+    for (let j = 0; j < h; j++) rowDome[j] = Math.exp(-(((j + 0.5) / h) * 90) / 12);
+  }
 
   for (let j = 0; j < h; j++) {
     const alt = Math.max(0.3, ((j + 0.5) / h) * 90);
@@ -338,7 +364,7 @@ export function renderClouds(input: CloudInput): Uint8ClampedArray {
       // Artificial sky glow behind the clouds, brighter towards the horizon
       // (path length through lit air; roughly 1/√sin(alt), capped).
       if (gz > 0) {
-        const ga = Math.min(0.85, gz * (rowGlow[j] ?? 1));
+        const ga = Math.min(0.85, gz * (rowGlow[j] ?? 1) + (colDome[i] ?? 0) * (rowDome[j] ?? 0));
         r += transmit * ga * gRgb[0];
         g += transmit * ga * gRgb[1];
         b += transmit * ga * gRgb[2];

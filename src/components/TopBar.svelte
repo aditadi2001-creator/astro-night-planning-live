@@ -21,7 +21,7 @@
 <header>
   <div class="brand">
     <img src="/favicon.svg" alt="" width="28" height="28" />
-    <h1>Astro Night Planning</h1>
+    <p class="title">Astro Night Planning</p>
   </div>
 
   <button
@@ -71,7 +71,7 @@
     gap: 8px;
     font-weight: 600;
   }
-  .brand h1 {
+  .brand .title {
     font-size: inherit;
     font-weight: inherit;
     margin: 0;
@@ -117,7 +117,7 @@
   }
   @media (max-width: 480px) {
     /* Small screens: the logo alone; the heading stays for screen readers. */
-    .brand h1 {
+    .brand .title {
       position: absolute;
       width: 1px;
       height: 1px;
