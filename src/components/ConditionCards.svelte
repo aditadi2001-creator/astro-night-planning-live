@@ -12,9 +12,24 @@
     moon: MoonEvents;
     tw: TwilightTimes;
     tz: string | undefined;
+    /** Infrared satellite summary at the site (null without the data Worker). */
+    satellite?: {
+      frac: number | null;
+      meanK: number | null;
+      time: number;
+      weight: number;
+      now: number | null;
+    } | null;
     loading: boolean;
   }
-  let { row, moon, tw, tz, loading }: Props = $props();
+  let { row, moon, tw, tz, satellite = null, loading }: Props = $props();
+
+  /** "1 h 10 min" between the image and the time shown. */
+  const ago = (ms: number) => {
+    const m = Math.round(Math.abs(ms) / 60_000);
+    const s = m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
+    return ms >= 0 ? `${s} before` : `${s} after`;
+  };
 
   const w = $derived(row?.weather ?? null);
   const n = (v: number | null | undefined, d = 0, unit = '') =>
@@ -104,6 +119,31 @@
       <p class="muted">{loading ? 'Loading forecast…' : 'No forecast available yet.'}</p>
     {/if}
   </Card>
+
+  {#if satellite}
+    <Card
+      title="Clouds now"
+      tag="satellite + model"
+      credit="NOAA/NESDIS GMGSI infrared · model: Open-Meteo.com"
+    >
+      <p class="big">{n(satellite.now, 0, '%')} <span class="sub">best estimate</span></p>
+      <p class="kv">
+        <span
+          >Satellite: <strong
+            >{satellite.frac == null ? 'no data' : n(satellite.frac * 100, 0, '%')}</strong
+          >{#if satellite.meanK != null}
+            <span class="muted">(cloud tops / ground {n(satellite.meanK - 273.15, 0, ' °C')})</span
+            >{/if}</span
+        >
+        <span>Model: <strong>{n(w?.cloud, 0, '%')}</strong></span>
+      </p>
+      <p class="muted small">
+        Infrared image from {fmtTime(satellite.time, tz)}{#if row}, {ago(row.t - satellite.time)} the
+          time shown{/if}. Satellite weight {Math.round(satellite.weight * 100)} %, fading as the image
+        ages. Infrared cannot see low fog or stratus (as warm as the ground), so the forecast still counts.
+      </p>
+    </Card>
+  {/if}
 
   <Card title="Transparency" tag="forecast" credit="CAMS ENSEMBLE data provider · Open-Meteo.com">
     {#if row?.extinction}
@@ -256,6 +296,13 @@
   .small {
     font-size: 12px;
     margin-top: 2px;
+  }
+  .kv {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    margin: 0 0 6px;
+    font-size: 14px;
   }
   .rating {
     margin: -4px 0 8px;

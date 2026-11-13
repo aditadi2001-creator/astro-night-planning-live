@@ -25,6 +25,7 @@
   "dependencies": {
     "astronomy-engine": "^2.1.19",
     "geotiff": "^3.0.5",
+    "maplibre-gl": "6.16.0",
     "pmtiles": "^4.5.0",
     "svelte": "^5.57.3"
   },

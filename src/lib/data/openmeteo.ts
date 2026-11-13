@@ -240,6 +240,17 @@ export function destination(lat: number, lon: number, brgDeg: number, distKm: nu
   return { lat: (p2 * 180) / Math.PI, lon: (((l2 * 180) / Math.PI + 540) % 360) - 180 };
 }
 
+/** The 16 cloud-ring points (8 bearings × 35 and 100 km) around a site, in a fixed order. */
+export function ringPoints(lat: number, lon: number) {
+  return CLOUD_RINGS_KM.flatMap((dist) =>
+    BEARINGS.map((az) => ({
+      az,
+      dist,
+      ...destination(roundCoord(lat), roundCoord(lon), az, dist),
+    })),
+  );
+}
+
 export interface CloudRing {
   points: { az: number; dist: number }[];
   /** hours[k].layers[i] = cover (%) at points[i]. */
@@ -256,8 +267,9 @@ export async function loadCloudRing(
   signal: AbortSignal,
   force = false,
 ): Promise<Cached<CloudRing>> {
-  const points = CLOUD_RINGS_KM.flatMap((dist) => BEARINGS.map((az) => ({ az, dist })));
-  const coords = points.map((p) => destination(roundCoord(lat), roundCoord(lon), p.az, p.dist));
+  const pts = ringPoints(lat, lon);
+  const points = pts.map(({ az, dist }) => ({ az, dist }));
+  const coords = pts;
   const url = `${FORECAST}?${q({
     latitude: coords.map((c) => roundCoord(c.lat)).join(','),
     longitude: coords.map((c) => roundCoord(c.lon)).join(','),

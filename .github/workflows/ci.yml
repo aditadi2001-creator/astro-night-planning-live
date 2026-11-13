@@ -43,3 +43,6 @@ jobs:
       - name: R2 storage-guard tests
         working-directory: pipelines/r2
         run: pip install boto3 && python -m unittest test_r2 -v
+      - name: GMGSI cloud tiler tests
+        working-directory: pipelines/clouds
+        run: pip install numpy pillow && python -m unittest test_gmgsi -v

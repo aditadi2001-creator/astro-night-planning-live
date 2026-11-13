@@ -37,6 +37,9 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: true,
+    // MapLibre (~1.1 MB, ~300 KB gzipped) is its own chunk, loaded only when the
+    // satellite map is switched on; everything on the first screen stays small.
+    chunkSizeWarningLimit: 1200,
   },
   test: {
     include: ['tests/**/*.test.ts'],

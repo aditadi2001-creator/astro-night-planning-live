@@ -36,6 +36,16 @@
     type SiteHorizon,
   } from './lib/sky/dem';
   import type { EngineAtmosphere } from './lib/engine/stel';
+  import { GMGSI_INDEX_URL } from './lib/sat/gmgsi';
+  import { loadSatellite, type SatelliteSample } from './lib/sat/satellite';
+  import {
+    blendLayers,
+    blendSamples,
+    cloudsNow,
+    irCloudFraction,
+    satelliteWeight,
+    type SatPoint,
+  } from './lib/sat/ir';
 
   const WEATHER_INTERVAL = 30 * 60_000;
 
@@ -51,6 +61,7 @@
     haze: true,
     terrain: true,
     constellations: true,
+    satmap: false,
   });
   let cursor = $state<{ alt: number; az: number } | null>(null);
 
@@ -60,6 +71,8 @@
     models: LiveSource<ModelClouds>;
     air: LiveSource<Air>;
     ring: LiveSource<CloudRing>;
+    /** Infrared satellite around the site (only with the data Worker). */
+    satellite: LiveSource<SatelliteSample> | null;
   };
   let sources = $state<Sources | null>(null);
 
@@ -80,11 +93,21 @@
       air: new LiveSource('air', (sig, f) => loadAir(lat, lon, sig, f), WEATHER_INTERVAL),
       // Surrounding cloud field changes slowly; hourly is plenty.
       ring: new LiveSource('ring', (sig, f) => loadCloudRing(lat, lon, sig, f), 60 * 60_000),
+      // New GMGSI hours arrive hourly (~40 min after the hour).
+      satellite: GMGSI_INDEX_URL
+        ? new LiveSource(
+            'satellite',
+            (sig, f) => loadSatellite(lat, lon, sig, f),
+            30 * 60_000,
+            3 * 3600_000,
+          )
+        : null,
     };
     sources = s;
     // Loaders answer from the cache when it is fresh, and fall back to the last
     // good copy (marked stale) when the network fails.
     const stops = [s.weather.start(), s.models.start(), s.air.start(), s.ring.start()];
+    if (s.satellite) stops.push(s.satellite.start());
     return () => stops.forEach((stop) => stop());
   });
 
@@ -92,6 +115,7 @@
   const models = $derived(sources?.models.data ?? null);
   const air = $derived(sources?.air.data ?? null);
   const ring = $derived(sources?.ring.data ?? null);
+  const satellite = $derived(sources?.satellite?.data ?? null);
 
   // ---- terrain horizon (Copernicus DEM, cached per site) ----------------------------
   let siteHorizon = $state<SiteHorizon | null>(null);
@@ -164,6 +188,30 @@
   const minute = $derived(Math.floor(shown.getTime() / 60_000) * 60_000);
   const row = $derived(buildRow(minute, place, weather, models, air));
   const tw = $derived(twilight(place, new Date(minute)));
+  // ---- satellite + model "clouds now" ---------------------------------------------
+  const satWeight = $derived(satellite ? satelliteWeight((minute - satellite.time) / 3600_000) : 0);
+  const surfaceK = $derived(
+    row.weather?.temperature != null ? row.weather.temperature + 273.15 : Number.NaN,
+  );
+  const mean = (a: readonly number[]) =>
+    a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  const satPoint = (bt: readonly number[]): SatPoint => ({
+    frac: irCloudFraction(bt, surfaceK),
+    meanK: mean(bt),
+  });
+  const satSite = $derived(satellite ? satPoint(satellite.site) : null);
+  const satRing = $derived(satellite ? satellite.ring.map(satPoint) : []);
+  const satSummary = $derived(
+    satellite && satSite
+      ? {
+          frac: satSite.frac,
+          meanK: satSite.meanK,
+          time: satellite.time,
+          weight: satWeight,
+          now: cloudsNow(row.weather?.cloud ?? null, satSite.frac, satWeight),
+        }
+      : null,
+  );
   const moon = $derived(moonEvents(place, new Date(minute)));
   // ---- realism inputs for the sky engine -----------------------------------------
   const pressure = $derived(row.weather?.pressure ?? null);
@@ -209,9 +257,13 @@
       speed: w.upper[l].speed ?? 0,
       dir: w.upper[l].dir ?? 270,
     });
+    const center = { low: w.cloudLow, mid: w.cloudMid, high: w.cloudHigh };
     return {
-      center: { low: w.cloudLow, mid: w.cloudMid, high: w.cloudHigh },
-      samples,
+      // Observed cloud from the satellite moves the forecast towards reality,
+      // direction by direction (weight fades with the image's age).
+      center: satSite ? blendLayers(center, satSite, satWeight) : center,
+      samples:
+        satRing.length === samples.length ? blendSamples(samples, satRing, satWeight) : samples,
       wind: { low: wind(850), mid: wind(500), high: wind(250) },
       time: driftT,
       color: cloudColors(lighting.sunAlt, lighting.moonAlt, lighting.moonIllum, 0),
@@ -275,6 +327,7 @@
               { label: 'Models', source: sources.models },
               { label: 'Air quality', source: sources.air },
               { label: 'Cloud field', source: sources.ring },
+              ...(sources.satellite ? [{ label: 'Satellite', source: sources.satellite }] : []),
             ]}
           />
         {/if}
@@ -301,7 +354,24 @@
         onpick={(t) => setTime(new Date(t), false)}
       />
 
-      <ConditionCards {row} {moon} {tw} {tz} loading={sources?.weather.status === 'loading'} />
+      <ConditionCards
+        {row}
+        {moon}
+        {tw}
+        {tz}
+        satellite={satSummary}
+        loading={sources?.weather.status === 'loading'}
+      />
+
+      {#if layers.satmap}
+        {#await import('./components/SatelliteMap.svelte') then { default: SatelliteMap }}
+          <SatelliteMap {place} {tz} />
+        {:catch}
+          <p class="note">
+            The satellite map could not be loaded. Check the connection and try again.
+          </p>
+        {/await}
+      {/if}
 
       <div class="pair">
         <Layers bind:layers />

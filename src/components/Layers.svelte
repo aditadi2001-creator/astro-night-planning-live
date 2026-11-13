@@ -4,6 +4,7 @@
     haze: boolean;
     terrain: boolean;
     constellations: boolean;
+    satmap: boolean;
   }
   let { layers = $bindable() }: { layers: LayerState } = $props();
 </script>
@@ -25,9 +26,9 @@
     ><input type="checkbox" disabled /> Sky surveys
     <span>(off by default, coming later)</span></label
   >
-  <label class="off"
-    ><input type="checkbox" disabled /> Satellite map
-    <span>(off by default, coming later)</span></label
+  <label
+    ><input type="checkbox" bind:checked={layers.satmap} /> Satellite cloud map
+    <span class="hint">(infrared, last ~3 hours)</span></label
   >
 </fieldset>
 
@@ -64,7 +65,11 @@
   .off {
     color: var(--muted);
   }
-  .off span {
+  .off span,
+  .hint {
     font-size: 12px;
+  }
+  .hint {
+    color: var(--muted);
   }
 </style>

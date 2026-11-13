@@ -17,12 +17,16 @@ Usage:
     python r2.py usage
     python r2.py upload <local file> <key> [--type MIME] [--cache CACHE-CONTROL]
     python r2.py prune-hourly [--keep-hours 24]
+    python r2.py publish-hourly <dir with YYYYMMDDHH.pmtiles> [--keep-hours 24]
+        one listing for everything: prune hours older than --keep-hours, guard,
+        upload the new hours, write data/clouds-latest.json (3 Class A ops/hour)
     python r2.py delete <key>
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -88,14 +92,22 @@ def list_objects(s3, bucket: str) -> list[Obj]:
         token = r["NextContinuationToken"]
 
 
+LATEST_KEY = "data/clouds-latest.json"
+
+
 def plan_upload(objects: list[Obj], key: str, new_size: int, limit: int = HARD_LIMIT) -> list[str] | None:
     """Keys to delete (oldest hourly first) so that the upload fits under `limit`,
     or None if it cannot fit even after deleting every hourly archive."""
-    total = sum(o.size for o in objects if o.key != key) + new_size
+    return plan_batch(objects, {key: new_size}, limit)
+
+
+def plan_batch(objects: list[Obj], new: dict[str, int], limit: int = HARD_LIMIT) -> list[str] | None:
+    """Like plan_upload for several new objects at once (replacing same-key ones)."""
+    total = sum(o.size for o in objects if o.key not in new) + sum(new.values())
     if total <= limit:
         return []
     hourly = sorted(
-        (o for o in objects if HOURLY_RE.match(o.key) and o.key != key),
+        (o for o in objects if HOURLY_RE.match(o.key) and o.key not in new),
         key=lambda o: o.key,  # YYYYMMDDHH sorts chronologically
     )
     deletes = []
@@ -146,6 +158,73 @@ def cmd_upload(s3, bucket: str, path: Path, key: str, ctype: str | None, cache: 
         print(f"WARNING: bucket is above the {TARGET / GB:.0f} GB target.")
 
 
+def hour_time(hour: str) -> datetime:
+    return datetime.strptime(hour, "%Y%m%d%H").replace(tzinfo=timezone.utc)
+
+
+def plan_hourly(objects: list[Obj], new: dict[str, int], keep_hours: int, now: datetime):
+    """One plan for an hourly run.
+
+    Returns (prune, guard, hours): `prune` = hourly keys older than keep_hours
+    (and not being uploaded now), `guard` = extra oldest-hourly deletes needed to
+    stay under HARD_LIMIT (None = cannot fit: upload nothing), `hours` = the
+    hourly archives that will exist afterwards, newest first."""
+    cutoff = now - timedelta(hours=keep_hours)
+    prune = [
+        o.key for o in objects
+        if (m := HOURLY_RE.match(o.key)) and o.key not in new and hour_time(m.group(1)) < cutoff
+    ]
+    remaining = [o for o in objects if o.key not in prune]
+    guard = plan_batch(remaining, new)
+    if guard is None:
+        return prune, None, []
+    keys = {o.key for o in remaining if HOURLY_RE.match(o.key)} - set(guard) | set(new)
+    hours = sorted((HOURLY_RE.match(k).group(1) for k in keys), reverse=True)
+    return prune, guard, hours
+
+
+def latest_json(hours: list[str]) -> bytes:
+    return json.dumps(
+        {
+            "product": "NOAA GMGSI longwave infrared, hourly",
+            "tiles": "/tiles/clouds-{hour}/{z}/{x}/{y}.webp",
+            "maxzoom": 5,
+            "kelvin": "(660 - grey) / 2",
+            "hours": [{"hour": h, "time": hour_time(h).strftime("%Y-%m-%dT%H:%M:%SZ")} for h in hours],
+        },
+        separators=(",", ":"),
+    ).encode()
+
+
+def cmd_publish_hourly(s3, bucket: str, folder: Path, keep_hours: int) -> None:
+    files = {f"{HOURLY_PREFIX}{p.stem}.pmtiles": p for p in sorted(folder.glob("*.pmtiles"))
+             if re.fullmatch(r"\d{10}", p.stem)}
+    objs = list_objects(s3, bucket)
+    new = {k: p.stat().st_size for k, p in files.items()}
+    prune, guard, hours = plan_hourly(objs, new, keep_hours, datetime.now(timezone.utc))
+    for k in prune:
+        s3.delete_object(Bucket=bucket, Key=k)  # deletes are free in R2
+    print(f"pruned {len(prune)} hourly archives older than {keep_hours} h")
+    if guard is None:
+        sys.exit("REFUSED: the new hourly files would take the bucket above the "
+                 f"{HARD_LIMIT / GB:.0f} GB hard limit. Nothing was uploaded.")
+    for k in guard:
+        print(f"  freeing space: delete {k}")
+        s3.delete_object(Bucket=bucket, Key=k)
+    for k, p in files.items():
+        with open(p, "rb") as f:
+            s3.put_object(Bucket=bucket, Key=k, Body=f, ContentType="application/vnd.pmtiles",
+                          CacheControl="public, max-age=31536000, immutable")
+        print(f"uploaded {k} ({new[k] / 1e6:.1f} MB)")
+    if files or prune or guard:
+        s3.put_object(Bucket=bucket, Key=LATEST_KEY, Body=latest_json(hours),
+                      ContentType="application/json", CacheControl="public, max-age=300")
+        print(f"wrote {LATEST_KEY}: {len(hours)} hours, newest {hours[0] if hours else '-'}")
+    total = sum(o.size for o in objs if o.key not in prune and o.key not in guard
+                and o.key not in new) + sum(new.values())
+    print(f"bucket now ~{total / GB:.3f} GB (target {TARGET / GB:.0f} GB, hard limit {HARD_LIMIT / GB:.0f} GB)")
+
+
 def cmd_prune_hourly(s3, bucket: str, keep_hours: int) -> None:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=keep_hours)
     removed = 0
@@ -171,6 +250,9 @@ def main() -> None:
     up.add_argument("--cache")
     pr = sub.add_parser("prune-hourly")
     pr.add_argument("--keep-hours", type=int, default=24)
+    ph = sub.add_parser("publish-hourly")
+    ph.add_argument("folder")
+    ph.add_argument("--keep-hours", type=int, default=24)
     de = sub.add_parser("delete")
     de.add_argument("key")
     a = ap.parse_args()
@@ -183,6 +265,8 @@ def main() -> None:
         cmd_upload(s3, bucket, Path(a.file), a.key, a.type, a.cache)
     elif a.cmd == "prune-hourly":
         cmd_prune_hourly(s3, bucket, a.keep_hours)
+    elif a.cmd == "publish-hourly":
+        cmd_publish_hourly(s3, bucket, Path(a.folder), a.keep_hours)
     elif a.cmd == "delete":
         s3.delete_object(Bucket=bucket, Key=a.key)
         print(f"deleted {a.key}")

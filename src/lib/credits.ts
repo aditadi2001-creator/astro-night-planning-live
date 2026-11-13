@@ -105,15 +105,17 @@ export const CREDITS: Credit[] = [
   },
   {
     id: 'nasa-gibs',
-    name: 'NASA GIBS (GOES-East, GOES-West, Himawari, VIIRS, MODIS)',
+    name: 'NASA GIBS (GOES-East, GOES-West, Himawari; VIIRS Black Marble base map)',
     url: 'https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api',
     license: 'NASA open data (no restrictions)',
     attribution:
       "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).",
     shortCredit: 'Satellite imagery: NASA GIBS / ESDIS',
-    usage: 'Live infrared cloud imagery every 10 minutes.',
+    usage:
+      'Satellite cloud map: GOES-East/West (NOAA) and Himawari (JMA) band 13 infrared every 10 minutes; NASA Black Marble night lights as the base map; coastlines.',
     kind: 'data',
-    status: 'planned',
+    status: 'live',
+    notes: 'Explicit 10-minute times are requested; the newest is found by stepping back from now.',
   },
   {
     id: 'noaa-gmgsi',
@@ -123,9 +125,11 @@ export const CREDITS: Credit[] = [
     attribution: 'Global infrared mosaic: NOAA GMGSI via the NOAA Open Data Dissemination Program.',
     shortCredit: 'Global IR mosaic: NOAA GMGSI',
     usage:
-      'Hourly global infrared mosaic, including Meteosat coverage over Europe, Africa and India.',
+      'Hourly global infrared mosaic (incl. Meteosat over Europe, Africa and India): converted by this project to map tiles each hour, used on the satellite map and to measure cloud around your site.',
     kind: 'data',
-    status: 'planned',
+    status: 'live',
+    notes:
+      'Infrared cannot separate low fog/stratus from the ground; the cloud estimate is blended with the forecast.',
   },
   {
     id: 'black-marble',
@@ -258,6 +262,29 @@ export const CREDITS: Credit[] = [
     kind: 'data',
     status: 'live',
     notes: 'Modified data: the elevation model is resampled and turned into a horizon profile.',
+  },
+  {
+    id: 'maplibre',
+    name: 'MapLibre GL JS',
+    url: 'https://maplibre.org/',
+    license: 'BSD-3-Clause',
+    attribution: 'MapLibre GL JS — Copyright (c) MapLibre contributors, BSD-3-Clause.',
+    shortCredit: 'Map: MapLibre GL JS',
+    usage: 'Satellite cloud map (loaded only when the map is switched on).',
+    kind: 'library',
+    status: 'live',
+  },
+  {
+    id: 'pmtiles',
+    name: 'PMTiles',
+    url: 'https://github.com/protomaps/PMTiles',
+    license: 'BSD-3-Clause',
+    attribution: 'PMTiles — Copyright (c) Protomaps LLC, BSD-3-Clause.',
+    shortCredit: 'Tile archives: PMTiles',
+    usage:
+      'Single-file tile archives in R2 (deep stars, hourly satellite clouds), read by the data Worker.',
+    kind: 'library',
+    status: 'live',
   },
   {
     id: 'geotiff-js',

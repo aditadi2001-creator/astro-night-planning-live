@@ -141,20 +141,20 @@ each internal call is billed as a separate request, which would double usage.)
 
 **R2 free tier: 10 GB-month storage, 1 M Class A, 10 M Class B. Our rule: stay under half.**
 
-| Storage                            | Size                                      | Notes                                                             |
-| ---------------------------------- | ----------------------------------------- | ----------------------------------------------------------------- |
-| Deep star layer (Gaia DR3, V ≤ 14) | 0.198 GB (uploaded)                       | 12.4 M stars with 10 < V ≤ 14, 25,987 tiles, 15.9 bytes/star      |
-| Light pollution PMTiles (Phase 8)  | ≤ 2 GB                                    | resolution chosen to fit                                          |
-| Hourly satellite clouds (Phase 6)  | ≤ 0.7 GB                                  | 24 h kept × ≤ 30 MB per hour                                      |
-| Small JSON etc.                    | < 0.01 GB                                 |                                                                   |
-| **Total**                          | **≈ 3 GB** (target 5 GB, hard limit 8 GB) | during the yearly light-pollution switch-over, +2 GB for ≤ 1 week |
+| Storage                            | Size                                        | Notes                                                             |
+| ---------------------------------- | ------------------------------------------- | ----------------------------------------------------------------- |
+| Deep star layer (Gaia DR3, V ≤ 14) | 0.198 GB (uploaded)                         | 12.4 M stars with 10 < V ≤ 14, 25,987 tiles, 15.9 bytes/star      |
+| Light pollution PMTiles (Phase 8)  | ≤ 2 GB                                      | resolution chosen to fit                                          |
+| Hourly satellite clouds (GMGSI)    | ≈ 0.1 GB                                    | 24 h kept × ~4.3 MB per hour (zoom 0–5 WebP)                      |
+| Small JSON etc.                    | < 0.01 GB                                   |                                                                   |
+| **Total**                          | **≈ 2.3 GB** (target 5 GB, hard limit 8 GB) | during the yearly light-pollution switch-over, +2 GB for ≤ 1 week |
 
-| Class A (writes, lists)                                     | Per month                            |
-| ----------------------------------------------------------- | ------------------------------------ |
-| Hourly cloud upload: 1 PUT + 1 LIST (bucket total) per hour | 24 × 30 × 2 = **1,440**              |
-| Yearly light-pollution, deep stars, occasional re-uploads   | < 20                                 |
-| Deletes                                                     | free                                 |
-| **Total**                                                   | **≈ 1,500 = 0.15 % of the free 1 M** |
+| Class A (writes, lists)                                       | Per month                            |
+| ------------------------------------------------------------- | ------------------------------------ |
+| Hourly clouds: 1 LIST + 1 PUT (archive) + 1 PUT (latest.json) | 24 × 30 × 3 = **2,160**              |
+| Yearly light-pollution, deep stars, occasional re-uploads     | < 20                                 |
+| Deletes                                                       | free                                 |
+| **Total**                                                     | **≈ 2,200 = 0.22 % of the free 1 M** |
 
 | Class B (reads)                                                                                                                                                                           | Per month                                               |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
@@ -165,13 +165,14 @@ So the free Workers request cap also caps R2 reads below half the R2 free tier.
 
 ### Worker requests per visit (account-wide free limit: 100,000/day, shared with your main site)
 
-| Action                                      | Worker requests                                                         |
-| ------------------------------------------- | ----------------------------------------------------------------------- |
-| Open the site (sky + cards)                 | 0–2 (deep star tiles only when zoomed in; 7Timer once per 3 h, Phase 7) |
-| Zoom the sky to a telescope field           | 5–30 star tiles, cached afterwards                                      |
-| New location: terrain horizon               | 8–12, once (then cached on the device)                                  |
-| Open the satellite cloud map (Phase 6)      | ≈ 20–40 tiles                                                           |
-| Light-pollution value at the site (Phase 8) | 1–2                                                                     |
+| Action                                        | Worker requests                                                             |
+| --------------------------------------------- | --------------------------------------------------------------------------- |
+| Open the site (sky + cards)                   | 0–2 (deep star tiles only when zoomed in; 7Timer once per 3 h, Phase 7)     |
+| Zoom the sky to a telescope field             | 5–30 star tiles, cached afterwards                                          |
+| New location: terrain horizon                 | 8–12, once (then cached on the device)                                      |
+| Site's own satellite cloud sample             | 1–2 GMGSI tiles + 1 small JSON per hour                                     |
+| Open the satellite cloud map (off by default) | ≈ 10–20 GMGSI tiles; ×6 if you press play (GIBS tiles don't use the Worker) |
+| Light-pollution value at the site (Phase 8)   | 1–2                                                                         |
 
 A typical visit costs ~2–5 requests; a heavy one ~60. **10,000 typical visits/day ≈ 20,000–50,000
 requests**, so traffic would have to grow to tens of thousands of visits a day before the shared
@@ -210,14 +211,51 @@ If you add a custom domain on Cloudflare (e.g. `sky.example.com`), the same Work
 domain with Cloudflare's CDN in front. Neither costs money. The `r2.dev` URL stays off: it is
 rate-limited and meant for testing.
 
+## Satellite clouds
+
+Two kinds of observed cloud, both thermal infrared (works day and night):
+
+- **NASA GIBS** WMTS (no key), Web Mercator endpoint: `GOES-East_ABI_Band13_Clean_Infrared`,
+  `GOES-West_ABI_Band13_Clean_Infrared`, `Himawari_AHI_Band13_Clean_Infrared`, every 10 minutes,
+  zoom 0–6. These layers don't accept "current": the app asks for an explicit 10-minute time and
+  steps back with `HEAD` requests until one exists (a time not yet published returns 404).
+  Browsers load these tiles straight from NASA; they don't touch our Worker.
+- **NOAA GMGSI** (public S3 bucket `noaa-gmgsi-pds`, no account): an hourly global mosaic that also
+  covers Europe, Africa and India (Meteosat). The **Hourly satellite clouds** workflow
+  ([`clouds-hourly.yml`](.github/workflows/clouds-hourly.yml), minute 47 of every hour) turns each
+  new hour into one PMTiles file of WebP tiles (zoom 0–5, ~4.3 MB) with
+  [`pipelines/clouds/gmgsi.py`](pipelines/clouds/gmgsi.py) and publishes it with
+  `r2.py publish-hourly`: one listing, the 8 GB guard, the upload, deletion of hours older than 24 h,
+  and `data/clouds-latest.json` listing the hours that exist. The raw NetCDF never leaves the runner.
+  - The file's grid is already Mercator (0.072° columns, rows uniform in Mercator y to ±72.7°), so
+    tiling is a resample. Grey levels follow `T = (660 − grey) / 2` K; checked against model skin
+    temperatures at clear sites (clear pixels read 2–9 K colder, the usual water-vapour effect).
+
+**Clouds now.** At the site and at the 16 cloud-ring points the app reads GMGSI pixels (~30 km
+boxes) and counts a pixel as cloud when it is more than 8 K colder than the surface air
+temperature (fully at 20 K). That observed fraction is blended with the forecast: weight 0.6 for
+an image up to 1.5 h from the time shown, falling to 0 at 6 h. In the sky view the same blend is
+applied direction by direction, so observed cloud appears on the correct side of the sky; cloud
+the model lacks entirely is drawn high (cirrus) when the tops are below 240 K, otherwise mid-level.
+Infrared misses low fog and stratus, which is why the forecast always keeps some weight.
+
+### Scheduled jobs and the 60-day pause
+
+GitHub pauses scheduled workflows in public repos after 60 days without repository activity. The
+[`keepalive.yml`](.github/workflows/keepalive.yml) workflow commits the date to
+`status/keepalive.md` on the 1st of every month, which counts as activity. If a schedule was paused
+anyway: repo → **Actions** → pick the workflow on the left → **Enable workflow**. To stop the hourly
+cloud job: same place → **⋯ → Disable workflow** (old hours are then removed by the bucket's 2-day
+lifecycle rule).
+
 ## Roadmap
 
 1. ✅ Setup, CI, license, trial build of Stellarium Web Engine
 2. ✅ 3D sky with self-hosted catalogs, time controls
 3. ✅ Live conditions (Open-Meteo weather + air quality), condition cards, tonight timeline
 4. ✅ Realism layer: extinction, sky brightness, limiting magnitude, clouds, Moon, terrain horizon
-5. R2 bucket + Worker (range requests, caching, CORS, 7Timer proxy) — needs your OK
-6. Satellite clouds (GIBS map, GMGSI hourly PMTiles)
+5. ✅ R2 bucket + Worker (range requests, caching, CORS, 7Timer proxy); deep Gaia star layer
+6. ✅ Satellite clouds (GIBS map, GMGSI hourly PMTiles, satellite + model "clouds now")
 7. Seeing model + 7Timer second opinion
 8. Light pollution pipeline (Black Marble → sky glow → PMTiles)
 9. Optional HiPS sky surveys
@@ -228,7 +266,8 @@ rate-limited and meant for testing.
 
 - Seeing and transparency are forecasts; nothing free measures live seeing.
 - Light pollution is modelled from yearly satellite data and underestimates LED light.
-- Satellite cloud images are 10 minutes (GIBS) to 2–3 hours (GMGSI) old.
+- Satellite cloud images are ~35 minutes (GOES, Himawari via GIBS) to ~1.5 hours (GMGSI) old
+  when they appear, and infrared cannot tell low fog or stratus from the ground.
 
 ## License
 

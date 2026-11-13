@@ -5,7 +5,10 @@ import unittest
 from unittest import mock
 
 import r2
-from r2 import GB, Obj, plan_upload
+import json
+from datetime import datetime, timezone
+
+from r2 import GB, Obj, latest_json, plan_hourly, plan_upload
 
 
 class Guard(unittest.TestCase):
@@ -45,3 +48,36 @@ class Guard(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Hourly(unittest.TestCase):
+    NOW = datetime(2026, 11, 13, 4, 30, tzinfo=timezone.utc)
+
+    def test_prunes_old_hours_keeps_recent_and_lists_newest_first(self) -> None:
+        objs = [Obj("stars/gaia-deep-v1.pmtiles", 198_000_000),
+                Obj("clouds/hourly/2026111203.pmtiles", 4_000_000),  # 25.5 h old: pruned
+                Obj("clouds/hourly/2026111205.pmtiles", 4_000_000),
+                Obj("clouds/hourly/2026111302.pmtiles", 4_000_000)]
+        prune, guard, hours = plan_hourly(objs, {"clouds/hourly/2026111303.pmtiles": 4_300_000}, 24, self.NOW)
+        self.assertEqual(prune, ["clouds/hourly/2026111203.pmtiles"])
+        self.assertEqual(guard, [])
+        self.assertEqual(hours, ["2026111303", "2026111302", "2026111205"])
+
+    def test_guard_deletes_oldest_remaining_hour_when_over_limit(self) -> None:
+        objs = [Obj("lightpollution/lp-2025.pmtiles", int(7.99 * GB)),
+                Obj("clouds/hourly/2026111301.pmtiles", 5_000_000),
+                Obj("clouds/hourly/2026111302.pmtiles", 5_000_000)]
+        _, guard, hours = plan_hourly(objs, {"clouds/hourly/2026111303.pmtiles": 5_000_000}, 24, self.NOW)
+        self.assertEqual(guard, ["clouds/hourly/2026111301.pmtiles"])
+        self.assertEqual(hours, ["2026111303", "2026111302"])
+
+    def test_refuses_and_uploads_nothing_when_it_cannot_fit(self) -> None:
+        objs = [Obj("lightpollution/lp-2025.pmtiles", int(8 * GB))]
+        _, guard, hours = plan_hourly(objs, {"clouds/hourly/2026111303.pmtiles": 5_000_000}, 24, self.NOW)
+        self.assertIsNone(guard)
+        self.assertEqual(hours, [])
+
+    def test_latest_json_shape(self) -> None:
+        d = json.loads(latest_json(["2026111303", "2026111302"]))
+        self.assertEqual(d["hours"][0], {"hour": "2026111303", "time": "2026-11-13T03:00:00Z"})
+        self.assertEqual(d["maxzoom"], 5)
