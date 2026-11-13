@@ -191,9 +191,11 @@ def cmd_calibrate(year: int) -> dict:
     obs = np.array([s for _, _, s in pts])
     print(f"radial profiles in {time.time() - t0:.0f} s")
     results = []
-    for p in (2.0, 2.3, 2.5, 2.7, 3.0):
-        for d0 in (0.25, 0.5, 1.0, 2.0):
-            for D in (50.0, 100.0, 300.0):
+    # First full fit (2026) landed on the grid edge at p = 2.0, D = 300 km, so the
+    # grid reaches past both (Walker's law p = 2.5 stays inside).
+    for p in (1.6, 1.8, 2.0, 2.2, 2.5, 2.8):
+        for d0 in (0.25, 0.5, 1.0):
+            for D in (100.0, 300.0, 1000.0):
                 S = prof @ kernel_value(BIN_MID, p, d0, D)
                 A, res = fit_scale(S, obs)
                 st = stats(res)
