@@ -48,6 +48,39 @@ export interface CloudInput {
   color: { low: Rgb; mid: Rgb; high: Rgb };
   width: number;
   height: number;
+  /**
+   * Real cloud field from the satellite (sat/field.ts): brightness temperatures
+   * on a grid around the site, the surface temperature, the satellite's weight
+   * (0–1, fading with the image's age) and that age in seconds (clouds drift
+   * with the layer winds over it).
+   */
+  field?: {
+    n: number;
+    stepKm: number;
+    bt: Float32Array;
+    surfaceK: number;
+    weight: number;
+    ageS: number;
+  } | null;
+  /** Artificial sky glow behind the clouds: colour and zenith opacity (0–1). */
+  glow?: { rgb: Rgb; zenithA: number } | null;
+}
+
+/** Cloud tops cool at the standard lapse rate (K per km). */
+export const LAPSE_K_PER_KM = 6.5;
+
+/** Share of a cloud with this top height (km) that belongs to each layer (low/mid/high). */
+export function layerShare(topKm: number): [number, number, number] {
+  const ramp = (x: number, a: number, b: number) => Math.min(1, Math.max(0, (x - a) / (b - a)));
+  const aboveLow = ramp(topKm, 2.5, 3.5);
+  const aboveMid = ramp(topKm, 6.25, 7.75);
+  return [1 - aboveLow, aboveLow * (1 - aboveMid), aboveMid];
+}
+
+/** Brightness temperature (K) → cloud fraction (0–1) and top height (km). */
+export function cellCloud(btK: number, surfaceK: number): { frac: number; topKm: number } {
+  const frac = Math.min(1, Math.max(0, (surfaceK - 8 - btK) / 12));
+  return { frac, topKm: Math.max(0, (surfaceK - btK) / LAPSE_K_PER_KM) };
 }
 
 const R_EARTH = 6371;
@@ -198,6 +231,37 @@ export function renderClouds(input: CloudInput): Uint8ClampedArray {
       return col;
     }),
   );
+  // Satellite field sampling (bilinear), shifted by each layer's drift since the image.
+  const F = input.field && input.field.weight > 0.01 ? input.field : null;
+  const fieldShift = layerState.map((L) => {
+    if (!F) return { x: 0, y: 0 };
+    const wind = input.wind[L.key];
+    const to = ((wind.dir + 180) * Math.PI) / 180;
+    const km = (wind.speed * F.ageS) / 3600;
+    return { x: Math.sin(to) * km, y: Math.cos(to) * km };
+  });
+  const fieldCover = (l: number, x: number, y: number): number => {
+    if (!F) return Number.NaN;
+    const sh = fieldShift[l] ?? { x: 0, y: 0 };
+    const c = (F.n - 1) / 2;
+    const fx = (x - sh.x) / F.stepKm + c;
+    const fy = (y - sh.y) / F.stepKm + c;
+    const ix = Math.floor(fx);
+    const iy = Math.floor(fy);
+    if (ix < 0 || iy < 0 || ix >= F.n - 1 || iy >= F.n - 1) return Number.NaN;
+    const tx = fx - ix;
+    const ty = fy - iy;
+    const at = (a: number, b: number) => F.bt[b * F.n + a] ?? Number.NaN;
+    const v00 = at(ix, iy);
+    const v10 = at(ix + 1, iy);
+    const v01 = at(ix, iy + 1);
+    const v11 = at(ix + 1, iy + 1);
+    const bt = (v00 * (1 - tx) + v10 * tx) * (1 - ty) + (v01 * (1 - tx) + v11 * tx) * ty;
+    if (!Number.isFinite(bt)) return Number.NaN;
+    const { frac, topKm } = cellCloud(bt, F.surfaceK);
+    return frac * (layerShare(topKm)[l] ?? 0);
+  };
+
   const coverFast = (l: number, i: number, d: number, center: number): number => {
     let prevD = 0;
     let prevV = center;
@@ -215,6 +279,14 @@ export function renderClouds(input: CloudInput): Uint8ClampedArray {
     }
     return prevV / 100;
   };
+
+  const gz = input.glow?.zenithA ?? 0;
+  const gRgb: Rgb = input.glow?.rgb ?? [0, 0, 0];
+  const rowGlow = new Float32Array(h);
+  for (let j = 0; j < h; j++) {
+    const s = Math.sin((Math.max(0.5, ((j + 0.5) / h) * 90) * Math.PI) / 180);
+    rowGlow[j] = Math.min(2.2, 1 / Math.sqrt(Math.max(0.03, s)));
+  }
 
   for (let j = 0; j < h; j++) {
     const alt = Math.max(0.3, ((j + 0.5) / h) * 90);
@@ -238,7 +310,12 @@ export function renderClouds(input: CloudInput): Uint8ClampedArray {
         const L = layerState[l];
         const R = rowState[l];
         if (!L || !R) continue;
-        const cover = coverFast(l, i, R.d, input.center[L.key]);
+        let cover = coverFast(l, i, R.d, input.center[L.key]);
+        if (F) {
+          // Real clouds where the satellite saw them, blended by the image's weight.
+          const fc = fieldCover(l, R.d * sinA, R.d * cosA);
+          if (Number.isFinite(fc)) cover = F.weight * fc + (1 - F.weight) * cover;
+        }
         if (cover <= 0.001) continue;
         // Offset by an arbitrary 731/198 noise cells so the site never sits on the lattice origin.
         const x = (R.d * sinA - L.dx) / L.scaleKm + 731.37;
@@ -257,6 +334,15 @@ export function renderClouds(input: CloudInput): Uint8ClampedArray {
         g += transmit * a * L.color[1];
         b += transmit * a * L.color[2];
         transmit *= 1 - a;
+      }
+      // Artificial sky glow behind the clouds, brighter towards the horizon
+      // (path length through lit air; roughly 1/√sin(alt), capped).
+      if (gz > 0) {
+        const ga = Math.min(0.85, gz * (rowGlow[j] ?? 1));
+        r += transmit * ga * gRgb[0];
+        g += transmit * ga * gRgb[1];
+        b += transmit * ga * gRgb[2];
+        transmit *= 1 - ga;
       }
       const alpha = 1 - transmit;
       const k = (j * w + i) * 4;
@@ -292,7 +378,8 @@ export function cloudColors(sunAlt: number, moonAlt: number, moonIllum: number, 
   ];
   const night: Rgb = [6, 7, 9];
   const moonlit: Rgb = [58, 62, 70];
-  const orange: Rgb = [150, 82, 38];
+  // Cloud bases lit by city lights: a dim orange-grey, not a bright orange.
+  const orange: Rgb = [104, 80, 62];
   const base = (dayRgb: Rgb, glowShare: number): Rgb => {
     let c = lerp(night, moonlit, moon * 0.8);
     c = lerp(c, orange, Math.min(1, glow) * glowShare);

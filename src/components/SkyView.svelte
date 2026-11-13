@@ -37,6 +37,10 @@
     glow?: DomeGlow | null;
     /** Optional image survey (null = off). */
     survey?: EngineSurvey | null;
+    /** DSS server URL for deep-sky photos that fade in when zoomed in (null = off). */
+    deepSky?: string | null;
+    /** Camera-like rendering: higher exposure, smaller bright-star blobs. */
+    longExposure?: boolean;
     oncursor?: (p: { alt: number; az: number } | null) => void;
   }
   let {
@@ -50,6 +54,8 @@
     groundColor,
     glow = null,
     survey = null,
+    deepSky = null,
+    longExposure = false,
     oncursor,
   }: Props = $props();
 
@@ -127,9 +133,37 @@
     cons.labels_visible = constellations;
   });
 
+  // Field of view in degrees, polled (the engine animates zooms itself).
+  let fovDeg = $state(120);
+  onMount(() => {
+    const t = setInterval(() => {
+      if (stel) fovDeg = Math.round(stel.core.fov * stel.R2D * 10) / 10;
+    }, 250);
+    return () => clearInterval(t);
+  });
+  /** Deep-sky photo opacity: none above 28°, full (0.9) below 12°. */
+  const deepOpacity = $derived.by(() => {
+    if (!deepSky) return 0;
+    const t = Math.min(1, Math.max(0, (28 - fovDeg) / 16));
+    return Math.round(t * t * (3 - 2 * t) * 0.9 * 20) / 20;
+  });
+
   $effect(() => {
     if (!stel) return;
-    setSurvey(stel, survey ? { ...survey } : null);
+    if (survey) setSurvey(stel, { ...survey });
+    else if (deepSky && deepOpacity > 0)
+      setSurvey(stel, { url: deepSky, galactic: false, opacity: deepOpacity });
+    else setSurvey(stel, null);
+  });
+
+  // Star rendering: the naked-eye view with slightly larger stars than the engine
+  // default; the long exposure raises the exposure like a camera would.
+  $effect(() => {
+    if (!stel) return;
+    const c = stel.core as typeof stel.core & Record<string, number>;
+    c.exposure_scale = longExposure ? 7 : 2;
+    c.star_linear_scale = longExposure ? 1.0 : 1.25;
+    c.star_relative_scale = longExposure ? 1.1 : 1.15;
   });
 
   $effect(() => {
@@ -177,6 +211,7 @@
       return;
     }
     const input = $state.snapshot({ ...clouds, width: CW, height: CH }) as CloudInput;
+    if (import.meta.env.DEV) (window as unknown as { __clouds: CloudInput }).__clouds = input;
     const id = ++jobId;
     const w = cloudWorker();
     if (w) {

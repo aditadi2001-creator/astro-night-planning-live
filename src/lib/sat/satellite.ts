@@ -7,6 +7,7 @@
 import type { Cached } from '../data/cache';
 import { ringPoints } from '../data/openmeteo';
 import { loadGmgsiIndex, samplePlaces } from './gmgsi';
+import { loadCloudField, type CloudField } from './field';
 
 export interface SatelliteSample {
   /** GMGSI hour, YYYYMMDDHH (UTC). */
@@ -19,6 +20,8 @@ export interface SatelliteSample {
   ring: number[][];
   /** Site brightness temperatures for the newest and up to 4 earlier hours, newest first. */
   history: { hour: string; time: number; site: number[] }[];
+  /** Cloud field ±300 km around the site for drawing real clouds (null if unavailable). */
+  field: CloudField | null;
 }
 
 export async function loadSatellite(
@@ -43,8 +46,11 @@ export async function loadSatellite(
       }
     }),
   );
+  const time = Date.parse(newest.time);
+  const field = await loadCloudField(newest.hour, time, lat, lon, signal).catch(() => null);
   return {
     data: {
+      field,
       hour: newest.hour,
       time: Date.parse(newest.time),
       site: bt[0] ?? [],

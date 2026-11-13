@@ -10,6 +10,10 @@
     surveys: boolean;
     survey: string;
     surveyOpacity: number;
+    /** Long exposure (camera-like, ~4 mag deeper) instead of the naked-eye view. */
+    longExposure: boolean;
+    /** Real survey photos of nebulae and galaxies fade in when zoomed in. */
+    deepSky: boolean;
   }
 
   export interface SurveyStatus {
@@ -36,8 +40,26 @@
   } = $props();
 
   type Key =
-    'clouds' | 'haze' | 'terrain' | 'constellations' | 'lightpollution' | 'surveys' | 'satmap';
+    | 'clouds'
+    | 'haze'
+    | 'terrain'
+    | 'constellations'
+    | 'lightpollution'
+    | 'surveys'
+    | 'satmap'
+    | 'longExposure'
+    | 'deepSky';
   const items: { key: Key; label: string; hint: string }[] = [
+    {
+      key: 'longExposure',
+      label: 'Long exposure',
+      hint: 'Camera-like view about 4 magnitudes deeper than the eye (still limited by the light pollution at the site)',
+    },
+    {
+      key: 'deepSky',
+      label: 'Deep-sky photos',
+      hint: 'Real survey photos of nebulae and galaxies fade in as you zoom in (DSS2 colour)',
+    },
     { key: 'clouds', label: 'Clouds', hint: 'Live clouds in the sky (forecast + satellite)' },
     {
       key: 'lightpollution',

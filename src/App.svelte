@@ -36,7 +36,13 @@
     type Weather,
   } from './lib/data/openmeteo';
   import { buildRow, buildTimeline, moonEvents, twilight } from './lib/conditions';
-  import { estimateClouds, timelineEnd, timelineStart, type SatObs } from './lib/clouds/estimate';
+  import {
+    estimateClouds,
+    nowcastWeight,
+    timelineEnd,
+    timelineStart,
+    type SatObs,
+  } from './lib/clouds/estimate';
   import { colourExcessPerAirmass, zenithExtinction } from './lib/physics/extinction';
   import { limitingMagnitude, zenithSkyBrightness } from './lib/physics/skybrightness';
   import { cloudColors, type CloudInput } from './lib/sky/clouds';
@@ -82,6 +88,23 @@
     surveys: false,
     survey: SURVEYS[0]?.id ?? 'dss',
     surveyOpacity: 0.8,
+    longExposure: false,
+    deepSky: true,
+  });
+
+  // Deep-sky photos: the DSS2 colour survey, faded in by the sky view when zoomed in.
+  let deepSkyUrl = $state<string | null>(null);
+  $effect(() => {
+    if (!layers.deepSky) return;
+    const dss = surveyById('dss');
+    if (!dss || deepSkyUrl) return;
+    let cancelled = false;
+    void pickServer(dss).then((src) => {
+      if (!cancelled) deepSkyUrl = src?.url ?? null;
+    });
+    return () => {
+      cancelled = true;
+    };
   });
 
   // ---- optional sky survey: find a server only once the user turns it on ----------
@@ -359,13 +382,37 @@
   );
   const limitMag = $derived(limitingMagnitude(sky.nl));
   const engineAtmosphere = $derived<EngineAtmosphere | null>(
-    layers.haze ? { pressure, temperature, k: ext.total, dbv, limitMag } : null,
+    layers.haze
+      ? {
+          pressure,
+          temperature,
+          k: ext.total,
+          dbv,
+          // Long exposure reaches ~4 mag deeper than the eye against the same sky.
+          limitMag: limitMag + (layers.longExposure ? 4 : 0),
+        }
+      : null,
   );
 
   const lighting = $derived({
     sunAlt: row.sunAlt,
     moonAlt: row.moonAlt,
     moonIllum: moon.illumination,
+  });
+  // Satellite weight for the real cloud field at the shown time (same hand-over as the figures).
+  const satWeightField = $derived(
+    satellite?.field && Number.isFinite(surfaceK) ? nowcastWeight(minute, satellite.field.time) : 0,
+  );
+  // Sky glow from the light-pollution ratio (artificial / natural zenith brightness):
+  // opacity 0.065·ln(1 + ratio): 0.05 rural (SQM ~21), 0.14 suburban (~19.5), 0.29 inner
+  // city (~17). Over a dark screen that gives roughly the dim brown-grey of a city sky
+  // (Bortle 9 is ~0.016 cd/m², ~90× a natural sky), brighter towards the horizon.
+  const skyGlow = $derived.by(() => {
+    if (!siteLight || domeStrength <= 0) return null;
+    const a = Math.min(0.35, 0.065 * Math.log(1 + Math.max(0, siteLight.ratio))) * domeStrength;
+    return a > 0.01
+      ? { rgb: [128, 102, 86] as [number, number, number], zenithA: Math.round(a * 100) / 100 }
+      : null;
   });
   // Drift time quantised to 30 s so the cloud texture is rebuilt at most twice a minute.
   const driftT = $derived(Math.floor(shown.getTime() / 30_000) * 30);
@@ -397,12 +444,26 @@
         satRing.length === samples.length ? blendSamples(samples, satRing, satWeight) : samples,
       wind: { low: wind(850), mid: wind(500), high: wind(250) },
       time: driftT,
+      // Real clouds from the newest satellite image, placed where it saw them.
+      field:
+        satellite?.field && satWeightField > 0.01
+          ? {
+              n: satellite.field.n,
+              stepKm: satellite.field.stepKm,
+              bt: satellite.field.bt,
+              surfaceK: surfaceK,
+              weight: satWeightField,
+              ageS: Math.round((driftT * 1000 - satellite.field.time) / 1000),
+            }
+          : null,
+      // Light-pollution sky glow (yearly model) behind the clouds, at night only.
+      glow: skyGlow,
       // City glow lights clouds from below (orange), scaled by the light pollution.
       color: cloudColors(
         lighting.sunAlt,
         lighting.moonAlt,
         lighting.moonIllum,
-        siteLight ? Math.min(1, siteLight.brightening / 3.5) : 0,
+        siteLight ? Math.min(1, siteLight.brightening / 5) : 0,
       ),
     };
   });
@@ -556,6 +617,8 @@
           groundColor={groundRgb}
           glow={domeGlow}
           survey={engineSurvey}
+          deepSky={layers.deepSky && !layers.surveys ? deepSkyUrl : null}
+          longExposure={layers.longExposure}
           oncursor={(p) => (cursor = p)}
         />
       </section>
