@@ -406,6 +406,21 @@ from 0 % to 100 %, and the satellite measured the warm ground (292–297 K). So
 
 ### The sky view
 
+Laid out like the Stellarium desktop program, and the same in normal view and full screen:
+
+- **Left tool bar** opens windows over the sky: Location (F6), Date and time (F5), Sky and
+  viewing options (F4: clouds, light pollution, haze, terrain, long exposure, deep-sky photos,
+  sky surveys with picker and opacity, satellite map) and Help (F1, all shortcuts).
+- **Bottom button bar** (Stellarium order and keys): constellation lines C, names V, boundaries
+  B · equatorial grid E, azimuthal grid Z, meridian ;, ecliptic , · ground G, cardinal points Q,
+  atmosphere A · deep-sky objects D, planet labels P, star labels · equatorial mount Ctrl+M,
+  centre on selected Space, centre crosshair Alt+C, ocular view Ctrl+O · night mode Ctrl+N,
+  full screen F · time slower J, normal K, faster L, now 8 (×10 steps, into reverse) · then our
+  own layer switches. A status line shows the place, field of view, date/time and time rate.
+- **Zoom** is animated every frame about the screen centre (wheel, pinch, Page Up/Down, + / −,
+  / to zoom in on the selection, \ to zoom out); held arrow keys pan smoothly.
+- **Centre crosshair** on by default; the selected object's information sits top left.
+
 - **Clouds where the satellite saw them**: a 600 × 600 km field of GMGSI pixels around the site
   (5 km cells) gives each place a cloud fraction and a cloud-top height (surface temperature minus
   6.5 K per km); each is drawn in its layer where the line of sight meets it, drifting with the

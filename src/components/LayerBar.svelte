@@ -76,7 +76,6 @@
       hint: 'Extinction, reddening and sky brightness from humidity and aerosols',
     },
     { key: 'terrain', label: 'Terrain', hint: 'Real horizon from elevation data' },
-    { key: 'constellations', label: 'Constellations', hint: 'Lines and names' },
     {
       key: 'surveys',
       label: 'Sky surveys',

@@ -15,81 +15,81 @@
     'Neptune',
     'Pluto',
   ];
-  /** Bright stars with proper names (the engine finds them as "NAME <star>"). */
-  const STARS = [
-    'Sirius',
-    'Canopus',
-    'Arcturus',
-    'Vega',
-    'Capella',
-    'Rigel',
-    'Procyon',
-    'Achernar',
-    'Betelgeuse',
-    'Hadar',
-    'Altair',
-    'Acrux',
-    'Aldebaran',
-    'Antares',
-    'Spica',
-    'Pollux',
-    'Fomalhaut',
-    'Deneb',
-    'Mimosa',
-    'Regulus',
-    'Adhara',
-    'Castor',
-    'Shaula',
-    'Gacrux',
-    'Bellatrix',
-    'Elnath',
-    'Miaplacidus',
-    'Alnilam',
-    'Alnair',
-    'Alnitak',
-    'Alioth',
-    'Dubhe',
-    'Mirfak',
-    'Wezen',
-    'Sargas',
-    'Kaus Australis',
-    'Avior',
-    'Alkaid',
-    'Menkalinan',
-    'Atria',
-    'Alhena',
-    'Peacock',
-    'Polaris',
-    'Mirzam',
-    'Alphard',
-    'Hamal',
-    'Algieba',
-    'Diphda',
-    'Nunki',
-    'Menkent',
-    'Mirach',
-    'Alpheratz',
-    'Rasalhague',
-    'Kochab',
-    'Saiph',
-    'Denebola',
-    'Algol',
-    'Mizar',
-    'Alcor',
-    'Albireo',
-    'Mintaka',
-    'Merak',
-    'Schedar',
-    'Caph',
-    'Mira',
-    'Thuban',
-    'Enif',
-    'Markab',
-    'Scheat',
-    'Sadr',
-    'Zubenelgenubi',
-    'Unukalhai',
-    'Izar',
+  /** Bright stars with proper names → Hipparcos number (the engine finds stars by "HIP n"). */
+  const STARS: [string, number][] = [
+    ['Sirius', 32349],
+    ['Canopus', 30438],
+    ['Arcturus', 69673],
+    ['Vega', 91262],
+    ['Capella', 24608],
+    ['Rigel', 24436],
+    ['Procyon', 37279],
+    ['Achernar', 7588],
+    ['Betelgeuse', 27989],
+    ['Hadar', 68702],
+    ['Altair', 97649],
+    ['Acrux', 60718],
+    ['Aldebaran', 21421],
+    ['Antares', 80763],
+    ['Spica', 65474],
+    ['Pollux', 37826],
+    ['Fomalhaut', 113368],
+    ['Deneb', 102098],
+    ['Mimosa', 62434],
+    ['Regulus', 49669],
+    ['Adhara', 33579],
+    ['Castor', 36850],
+    ['Shaula', 85927],
+    ['Gacrux', 61084],
+    ['Bellatrix', 25336],
+    ['Elnath', 25428],
+    ['Miaplacidus', 45238],
+    ['Alnilam', 26311],
+    ['Alnair', 109268],
+    ['Alnitak', 26727],
+    ['Alioth', 62956],
+    ['Dubhe', 54061],
+    ['Mirfak', 15863],
+    ['Wezen', 34444],
+    ['Sargas', 86228],
+    ['Kaus Australis', 90185],
+    ['Avior', 41037],
+    ['Alkaid', 67301],
+    ['Menkalinan', 28360],
+    ['Atria', 82273],
+    ['Alhena', 31681],
+    ['Peacock', 100751],
+    ['Polaris', 11767],
+    ['Mirzam', 30324],
+    ['Alphard', 46390],
+    ['Hamal', 9884],
+    ['Algieba', 50583],
+    ['Diphda', 3419],
+    ['Nunki', 92855],
+    ['Menkent', 68933],
+    ['Mirach', 5447],
+    ['Alpheratz', 677],
+    ['Rasalhague', 86032],
+    ['Kochab', 72607],
+    ['Saiph', 27366],
+    ['Denebola', 57632],
+    ['Algol', 14576],
+    ['Mizar', 65378],
+    ['Alcor', 65477],
+    ['Albireo', 95947],
+    ['Mintaka', 25930],
+    ['Merak', 53910],
+    ['Schedar', 3179],
+    ['Caph', 746],
+    ['Mira', 10826],
+    ['Thuban', 68756],
+    ['Enif', 107315],
+    ['Markab', 113963],
+    ['Scheat', 113881],
+    ['Sadr', 100453],
+    ['Zubenelgenubi', 72622],
+    ['Unukalhai', 77070],
+    ['Izar', 72105],
   ];
   const norm = (s: string) => s.toLowerCase().replace(/[\s._-]+/g, '');
 </script>
@@ -98,7 +98,11 @@
   import type { Target } from '../lib/targets';
   import { parseTargets } from '../lib/targets';
 
-  let { onpick }: { onpick: (hit: SearchHit) => boolean } = $props();
+  let { onpick }: { onpick: (hit: SearchHit) => boolean | Promise<boolean> } = $props();
+  let input: HTMLInputElement;
+  export function focus() {
+    input?.focus();
+  }
 
   let q = $state('');
   let open = $state(false);
@@ -123,8 +127,9 @@
     const starts = (s: string) => norm(s).startsWith(n);
     for (const p of PLANETS)
       if (starts(p)) out.push({ kind: 'engine', label: p, sub: 'Solar system', id: `NAME ${p}` });
-    for (const s of STARS)
-      if (starts(s)) out.push({ kind: 'engine', label: s, sub: 'Star', id: `NAME ${s}` });
+    for (const [s, hip] of STARS)
+      if (starts(s))
+        out.push({ kind: 'engine', label: s, sub: `Star · HIP ${hip}`, id: `HIP ${hip}` });
     if (catalog) {
       for (const t of catalog) {
         if (out.length >= 12) break;
@@ -144,25 +149,27 @@
     return out.slice(0, 12);
   });
 
-  function choose(h: SearchHit | undefined) {
+  async function choose(h: SearchHit | undefined) {
     if (!h) return;
-    const ok = onpick(h);
+    open = false;
+    message = 'Looking…';
+    const ok = await onpick(h);
     message = ok ? '' : `“${h.label}” was not found in the sky data.`;
-    if (ok) {
-      q = '';
-      open = false;
-    }
+    if (ok) q = '';
   }
   function submit() {
-    if (hits.length) return choose(hits[activeI] ?? hits[0]);
+    if (hits.length) return void choose(hits[activeI] ?? hits[0]);
     const raw = q.trim();
     if (!raw) return;
-    // Catalogue designations the engine knows (e.g. "HIP 91262", "HD 172167").
-    if (onpick({ kind: 'engine', label: raw, sub: '', id: raw })) {
-      q = '';
-      open = false;
-      message = '';
-    } else message = `Nothing called “${raw}” found. Try a planet, star name or M/NGC/IC number.`;
+    // Catalogue designations the engine knows (e.g. "HIP 91262", "HD 172167", "* alf Lyr").
+    void Promise.resolve(onpick({ kind: 'engine', label: raw, sub: '', id: raw })).then((ok) => {
+      if (ok) {
+        q = '';
+        open = false;
+        message = '';
+      } else
+        message = `Nothing called “${raw}” found. Try a planet, a star name, HIP number or M/NGC/IC number.`;
+    });
   }
   function onKey(e: KeyboardEvent) {
     if (e.key === 'ArrowDown') {
@@ -185,7 +192,7 @@
   <input
     id="sky-search"
     type="search"
-    placeholder="Search: Mars, Vega, M31…"
+    placeholder="Search: Mars, Vega, M31, HIP…"
     autocomplete="off"
     role="combobox"
     aria-expanded={open && hits.length > 0}
@@ -193,6 +200,7 @@
     aria-autocomplete="list"
     aria-activedescendant={open && hits[activeI] ? `ss-${activeI}` : undefined}
     bind:value={q}
+    bind:this={input}
     onfocus={() => {
       loadCatalog();
       open = true;
@@ -214,7 +222,7 @@
           aria-selected={i === activeI}
           onmousedown={(e) => {
             e.preventDefault();
-            choose(h);
+            void choose(h);
           }}
         >
           <span>{h.label}</span><span class="sub">{h.sub}</span>

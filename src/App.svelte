@@ -3,7 +3,8 @@
   import TopBar from './components/TopBar.svelte';
   import TabNav, { tabFromHash, type TabId } from './components/TabNav.svelte';
   import { fmtDateTime } from './lib/time/format';
-  import SkyView from './components/SkyView.svelte';
+  import SkyView, { type SkyPanel, type TimeCmd } from './components/SkyView.svelte';
+  import LocationPicker from './components/LocationPicker.svelte';
   import TimeControls from './components/TimeControls.svelte';
   import ConditionCards from './components/ConditionCards.svelte';
   import Timeline from './components/Timeline.svelte';
@@ -88,8 +89,8 @@
   let live = $state(true);
   let tab = $state<TabId>(tabFromHash(location.hash));
   let headH = $state(110);
-  // Phones: time controls folded away so the sky is in view (one tap to open).
-  let timeOpen = $state(!matchMedia('(max-width: 640px)').matches);
+  /** Time-rate multiplier while not live (Stellarium J/K/L); 0 = stopped at the chosen time. */
+  let rate = $state(0);
   let night = $state(readNight());
   let layers = $state<LayerState>({
     clouds: true,
@@ -631,22 +632,6 @@
     lunarsolar: false,
   });
   let frameCenter = $state<{ ra: number; dec: number; target: string | null } | null>(null);
-  const anyFrame = $derived(Object.values(shownFrames).some(Boolean));
-  let lastFrames: Record<SetupKind, boolean> = {
-    deepsky: true,
-    planetary: false,
-    lunarsolar: false,
-  };
-  function toggleFrames() {
-    if (anyFrame) {
-      lastFrames = { ...shownFrames };
-      shownFrames = { deepsky: false, planetary: false, lunarsolar: false };
-    } else {
-      shownFrames = Object.values(lastFrames).some(Boolean)
-        ? { ...lastFrames }
-        : { deepsky: true, planetary: false, lunarsolar: false };
-    }
-  }
   // Setups are saved here too: rotation can change from the sky while the Equipment tab is closed.
   $effect(() => {
     saveSetups($state.snapshot(setups) as Record<SetupKind, Setup>);
@@ -699,7 +684,37 @@
   function setTime(t: Date, isLive: boolean) {
     live = isLive;
     shown = t;
+    rate = 0;
   }
+  // Stellarium time keys: J slower (×10 steps, through zero into reverse), K normal
+  // speed, L faster, 8 now.
+  const RATES = [-100000, -10000, -1000, -100, -10, -1, 0, 1, 10, 100, 1000, 10000, 100000];
+  function timeCmd(cmd: TimeCmd) {
+    if (cmd === 'now') return setTime(new Date(), true);
+    const cur = live ? 1 : rate;
+    if (cmd === 'real') {
+      if (Math.abs(shown.getTime() - Date.now()) < 5000) return setTime(new Date(), true);
+      live = false;
+      rate = 1;
+      return;
+    }
+    const i = RATES.indexOf(cur);
+    const at = i < 0 ? RATES.indexOf(0) : i;
+    const next = RATES[Math.min(RATES.length - 1, Math.max(0, at + (cmd === 'faster' ? 1 : -1)))];
+    live = false;
+    rate = next ?? 0;
+  }
+  // Advance the shown time at the chosen rate (the engine animates in between).
+  $effect(() => {
+    if (live || rate === 0) return;
+    let last = performance.now();
+    const t = setInterval(() => {
+      const n = performance.now();
+      shown = new Date(shown.getTime() + (n - last) * rate);
+      last = n;
+    }, 250);
+    return () => clearInterval(t);
+  });
 </script>
 
 <a class="skip" href="#main" onclick={skipToMain}>Skip to content</a>
@@ -716,28 +731,6 @@
   {/await}
 {/if}
 
-{#snippet layerChips()}
-  <button
-    class="chip"
-    aria-pressed={anyFrame}
-    title="Show your camera's field of view on the sky (set up under Equipment)"
-    onclick={toggleFrames}
-  >
-    <span aria-hidden="true">{anyFrame ? '●' : '○'}</span>FOV frame
-  </button>
-  <button
-    class="chip"
-    aria-pressed={cameraOpen}
-    title="Phone camera with the horizon, altitude lines and your target's path, to check what blocks it"
-    onclick={() => {
-      if (document.fullscreenElement) void document.exitFullscreen();
-      cameraOpen = true;
-    }}
-  >
-    <span aria-hidden="true">○</span>Camera view
-  </button>
-{/snippet}
-
 <div class="head" bind:clientHeight={headH}>
   <TopBar {place} {now} {tz} bind:night onplace={setPlace} />
   <TabNav {tab} />
@@ -753,47 +746,38 @@
     aria-label="Live sky"
   >
     <h1 class="visually-hidden">Live sky</h1>
-    <LayerBar bind:layers {surveyStatus} extra={layerChips} />
     <div class="sky-row" class:with-details={!!selectedInfo}>
-      <div class="sky-col">
-        <div class="time-wrap">
-          <button
-            class="time-toggle"
-            aria-expanded={timeOpen}
-            aria-controls="sky-time"
-            onclick={() => (timeOpen = !timeOpen)}
-            >Time: {live ? 'live' : 'chosen'} · {fmtDateTime(shown, tz)}
-            {timeOpen ? '▴' : '▾'}</button
-          >
-          <div id="sky-time" class="time-body" class:open={timeOpen}>
-            <TimeControls {place} time={shown} {live} {tz} events={timeEvents} onchange={setTime} />
-          </div>
-        </div>
-        <div class="sky-box">
-          <SkyView
-            {place}
-            time={shown}
-            {live}
-            {tz}
-            constellations={layers.constellations}
-            atmosphere={engineAtmosphere}
-            clouds={cloudInput}
-            horizon={layers.terrain ? (siteHorizon?.profile ?? null) : null}
-            groundColor={groundRgb}
-            glow={domeGlow}
-            survey={engineSurvey}
-            bind:setups
-            bind:shownFrames
-            onframecenter={(c) => (frameCenter = c)}
-            onselect={(i) => (selectedInfo = i)}
-            goto={gotoTarget}
-            {clearSignal}
-            deepSky={layers.deepSky && !layers.surveys ? deepSkyUrl : null}
-            longExposure={layers.longExposure}
-            oncursor={(p) => (cursor = p)}
-          >
-            {#snippet fullControls()}
-              <LayerBar bind:layers {surveyStatus} extra={layerChips} compact />
+      <div class="sky-box">
+        <SkyView
+          {place}
+          time={shown}
+          {live}
+          {rate}
+          {tz}
+          atmosphere={engineAtmosphere}
+          clouds={cloudInput}
+          horizon={layers.terrain ? (siteHorizon?.profile ?? null) : null}
+          groundColor={groundRgb}
+          glow={domeGlow}
+          survey={engineSurvey}
+          bind:setups
+          bind:shownFrames
+          bind:layers
+          bind:night
+          onframecenter={(c) => (frameCenter = c)}
+          onselect={(i) => (selectedInfo = i)}
+          goto={gotoTarget}
+          {clearSignal}
+          deepSky={layers.deepSky && !layers.surveys ? deepSkyUrl : null}
+          longExposure={layers.longExposure}
+          oncursor={(p) => (cursor = p)}
+          ontime={timeCmd}
+          oncamera={() => (cameraOpen = true)}
+        >
+          {#snippet panel(p: SkyPanel, close: () => void)}
+            {#if p === 'location'}
+              <LocationPicker {place} onplace={setPlace} onclose={close} embedded />
+            {:else if p === 'time'}
               <TimeControls
                 {place}
                 time={shown}
@@ -802,9 +786,15 @@
                 events={timeEvents}
                 onchange={setTime}
               />
-            {/snippet}
-          </SkyView>
-        </div>
+            {:else if p === 'layers'}
+              <LayerBar bind:layers {surveyStatus} compact />
+              <p class="win-note">
+                Display switches (constellations, grids, ground, atmosphere…) are in the button bar
+                at the bottom of the sky; press F1 for the keyboard shortcuts.
+              </p>
+            {/if}
+          {/snippet}
+        </SkyView>
       </div>
       {#if selectedInfo}
         <div class="details-col">
@@ -1037,9 +1027,8 @@
   /* ---- sky tab ---- */
   .sky-panel {
     display: grid;
-    gap: 8px;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
   /* Other tabs: keep the engine alive off-screen, small (cheap to draw) but never 0×0. */
   .sky-panel.offscreen {
@@ -1058,39 +1047,17 @@
     grid-template-columns: minmax(0, 1fr);
     min-height: 0;
   }
-  .sky-col {
-    display: grid;
-    gap: 8px;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-    min-height: 0;
-    min-width: 0;
-  }
-  .time-toggle {
-    display: none;
-    width: 100%;
-    text-align: left;
-    font-size: 14px;
-    min-height: 40px;
-  }
-  @media (max-width: 640px) {
-    .time-toggle {
-      display: block;
-    }
-    .time-body:not(.open) {
-      display: none;
-    }
-    .time-body.open {
-      margin-top: 8px;
-    }
-  }
-  .time-wrap {
-    min-width: 0;
-  }
+  /* Phones: the sky fills the screen under the header. */
   .sky-box {
-    height: 68vh;
-    height: 68dvh;
-    min-height: 320px;
+    height: calc(100vh - var(--head-h, 110px) - 2 * var(--gap));
+    height: calc(100dvh - var(--head-h, 110px) - 2 * var(--gap));
+    min-height: 420px;
+    min-width: 0;
+  }
+  .win-note {
+    margin: 0;
+    font-size: 12px;
+    color: var(--muted);
   }
   .offscreen .sky-box {
     height: 240px;

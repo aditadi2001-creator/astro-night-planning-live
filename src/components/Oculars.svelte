@@ -38,9 +38,8 @@
     /** Name of the selected object, for the frame-centre report. */
     selectedName: string | null;
     onframecenter?: (c: { ra: number; dec: number; target: string | null } | null) => void;
-    /** Action that moves the toolbar into the sky's bottom stack, and that stack. */
-    portal?: (node: HTMLElement, target: HTMLElement | undefined) => { destroy: () => void };
-    bottomEl?: HTMLElement | undefined;
+    /** Smooth zoom to a field of view in degrees (the sky view's own animation). */
+    onzoom?: (deg: number) => void;
   }
   let {
     stel,
@@ -49,8 +48,7 @@
     shown = $bindable(),
     selectedName,
     onframecenter,
-    portal = () => ({ destroy: () => undefined }),
-    bottomEl,
+    onzoom,
   }: Props = $props();
 
   const KINDS: SetupKind[] = ['deepsky', 'planetary', 'lunarsolar'];
@@ -175,10 +173,19 @@
       onframecenter?.({ ra, dec, target });
     }
   }
+  // Redrawn every frame, so the frame never lags behind the sky while panning or zooming.
   onMount(() => {
-    const t = setInterval(tick, 70);
+    let raf = 0;
+    const loop = () => {
+      tick();
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    // Like Stellarium: switching the ocular view on zooms to the frame.
+    const z = setTimeout(() => zoomToFit(), 120);
     return () => {
-      clearInterval(t);
+      cancelAnimationFrame(raf);
+      clearTimeout(z);
       onframecenter?.(null);
     };
   });
@@ -201,9 +208,17 @@
       const bh = Math.abs(stats.fovW * Math.sin(th)) + Math.abs(stats.fovH * Math.cos(th));
       fov = Math.max(fitFov(fovNow, pxPerDeg, bw, w, 0.85), fitFov(fovNow, pxPerDeg, bh, h, 0.85));
     }
-    s.zoomTo(Math.min(185, Math.max(0.01, fov)) * s.D2R, pass ? 0.3 : 0.6);
+    const deg = Math.min(185, Math.max(0.01, fov));
+    if (onzoom) onzoom(deg);
+    else s.zoomTo(deg * s.D2R, 0.5);
     // Wide fields are not linear in the field of view: correct once the zoom has settled.
-    if (pass < 2 && Math.abs(fov / fovNow - 1) > 0.03) setTimeout(() => zoomToFit(pass + 1), 750);
+    if (pass < 3 && Math.abs(fov / fovNow - 1) > 0.02) setTimeout(() => zoomToFit(pass + 1), 450);
+  }
+  export function setMode(m: OcularMode) {
+    mode = m;
+  }
+  export function toggleInfo() {
+    showInfo = !showInfo;
   }
   export function cycleMode() {
     mode = mode === 'sensor' ? 'eyepiece' : mode === 'eyepiece' ? 'telrad' : 'sensor';
@@ -290,130 +305,131 @@
   </svg>
 {/if}
 
-{#if showInfo}
-  <section class="oc-info" aria-label="Ocular information">
-    {#if mode === 'sensor'}
-      <p class="oc-title" style:color={FRAME_COLORS[active]}>{SETUP_LABELS[active]} · sensor</p>
-      <dl>
-        <dt>Telescope</dt>
-        <dd>{setup.telescope} ({setup.focalMm} mm)</dd>
-        <dt>Camera</dt>
-        <dd>{setup.camera}</dd>
-        {#if setup.factor !== 1}
-          <dt>{setup.factor < 1 ? 'Reducer' : 'Barlow'}</dt>
-          <dd>{setup.factor}× → {Math.round(stats.effFocalMm)} mm f/{stats.fRatio.toFixed(1)}</dd>
-        {/if}
-        <dt>Field</dt>
-        <dd>{fmtFov(stats)}</dd>
-        <dt>Pixel scale</dt>
-        <dd>
-          {(stats.pixelScale * binning).toFixed(2)}″/px{binning > 1
-            ? ` (bin ${binning}×${binning})`
-            : ''}
-        </dd>
-        <dt>Image scale</dt>
-        <dd>{plateScale(setup).toFixed(1)}″/mm</dd>
-        <dt>Resolution</dt>
-        <dd>{Math.floor(setup.widthPx / binning)} × {Math.floor(setup.heightPx / binning)} px</dd>
-        <dt>Rotation</dt>
-        <dd>
-          {setup.rotationDeg.toFixed(0)}° {northUp ? '(to north)' : '(to screen)'} · PA {(
-            ((pa % 360) + 360) %
-            360
-          ).toFixed(0)}°
-        </dd>
-      </dl>
-    {:else if mode === 'eyepiece'}
-      <p class="oc-title">{SETUP_LABELS[active]} · eyepiece</p>
-      <dl>
-        <dt>Telescope</dt>
-        <dd>{setup.telescope}{setup.factor !== 1 ? ` + ${setup.factor}×` : ''}</dd>
-        <dt>Eyepiece</dt>
-        <dd>{epFocal} mm, {epAfov}° apparent</dd>
-        <dt>Magnification</dt>
-        <dd>{ep.magnification.toFixed(0)}×</dd>
-        <dt>True field</dt>
-        <dd>{fmtAngle(ep.trueFovDeg)}</dd>
-        <dt>Exit pupil</dt>
-        <dd>{ep.exitPupilMm.toFixed(1)} mm</dd>
-      </dl>
-    {:else}
-      <p class="oc-title telrad-t">Telrad</p>
-      <dl>
-        <dt>Rings</dt>
-        <dd>0.5°, 2°, 4°</dd>
-      </dl>
-    {/if}
-  </section>
-{/if}
-
-<div class="oc-bar" role="toolbar" aria-label="Ocular controls" use:portal={bottomEl}>
-  <button class="t" aria-expanded={open} onclick={() => (open = !open)} title="Ocular controls"
-    >Ocular {open ? '▾' : '▴'}</button
-  >
-  {#if open}
-    <div class="grp" role="group" aria-label="Mode">
-      <button aria-pressed={mode === 'sensor'} onclick={() => (mode = 'sensor')}>Sensor</button>
-      <button aria-pressed={mode === 'eyepiece'} onclick={() => (mode = 'eyepiece')}
-        >Eyepiece</button
-      >
-      <button aria-pressed={mode === 'telrad'} onclick={() => (mode = 'telrad')}>Telrad</button>
-    </div>
-    {#if mode !== 'telrad'}
-      <div class="grp" role="group" aria-label="Setup">
-        {#each KINDS as k (k)}
-          <button aria-pressed={active === k} onclick={() => pick(k)} title={setups[k].telescope}
-            ><span class="dot" style:background={FRAME_COLORS[k]} aria-hidden="true"
-            ></span>{SETUP_LABELS[k]}</button
-          >
-        {/each}
-      </div>
-    {/if}
-    {#if mode === 'sensor'}
-      <div class="grp" role="group" aria-label="Rotate the frame">
-        <button onclick={() => rotate(-15)} title="Rotate −15° (Shift+[)">−15°</button>
-        <button onclick={() => rotate(-1)} title="Rotate −1° ([)">−1°</button>
-        <button onclick={() => rotate(1)} title="Rotate +1° (])">+1°</button>
-        <button onclick={() => rotate(15)} title="Rotate +15° (Shift+])">+15°</button>
-      </div>
-      <button
-        aria-pressed={northUp}
-        onclick={() => (northUp = !northUp)}
-        title="Keep the frame at its true position angle (follows celestial north) instead of the screen"
-        >True PA</button
-      >
-      <label class="sel"
-        >Bin <select bind:value={binning}>
-          {#each [1, 2, 3, 4] as b (b)}<option value={b}>{b}×{b}</option>{/each}
-        </select></label
-      >
-    {:else if mode === 'eyepiece'}
-      <label class="sel"
-        >Eyepiece <select
-          value={epPreset}
-          onchange={(e) => setEyepiece(Number((e.currentTarget as HTMLSelectElement).value))}
-        >
-          {#if epPreset < 0}<option value={-1}>Custom</option>{/if}
-          {#each EYEPIECES as e, i (e.name)}<option value={i}>{e.name}</option>{/each}
-        </select></label
-      >
-      <label class="sel num"
-        >Focal <input type="number" min="1" max="100" step="0.5" bind:value={epFocal} /> mm</label
-      >
-      <label class="sel num"
-        >AFOV <input type="number" min="20" max="120" step="1" bind:value={epAfov} />°</label
-      >
-    {/if}
-    <button
-      onclick={() => zoomToFit()}
-      title="Zoom so the {mode === 'sensor'
-        ? 'frame'
-        : mode === 'eyepiece'
-          ? 'eyepiece field'
-          : 'rings'} fill the view (Z)"
-      >Zoom to {mode === 'sensor' ? 'frame' : mode === 'eyepiece' ? 'eyepiece' : 'Telrad'}</button
+<div class="oc-right">
+  <div class="oc-bar" role="toolbar" aria-label="Ocular controls">
+    <button class="t" aria-expanded={open} onclick={() => (open = !open)} title="Ocular controls"
+      >Ocular {open ? '▾' : '▴'}</button
     >
-    <button aria-pressed={showInfo} onclick={() => (showInfo = !showInfo)}>Info</button>
+    {#if open}
+      <div class="grp" role="group" aria-label="Mode">
+        <button aria-pressed={mode === 'sensor'} onclick={() => (mode = 'sensor')}>Sensor</button>
+        <button aria-pressed={mode === 'eyepiece'} onclick={() => (mode = 'eyepiece')}
+          >Eyepiece</button
+        >
+        <button aria-pressed={mode === 'telrad'} onclick={() => (mode = 'telrad')}>Telrad</button>
+      </div>
+      {#if mode !== 'telrad'}
+        <div class="grp" role="group" aria-label="Setup">
+          {#each KINDS as k (k)}
+            <button aria-pressed={active === k} onclick={() => pick(k)} title={setups[k].telescope}
+              ><span class="dot" style:background={FRAME_COLORS[k]} aria-hidden="true"
+              ></span>{SETUP_LABELS[k]}</button
+            >
+          {/each}
+        </div>
+      {/if}
+      {#if mode === 'sensor'}
+        <div class="grp" role="group" aria-label="Rotate the frame">
+          <button onclick={() => rotate(-15)} title="Rotate −15° (Shift+[ )">−15°</button>
+          <button onclick={() => rotate(-1)} title="Rotate −1° ([)">−1°</button>
+          <button onclick={() => rotate(1)} title="Rotate +1° (])">+1°</button>
+          <button onclick={() => rotate(15)} title="Rotate +15° (Shift+])">+15°</button>
+        </div>
+        <button
+          aria-pressed={northUp}
+          onclick={() => (northUp = !northUp)}
+          title="Keep the frame at its true position angle (follows celestial north) instead of the screen"
+          >True PA</button
+        >
+        <label class="sel"
+          >Bin <select bind:value={binning}>
+            {#each [1, 2, 3, 4] as b (b)}<option value={b}>{b}×{b}</option>{/each}
+          </select></label
+        >
+      {:else if mode === 'eyepiece'}
+        <label class="sel"
+          >Eyepiece <select
+            value={epPreset}
+            onchange={(e) => setEyepiece(Number((e.currentTarget as HTMLSelectElement).value))}
+          >
+            {#if epPreset < 0}<option value={-1}>Custom</option>{/if}
+            {#each EYEPIECES as e, i (e.name)}<option value={i}>{e.name}</option>{/each}
+          </select></label
+        >
+        <label class="sel num"
+          >Focal <input type="number" min="1" max="100" step="0.5" bind:value={epFocal} /> mm</label
+        >
+        <label class="sel num"
+          >AFOV <input type="number" min="20" max="120" step="1" bind:value={epAfov} />°</label
+        >
+      {/if}
+      <button
+        onclick={() => zoomToFit()}
+        title="Zoom so the {mode === 'sensor'
+          ? 'frame'
+          : mode === 'eyepiece'
+            ? 'eyepiece field'
+            : 'rings'} fill the view (Alt+Z)"
+        >Zoom to {mode === 'sensor' ? 'frame' : mode === 'eyepiece' ? 'eyepiece' : 'Telrad'}</button
+      >
+      <button aria-pressed={showInfo} onclick={() => (showInfo = !showInfo)}>Info</button>
+    {/if}
+  </div>
+  {#if showInfo}
+    <section class="oc-info" aria-label="Ocular information">
+      {#if mode === 'sensor'}
+        <p class="oc-title" style:color={FRAME_COLORS[active]}>{SETUP_LABELS[active]} · sensor</p>
+        <dl>
+          <dt>Telescope</dt>
+          <dd>{setup.telescope} ({setup.focalMm} mm)</dd>
+          <dt>Camera</dt>
+          <dd>{setup.camera}</dd>
+          {#if setup.factor !== 1}
+            <dt>{setup.factor < 1 ? 'Reducer' : 'Barlow'}</dt>
+            <dd>{setup.factor}× → {Math.round(stats.effFocalMm)} mm f/{stats.fRatio.toFixed(1)}</dd>
+          {/if}
+          <dt>Field</dt>
+          <dd>{fmtFov(stats)}</dd>
+          <dt>Pixel scale</dt>
+          <dd>
+            {(stats.pixelScale * binning).toFixed(2)}″/px{binning > 1
+              ? ` (bin ${binning}×${binning})`
+              : ''}
+          </dd>
+          <dt>Image scale</dt>
+          <dd>{plateScale(setup).toFixed(1)}″/mm</dd>
+          <dt>Resolution</dt>
+          <dd>{Math.floor(setup.widthPx / binning)} × {Math.floor(setup.heightPx / binning)} px</dd>
+          <dt>Rotation</dt>
+          <dd>
+            {setup.rotationDeg.toFixed(0)}° {northUp ? '(to north)' : '(to screen)'} · PA {(
+              ((pa % 360) + 360) %
+              360
+            ).toFixed(0)}°
+          </dd>
+        </dl>
+      {:else if mode === 'eyepiece'}
+        <p class="oc-title">{SETUP_LABELS[active]} · eyepiece</p>
+        <dl>
+          <dt>Telescope</dt>
+          <dd>{setup.telescope}{setup.factor !== 1 ? ` + ${setup.factor}×` : ''}</dd>
+          <dt>Eyepiece</dt>
+          <dd>{epFocal} mm, {epAfov}° apparent</dd>
+          <dt>Magnification</dt>
+          <dd>{ep.magnification.toFixed(0)}×</dd>
+          <dt>True field</dt>
+          <dd>{fmtAngle(ep.trueFovDeg)}</dd>
+          <dt>Exit pupil</dt>
+          <dd>{ep.exitPupilMm.toFixed(1)} mm</dd>
+        </dl>
+      {:else}
+        <p class="oc-title telrad-t">Telrad</p>
+        <dl>
+          <dt>Rings</dt>
+          <dd>0.5°, 2°, 4°</dd>
+        </dl>
+      {/if}
+    </section>
   {/if}
 </div>
 
@@ -461,12 +477,19 @@
     stroke: #ff3b30;
     stroke-width: 1.6;
   }
-  .oc-info {
+  .oc-right {
     position: absolute;
-    top: 48px;
+    /* Below the search row; the left tool bar and search keep the top-left corner. */
+    top: 52px;
     right: 8px;
-    z-index: 3;
-    max-width: min(300px, calc(100% - 16px));
+    z-index: 4;
+    display: grid;
+    justify-items: end;
+    gap: 6px;
+    max-width: min(560px, calc(100% - 120px));
+  }
+  .oc-info {
+    max-width: 300px;
     padding: 8px 10px;
     font-size: 12px;
     background: color-mix(in srgb, var(--panel) 80%, transparent);

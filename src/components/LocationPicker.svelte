@@ -9,8 +9,10 @@
     place: Place;
     onplace: (p: Place) => void;
     onclose: () => void;
+    /** Inside another window (the sky's location window): no drop-down positioning. */
+    embedded?: boolean;
   }
-  let { place, onplace, onclose }: Props = $props();
+  let { place, onplace, onclose, embedded = false }: Props = $props();
 
   let query = $state('');
   let results = $state<GeoResult[]>([]);
@@ -144,6 +146,7 @@
 
 <div
   class="picker"
+  class:embedded
   role="dialog"
   aria-modal="false"
   aria-label="Choose observing location"
@@ -304,6 +307,14 @@
     border-radius: var(--radius);
     padding: 10px;
     box-shadow: 0 10px 30px rgb(0 0 0 / 0.5);
+  }
+  .picker.embedded {
+    position: static;
+    max-width: none;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+    background: transparent;
   }
   .row {
     display: flex;
