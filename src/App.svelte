@@ -9,6 +9,15 @@
   import LayerBar, { type LayerState, type SurveyStatus } from './components/LayerBar.svelte';
   import Extras from './components/Extras.svelte';
   import WeekAhead from './components/WeekAhead.svelte';
+  import Equipment from './components/Equipment.svelte';
+  import {
+    fmtFov,
+    loadSetups,
+    SETUP_LABELS,
+    setupStats,
+    type SetupKind,
+    type SkyFrame,
+  } from './lib/equipment';
   import { weekAhead } from './lib/clouds/week';
   import {
     AURORA_MIN_LAT,
@@ -565,6 +574,51 @@
     return ev;
   });
 
+  // ---- equipment setups and their frames on the sky --------------------------------
+  let setups = $state(loadSetups());
+  let shownFrames = $state<Record<SetupKind, boolean>>({
+    deepsky: false,
+    planetary: false,
+    lunarsolar: false,
+  });
+  let frameCenter = $state<{ ra: number; dec: number; target: string | null } | null>(null);
+  const anyFrame = $derived(Object.values(shownFrames).some(Boolean));
+  let lastFrames: Record<SetupKind, boolean> = {
+    deepsky: true,
+    planetary: false,
+    lunarsolar: false,
+  };
+  function toggleFrames() {
+    if (anyFrame) {
+      lastFrames = { ...shownFrames };
+      shownFrames = { deepsky: false, planetary: false, lunarsolar: false };
+    } else {
+      shownFrames = Object.values(lastFrames).some(Boolean)
+        ? { ...lastFrames }
+        : { deepsky: true, planetary: false, lunarsolar: false };
+    }
+  }
+  const FRAME_COLORS: Record<SetupKind, string> = {
+    deepsky: '#7fd1ff',
+    planetary: '#ffd27f',
+    lunarsolar: '#b8f28a',
+  };
+  const skyFrames = $derived(
+    (Object.keys(shownFrames) as SetupKind[])
+      .filter((k) => shownFrames[k])
+      .map((k): SkyFrame => {
+        const st = setupStats(setups[k]);
+        return {
+          id: k,
+          label: `${SETUP_LABELS[k]} ${fmtFov(st)}`,
+          fovW: st.fovW,
+          fovH: st.fovH,
+          rotationDeg: setups[k].rotationDeg,
+          color: FRAME_COLORS[k],
+        };
+      }),
+  );
+
   function setTime(t: Date, isLive: boolean) {
     live = isLive;
     shown = t;
@@ -574,7 +628,18 @@
 <a class="skip" href="#main">Skip to content</a>
 <div class="head">
   <TopBar {place} {now} {tz} bind:night onplace={setPlace} />
-  <LayerBar bind:layers {surveyStatus} />
+  <LayerBar bind:layers {surveyStatus}>
+    {#snippet extra()}
+      <button
+        class="chip"
+        aria-pressed={anyFrame}
+        title="Show your camera's field of view on the sky (set up under My equipment)"
+        onclick={toggleFrames}
+      >
+        <span aria-hidden="true">{anyFrame ? '●' : '○'}</span>FOV frame
+      </button>
+    {/snippet}
+  </LayerBar>
 </div>
 
 <main id="main">
@@ -617,11 +682,20 @@
           groundColor={groundRgb}
           glow={domeGlow}
           survey={engineSurvey}
+          frames={skyFrames}
+          onframecenter={(c) => (frameCenter = c)}
           deepSky={layers.deepSky && !layers.surveys ? deepSkyUrl : null}
           longExposure={layers.longExposure}
           oncursor={(p) => (cursor = p)}
         />
       </section>
+
+      <Equipment
+        bind:setups
+        bind:shown={shownFrames}
+        seeing={row.seeing?.arcsec ?? null}
+        center={frameCenter}
+      />
 
       <Timeline
         rows={timeline}

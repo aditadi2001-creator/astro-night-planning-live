@@ -193,6 +193,7 @@ interface EngineHeap {
   _free(p: number): void;
   _skylayers_set(i: number, p: number, w: number, h: number, a0: number, a1: number): void;
   _skylayers_win_to_altaz(x: number, y: number, out: number): number;
+  _skylayers_icrf_to_win(x: number, y: number, z: number, out: number): number;
 }
 
 export function setAtmosphere(stel: Stel, a: EngineAtmosphere): void {
@@ -241,6 +242,47 @@ export function altAzAt(stel: Stel, x: number, y: number): { az: number; alt: nu
     return { az: stel.anp(az) * stel.R2D, alt: alt * stel.R2D };
   } finally {
     m._free(ptr);
+  }
+}
+
+/** Screen position (CSS pixels) of an ICRF unit vector, or null when behind the viewer. */
+export function icrfToScreen(stel: Stel, v: readonly number[]): [number, number] | null {
+  const m = stel as unknown as EngineHeap;
+  const ptr = m._malloc(16);
+  try {
+    if (!m._skylayers_icrf_to_win(v[0] ?? 0, v[1] ?? 0, v[2] ?? 0, ptr)) return null;
+    const x = m.HEAPF64[ptr >> 3] ?? Number.NaN;
+    const y = m.HEAPF64[(ptr >> 3) + 1] ?? Number.NaN;
+    return Number.isFinite(x) && Number.isFinite(y) ? [x, y] : null;
+  } finally {
+    m._free(ptr);
+  }
+}
+
+/** ICRF direction under a point of the canvas (CSS pixels). */
+export function screenToIcrf(stel: Stel, x: number, y: number): number[] | null {
+  const m = stel as unknown as EngineHeap;
+  const ptr = m._malloc(16);
+  try {
+    if (!m._skylayers_win_to_altaz(x, y, ptr)) return null;
+    const az = m.HEAPF64[ptr >> 3] ?? Number.NaN;
+    const alt = m.HEAPF64[(ptr >> 3) + 1] ?? Number.NaN;
+    if (!Number.isFinite(az) || !Number.isFinite(alt)) return null;
+    return stel.convertFrame(stel.core.observer, 'OBSERVED', 'ICRF', stel.s2c(az, alt));
+  } finally {
+    m._free(ptr);
+  }
+}
+
+/** ICRF direction of the selected object, or null. */
+export function selectionIcrf(stel: Stel): number[] | null {
+  const sel = stel.core.selection;
+  if (!sel) return null;
+  try {
+    const v = sel.getInfo('radec', stel.core.observer);
+    return Array.isArray(v) && v.length >= 3 ? v : null;
+  } catch {
+    return null;
   }
 }
 

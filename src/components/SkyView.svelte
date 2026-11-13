@@ -1,9 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { Place } from '../lib/astro/sky';
+  import { framePolygon, type SkyFrame } from '../lib/equipment';
   import {
     altAzAt,
     describe,
+    icrfToScreen,
+    screenToIcrf,
+    selectionIcrf,
     setAtmosphere,
     setObserver,
     setSkyLayer,
@@ -20,6 +24,10 @@
   import { renderTerrain, type DomeGlow, type Rgb } from '../lib/sky/horizon';
 
   interface Props {
+    /** Camera frames to draw, centred on the selected object (or the view centre). */
+    frames?: SkyFrame[];
+    /** Reports the frame centre (RA/Dec degrees, J2000/ICRF) for display elsewhere. */
+    onframecenter?: (c: { ra: number; dec: number; target: string | null } | null) => void;
     place: Place;
     /** The time the sky should show. */
     time: Date;
@@ -54,6 +62,8 @@
     groundColor,
     glow = null,
     survey = null,
+    frames = [],
+    onframecenter,
     deepSky = null,
     longExposure = false,
     oncursor,
@@ -179,6 +189,74 @@
         limitMag: Number.NaN,
       });
     }
+  });
+
+  // ---- equipment frames: projected every ~70 ms while any is shown ----------------
+  let frameShapes = $state<
+    { id: string; label: string; color: string; d: string; lx: number; ly: number }[]
+  >([]);
+  let frameCross = $state('');
+  let lastCenterKey = '';
+  onMount(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const tick = () => {
+      const s = stel;
+      if (!s || !frames.length || !canvas) {
+        if (frameShapes.length) frameShapes = [];
+        frameCross = '';
+        if (lastCenterKey) {
+          lastCenterKey = '';
+          onframecenter?.(null);
+        }
+        return;
+      }
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      const sel = selectionIcrf(s);
+      const c = sel ?? screenToIcrf(s, w / 2, h / 2);
+      if (!c) return;
+      const [ra0, dec0] = s.c2s(c);
+      const shapes = [];
+      for (const f of frames) {
+        const pts = framePolygon(ra0, dec0, f.fovW, f.fovH, f.rotationDeg, 10).map(([ra, dec]) =>
+          icrfToScreen(s, [
+            Math.cos(dec) * Math.cos(ra),
+            Math.cos(dec) * Math.sin(ra),
+            Math.sin(dec),
+          ]),
+        );
+        if (pts.some((p) => !p)) continue;
+        const xy = pts as [number, number][];
+        const d = `M${xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L')}Z`;
+        // Label at the frame's top-most corner.
+        const top = xy.reduce((a, b) => (b[1] < a[1] ? b : a));
+        shapes.push({
+          id: f.id,
+          label: f.label,
+          color: f.color,
+          d,
+          lx: top[0] + 4,
+          ly: Math.max(14, top[1] - 6),
+        });
+      }
+      frameShapes = shapes;
+      const cp = icrfToScreen(s, c);
+      frameCross = cp
+        ? `M${cp[0] - 8},${cp[1]}L${cp[0] + 8},${cp[1]}M${cp[0]},${cp[1] - 8}L${cp[0]},${cp[1] + 8}`
+        : '';
+      const ra = (((s.anp(ra0) * s.R2D) % 360) + 360) % 360;
+      const dec = s.anpm(dec0) * s.R2D;
+      const target = sel ? (selected?.name ?? null) : null;
+      const key = `${ra.toFixed(3)},${dec.toFixed(3)},${target}`;
+      if (key !== lastCenterKey) {
+        lastCenterKey = key;
+        onframecenter?.({ ra, dec, target });
+      }
+    };
+    timer = setInterval(tick, 70);
+    return () => {
+      if (timer) clearInterval(timer);
+    };
   });
 
   // Cloud texture: regenerate only when its inputs change (drift time is
@@ -329,6 +407,18 @@
     </section>
   {/if}
 
+  {#if frameShapes.length}
+    <svg class="frames" aria-hidden="true">
+      {#each frameShapes as f (f.id)}
+        <path d={f.d} stroke={f.color} />
+        <text x={f.lx} y={f.ly} fill={f.color}>{f.label}</text>
+      {/each}
+      {#if frameCross}
+        <path class="cross" d={frameCross} />
+      {/if}
+    </svg>
+  {/if}
+
   <p class="credit-line credit">
     Stellarium Web Engine (AGPL) · ESA/Hipparcos · ESA/Gaia/DPAC · OpenNGC ·
     <a href="#/credits">credits</a>
@@ -365,6 +455,28 @@
   }
   .overlay.error {
     color: var(--bad);
+  }
+  .frames {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+  }
+  .frames path {
+    fill: none;
+    stroke-width: 1.6;
+  }
+  .frames .cross {
+    stroke: var(--muted);
+    stroke-width: 1;
+  }
+  .frames text {
+    font-size: 12px;
+    paint-order: stroke;
+    stroke: #000;
+    stroke-width: 3px;
   }
   .info {
     position: absolute;

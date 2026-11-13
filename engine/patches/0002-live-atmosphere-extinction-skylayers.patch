@@ -134,10 +134,10 @@ index e19c51f..7887df2 100644
      if (    planet->id != MOON && !orbit_visible &&
 diff --git a/src/modules/skylayers.c b/src/modules/skylayers.c
 new file mode 100644
-index 0000000..3662560
+index 0000000..4882cc9
 --- /dev/null
 +++ b/src/modules/skylayers.c
-@@ -0,0 +1,204 @@
+@@ -0,0 +1,223 @@
 +/* Astro Night Planning additions to Stellarium Web Engine (AGPL-3.0).
 + *
 + * Two alt-az texture layers fed from JavaScript:
@@ -310,6 +310,25 @@ index 0000000..3662560
 +    vec3_to_sphe(o, &az, &alt);
 +    out[0] = az;
 +    out[1] = alt;
++    return 1;
++}
++
++/*
++ * Function: skylayers_icrf_to_win
++ * Window position (CSS pixels) of a direction given in ICRF (unit vector x, y, z),
++ * for overlays drawn by the page (equipment field of view). Returns 1 when the
++ * point is in front of the viewer, 0 otherwise.
++ */
++EMSCRIPTEN_KEEPALIVE
++int skylayers_icrf_to_win(double x, double y, double z, double *out)
++{
++    projection_t proj;
++    double v[3] = {x, y, z}, o[3], w[2];
++    core_get_proj(&proj);
++    convert_frame(core->observer, FRAME_ICRF, FRAME_VIEW, true, v, o);
++    if (!project_to_win_xy(&proj, o, w)) return 0;
++    out[0] = w[0];
++    out[1] = w[1];
 +    return 1;
 +}
 +
