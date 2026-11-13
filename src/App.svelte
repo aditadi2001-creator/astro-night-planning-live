@@ -311,7 +311,9 @@
     Math.round(Math.min(1, Math.max(0, (-4 - row.sunAlt) / 8)) * 20) / 20,
   );
   const domeGlow = $derived(
-    siteLight && domeStrength > 0 ? { domes: siteLight.domes, strength: domeStrength } : null,
+    siteLight && domeStrength > 0
+      ? { domes: siteLight.domes, zenith: siteLight.ratio, strength: domeStrength }
+      : null,
   );
 
   const timeline = $derived.by(() => {
@@ -407,7 +409,6 @@
         {sevenTimer}
         light={siteLight}
         lightStatus={layers.lightpollution ? (sources?.light?.status ?? 'off') : 'off'}
-        {limitMag}
         loading={sources?.weather.status === 'loading'}
       />
 

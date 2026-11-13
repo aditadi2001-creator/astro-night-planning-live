@@ -150,3 +150,21 @@ high mountain sites, Open-Meteo's low cloud (up to 3 km altitude) may actually l
 observer, but it is always drawn above (a cloud-base model is a possible later improvement).
 
 _Later phases add: the seeing estimate, satellite cloud placement and the light-pollution model._
+
+## Light pollution (yearly) — Garstang / Cinzano–Falchi style kernel
+
+`pipelines/lightpollution/model.py`, calibrated in `skyglow.py`. Zenith artificial brightness relative
+to the natural sky: R = A · Σ L·area·(d² + d0²)^(−p/2)·e^(−d/D) for d ≤ 150 km, with L the
+VNP46A4 snow-free upward radiance (nW cm⁻² sr⁻¹); SQM = 22.0 − 2.5 log10(1 + R). The convolution
+runs by FFT in 2.5° latitude strips with the kernel for that latitude. Fit to 5,345 Globe at Night
+clear-sky SQM readings: p = 2.0, d0 = 0.5 km, D = 300 km, median error 0.35 mag (see README).
+Bortle class from SQM with the commonly quoted boundaries (approximate: Bortle is a visual scale).
+
+Light domes (src/lib/lp/lightpollution.ts): night lights within 150 km summed per 10° of azimuth with
+the kernel one power of distance flatter; horizon brightness = 2.5 × zenith R × (sector / mean). In
+the sky they are drawn by contrast with the local sky (src/lib/sky/horizon.ts, glowAlpha). Approximate,
+for the picture.
+
+The imaging score does not include light pollution as a penalty: it rates each hour for the site
+(the Moon factor uses the site's own dark-sky brightness). The Sky quality card shows the site's
+light pollution itself.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  domeAlpha,
+  glowAlpha,
   domeAt,
   horizonDip,
   horizonProfile,
@@ -49,11 +49,19 @@ describe('terrain horizon', () => {
 });
 
 describe('light domes on the horizon', () => {
-  it('maps brightness to a capped opacity', () => {
-    expect(domeAlpha(0)).toBe(0);
-    expect(domeAlpha(1)).toBeCloseTo(0.058, 3);
-    expect(domeAlpha(10)).toBeCloseTo(0.451, 3);
-    expect(domeAlpha(1000)).toBe(0.75);
+  it('judges a dome against the local sky, not the natural sky', () => {
+    // Same dome excess, dark rural site vs city centre: much stronger in the country.
+    expect(glowAlpha(20, 0.2, 2)).toBeGreaterThan(0.5);
+    expect(glowAlpha(20, 50, 2)).toBeLessThan(0.4);
+    expect(glowAlpha(1000, 0, 0)).toBeLessThanOrEqual(0.6 + 1e-9);
+  });
+
+  it('adds a capped all-round haze for bright skies and tapers out before 28°', () => {
+    expect(glowAlpha(0, 0, 1)).toBe(0); // natural sky: nothing
+    expect(glowAlpha(0, 50, 0)).toBeCloseTo(0.35, 2); // city: capped haze
+    expect(glowAlpha(0, 50, 20)).toBeLessThan(0.05);
+    expect(glowAlpha(100, 50, 28)).toBe(0);
+    expect(glowAlpha(100, 50, -1)).toBe(0); // below the horizon: ground
   });
 
   it('interpolates sectors around the compass', () => {
@@ -64,19 +72,21 @@ describe('light domes on the horizon', () => {
     expect(domeAt(domes, 100)).toBeCloseTo(5, 9);
   });
 
-  it('paints glow above the horizon only, towards the dome, only at night', () => {
+  it('paints a dome towards a town from a dark site, only at night', () => {
     const profile = new Float32Array(720); // flat horizon
     const domes = new Array<number>(36).fill(0);
-    domes[9] = 20; // east
+    domes[9] = 20; // a town to the east
     const w = 360;
     const h = 120; // 1° per row from −90° to +30°
-    const lit = renderTerrain(profile, [0, 0, 0], w, h, -90, 30, { domes, strength: 1 });
+    const glow = { domes, zenith: 0.3, strength: 1 };
+    const lit = renderTerrain(profile, [0, 0, 0], w, h, -90, 30, glow);
     const alpha = (az: number, alt: number) => lit[(Math.floor(alt + 90) * w + az) * 4 + 3] ?? 0;
     expect(alpha(95, 2)).toBeGreaterThan(100); // east, just above the horizon
-    expect(alpha(95, 25)).toBeLessThan(alpha(95, 2)); // fades with height
-    expect(alpha(275, 2)).toBe(0); // nothing to the west
+    expect(alpha(95, 15)).toBeLessThan(alpha(95, 2)); // fades with height
+    expect(alpha(95, 29)).toBe(0); // no edge at the top of the layer
+    expect(alpha(275, 2)).toBeLessThan(10); // west: only a faint haze
     expect(alpha(95, -10)).toBe(255); // ground stays opaque
-    const day = renderTerrain(profile, [0, 0, 0], w, h, -90, 30, { domes, strength: 0 });
+    const day = renderTerrain(profile, [0, 0, 0], w, h, -90, 30, { ...glow, strength: 0 });
     expect(day[(92 * w + 95) * 4 + 3]).toBe(0);
   });
 });

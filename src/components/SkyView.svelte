@@ -89,7 +89,9 @@
         });
         stel = s;
         status = 'ready';
-        if (import.meta.env.DEV) (window as unknown as { __stel: Stel }).__stel = s;
+        // Engine handle for debugging: dev builds, or any build opened with ?debug.
+        if (import.meta.env.DEV || location.search.includes('debug'))
+          (window as unknown as { __stel: Stel }).__stel = s;
       })
       .catch((e: unknown) => {
         status = 'error';

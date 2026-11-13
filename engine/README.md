@@ -77,6 +77,16 @@ Two engine behaviours the module works around:
 - The OBSERVED frame is left-handed; quads must be wound with azimuth decreasing across a cell or
   they are back-face culled. The texture matrix mirrors u to match.
 
+## Post-link fix to the generated JS (`engine/patch-js.mjs`)
+
+emsdk 1.39's WebGL layer never reuses object ids (`GL.getNewId` takes them from one growing counter;
+deleting only nulls the slot). The engine creates and deletes buffers every frame, so after a few
+hours open — a whole observing night — V8 throws `RangeError: Invalid array length` in
+`glGenBuffers` and the sky stops drawing. `build-engine.mjs` rewrites `getNewId` after linking so that
+buffers, textures, framebuffers and renderbuffers reuse freed slots (allowed by GL); uniform locations
+keep the original allocator because arrays need consecutive ids. Tested in `tests/engine-glids.test.ts`
+against the shipped file (a million buffers over 20,000 simulated frames: the table stays at 52).
+
 ## License
 
 SWE is AGPL-3.0. Because this site links it into a network service, the whole site is AGPL-3.0 and

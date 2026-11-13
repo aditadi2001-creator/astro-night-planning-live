@@ -13,6 +13,8 @@
     type SevenTimer,
   } from '../lib/data/seventimer';
   import { BORTLE_LABELS, SECTORS, type SiteLight } from '../lib/lp/lightpollution';
+  import { limitingMagnitude } from '../lib/physics/skybrightness';
+  import { magToNl } from '../lib/physics/moonlight';
 
   interface Props {
     row: HourRow | null;
@@ -32,8 +34,6 @@
     /** Light pollution at the site from the yearly map (null = none). */
     light?: SiteLight | null;
     lightStatus?: string;
-    /** Naked-eye limiting magnitude at the zenith for the time shown. */
-    limitMag?: number | null;
     loading: boolean;
   }
   let {
@@ -45,7 +45,6 @@
     sevenTimer = null,
     light = null,
     lightStatus = 'off',
-    limitMag = null,
     loading,
   }: Props = $props();
 
@@ -286,10 +285,11 @@
             ? 'none detectable'
             : `${light.brightening.toFixed(2)} mag brighter than a natural sky`}
         </dd>
-        {#if limitMag != null}
-          <dt>Naked eye</dt>
-          <dd>stars to about mag {limitMag.toFixed(1)} at the zenith (time shown)</dd>
-        {/if}
+        <dt>Naked eye</dt>
+        <dd>
+          stars to about mag {limitingMagnitude(magToNl(light.sqm)).toFixed(1)} overhead on a clear, moonless
+          night
+        </dd>
         {#if domeDirs(light.domes)}
           <dt>Light domes</dt>
           <dd>brightest towards {domeDirs(light.domes)}</dd>

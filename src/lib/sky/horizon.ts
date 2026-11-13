@@ -68,20 +68,34 @@ export type Rgb = [number, number, number];
 export interface DomeGlow {
   /** Artificial / natural brightness near the horizon per 10° of azimuth from north. */
   domes: readonly number[];
+  /** Artificial / natural brightness at the zenith (the site's own sky glow). */
+  zenith: number;
   /** 0–1: how dark the sky is (domes are invisible in daylight and twilight). */
   strength: number;
 }
 
 /** Warm mix of sodium and white LED street light. */
-const GLOW_RGB: Rgb = [255, 176, 110];
+const GLOW_RGB: Rgb = [255, 170, 100];
 
 /**
- * Opacity of a light dome: 1 − e^(−0.06 r) for brightness r times the
- * natural sky, capped at 0.75 so stars near the horizon stay visible.
- * As bright as the natural sky → 0.06; 10× → 0.45; 30× → 0.75.
+ * How light pollution looks near the horizon at one azimuth and height h (°)
+ * above it, as an opacity. The eye sees a dome by its contrast with the local
+ * sky, which in a city is itself many times brighter than a natural sky, so:
+ *
+ * - directional dome: the excess over the dimmest direction, divided by the
+ *   local zenith brightness (1 + R): e = (dome − min) / (1 + R); opacity
+ *   1 − e^(−0.15 e), at most 0.6, falling off over 6° of height;
+ * - all-round haze (glow from every side): 1 − e^(−0.04 R), at most 0.35,
+ *   falling off over 10°;
+ * - both taper smoothly to zero by 28° so the layer has no visible edge.
  */
-export function domeAlpha(ratio: number): number {
-  return Math.min(0.75, 1 - Math.exp(-0.06 * Math.max(0, ratio)));
+export function glowAlpha(excess: number, zenith: number, h: number): number {
+  if (h < 0) return 0;
+  const taper = Math.max(0, 1 - h / 28) ** 2;
+  const e = (Math.max(0, excess) / (1 + Math.max(0, zenith))) * Math.exp(-h / 6);
+  const dome = Math.min(0.6, 1 - Math.exp(-0.15 * e));
+  const haze = Math.min(0.35, 1 - Math.exp(-0.04 * Math.max(0, zenith))) * Math.exp(-h / 10);
+  return (1 - (1 - dome) * (1 - haze)) * taper;
 }
 
 /** Dome brightness at azimuth az (degrees), linear between 10° sectors. */
@@ -97,8 +111,8 @@ export function domeAt(domes: readonly number[], az: number): number {
 /**
  * Ground texture for the engine's terrain layer: rows from altitude −90° to
  * +30°, opaque below the profile with a 1-pixel anti-aliased edge. With
- * `glow`, light domes are painted above the horizon line, fading with height
- * (e-folding over 8° of altitude).
+ * `glow`, light domes and horizon haze are painted above the horizon line
+ * (glowAlpha).
  */
 export function renderTerrain(
   profile: Float32Array,
@@ -111,6 +125,7 @@ export function renderTerrain(
 ): Uint8ClampedArray {
   const out = new Uint8ClampedArray(width * height * 4);
   const bins = profile.length;
+  const minDome = glow?.domes.length ? Math.min(...glow.domes) : 0;
   const step = (altMax - altMin) / height;
   for (let i = 0; i < width; i++) {
     const pos = ((i + 0.5) / width) * bins - 0.5;
@@ -118,13 +133,14 @@ export function renderTerrain(
     const i1 = (i0 + 1) % bins;
     const t = pos - Math.floor(pos);
     const hz = (profile[i0] ?? 0) * (1 - t) + (profile[i1] ?? 0) * t;
-    const dome = glow && glow.strength > 0 ? domeAt(glow.domes, ((i + 0.5) / width) * 360) : 0;
+    const excess =
+      glow && glow.strength > 0 ? domeAt(glow.domes, ((i + 0.5) / width) * 360) - minDome : 0;
     for (let j = 0; j < height; j++) {
       const alt = altMin + (j + 0.5) * step;
       const cover = Math.min(1, Math.max(0, (hz - alt) / step + 0.5));
       if (cover <= 0) {
-        if (dome > 0 && alt > hz) {
-          const a = domeAlpha(dome * Math.exp(-(alt - hz) / 8)) * (glow?.strength ?? 0);
+        if (glow && glow.strength > 0 && alt > hz) {
+          const a = glowAlpha(excess, glow.zenith, alt - hz) * glow.strength;
           if (a > 0.004) {
             const k = (j * width + i) * 4;
             out[k] = GLOW_RGB[0];

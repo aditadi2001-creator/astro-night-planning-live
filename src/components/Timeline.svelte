@@ -148,8 +148,9 @@
     <p class="note">
       Score = clouds × transparency × Moon × darkness × seeing, each as a relative signal-to-noise
       factor for sky-limited imaging. Seeing is a forecast estimate from upper-air winds (our model;
-      7Timer! every 3 h as a second opinion), never a measurement. Cloud models (ECMWF, GFS, ICON,
-      best match): <span class="dot high"></span> agree <span class="dot medium"></span> partly
+      7Timer! every 3 h as a second opinion), never a measurement. Scores rate each hour for this
+      site; its light pollution is in the Sky quality card. Cloud models (ECMWF, GFS, ICON, best
+      match): <span class="dot high"></span> agree <span class="dot medium"></span> partly
       <span class="dot low"></span> disagree. Weather data by Open-Meteo.com.
     </p>
   {:else}

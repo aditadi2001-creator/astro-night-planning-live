@@ -9,7 +9,16 @@
 // Usage: node engine/build-engine.mjs <path-to-stellarium-web-engine> [outDir]
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, writeFileSync, copyFileSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+  copyFileSync,
+  statSync,
+} from 'node:fs';
+import { patchEngineJs } from './patch-js.mjs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cpus } from 'node:os';
@@ -271,6 +280,11 @@ run(emcc, [`@${rsp}`], { cwd: src });
 
 mkdirSync(outDir, { recursive: true });
 for (const f of ['stellarium-web-engine.js', 'stellarium-web-engine.wasm']) {
-  copyFileSync(join(src, 'build', f), join(outDir, f));
+  if (f.endsWith('.js')) {
+    // Post-link fixes to the generated glue code (see engine/patch-js.mjs).
+    writeFileSync(join(outDir, f), patchEngineJs(readFileSync(join(src, 'build', f), 'utf8')));
+  } else {
+    copyFileSync(join(src, 'build', f), join(outDir, f));
+  }
   console.log(`${f}: ${(statSync(join(outDir, f)).size / 1024).toFixed(0)} KiB`);
 }

@@ -40,7 +40,7 @@ GitHub Actions (public repo, free)
  ├─ CI on every push
  ├─ engine build (emsdk on Linux)
  ├─ hourly GMGSI → PMTiles → R2         (later phase)
- └─ yearly light-pollution pipeline     (later phase)
+ └─ yearly light-pollution pipeline     (pipelines/lightpollution, GitHub Actions → R2)
 Cloudflare Pages (free)                  static site, deployed with
                                          wrangler pages deploy --project-name astro-night-planning-live
 ```
@@ -141,13 +141,13 @@ each internal call is billed as a separate request, which would double usage.)
 
 **R2 free tier: 10 GB-month storage, 1 M Class A, 10 M Class B. Our rule: stay under half.**
 
-| Storage                            | Size                                        | Notes                                                             |
-| ---------------------------------- | ------------------------------------------- | ----------------------------------------------------------------- |
-| Deep star layer (Gaia DR3, V ≤ 14) | 0.198 GB (uploaded)                         | 12.4 M stars with 10 < V ≤ 14, 25,987 tiles, 15.9 bytes/star      |
-| Light pollution PMTiles (Phase 8)  | ≤ 2 GB                                      | resolution chosen to fit                                          |
-| Hourly satellite clouds (GMGSI)    | ≈ 0.1 GB                                    | 24 h kept × ~4.3 MB per hour (zoom 0–5 WebP)                      |
-| Small JSON etc.                    | < 0.01 GB                                   |                                                                   |
-| **Total**                          | **≈ 2.3 GB** (target 5 GB, hard limit 8 GB) | during the yearly light-pollution switch-over, +2 GB for ≤ 1 week |
+| Storage                            | Size                                         | Notes                                                         |
+| ---------------------------------- | -------------------------------------------- | ------------------------------------------------------------- |
+| Deep star layer (Gaia DR3, V ≤ 14) | 0.198 GB (uploaded)                          | 12.4 M stars with 10 < V ≤ 14, 25,987 tiles, 15.9 bytes/star  |
+| Light pollution PMTiles (2025)     | 0.249 GB (uploaded)                          | sky brightness z0–8 220 MB + night-lights radiance z0–6 29 MB |
+| Hourly satellite clouds (GMGSI)    | ≈ 0.1 GB                                     | 24 h kept × ~4.3 MB per hour (zoom 0–5 WebP)                  |
+| Small JSON etc.                    | < 0.01 GB                                    |                                                               |
+| **Total**                          | **≈ 0.55 GB** (target 5 GB, hard limit 8 GB) | during the yearly switch-over, +0.25 GB for under an hour     |
 
 | Class A (writes, lists)                                       | Per month                            |
 | ------------------------------------------------------------- | ------------------------------------ |
@@ -248,6 +248,50 @@ anyway: repo → **Actions** → pick the workflow on the left → **Enable work
 cloud job: same place → **⋯ → Disable workflow** (old hours are then removed by the bucket's 2-day
 lifecycle rule).
 
+## Light pollution (yearly model)
+
+[`pipelines/lightpollution`](pipelines/lightpollution) turns NASA Black Marble **VNP46A4** (yearly,
+moonlight-corrected night lights, 15″ ≈ 500 m) into artificial sky brightness with a light-propagation
+model in the style of Garstang / Cinzano–Falchi, simplified to a distance kernel:
+
+    R(x) = A · Σ L·area·(d² + d0²)^(−p/2)·e^(−d/D),  d ≤ 150 km      SQM = 22.0 − 2.5 log10(1 + R)
+
+`A`, `p`, `d0` and `D` are fitted to **5,345 clear-sky SQM meter readings from Globe at Night**
+(2022–2025, CC BY 4.0) with a robust (Huber) fit over a grid of kernel shapes. Result for the 2025
+map: **p = 2.0, d0 = 0.5 km, D = 300 km** (inside the searched grid: p 1.6–2.8, D 100–1000 km).
+
+| Validation vs. Globe at Night SQM | n     | median error | RMS (outliers > 1.5 mag removed) | bias (measured − model) |
+| --------------------------------- | ----- | ------------ | -------------------------------- | ----------------------- |
+| all clear-sky readings            | 5,345 | **0.35 mag** | 0.51 mag                         | −0.06 mag               |
+| bright skies (SQM < 19)           | 1,807 | 0.53 mag     | 0.59 mag                         | −0.32 mag               |
+| suburban (SQM 19–21)              | 2,276 | 0.31 mag     | 0.50 mag                         | +0.10 mag               |
+| dark skies (SQM > 21)             | 1,262 | 0.28 mag     | 0.42 mag                         | −0.13 mag               |
+
+13 % of readings are more than 1.5 mag off; Globe at Night readings are citizen measurements, and
+moonlight, thin cloud, twilight or a nearby lamp easily explain such outliers. In cities the model
+is ~0.3 mag too dark: satellites under-count blue/white LED light. The site says this, and that the
+map is yearly, not live. Checks run before every switch (verify.py, through the Worker): London
+centre 16.8, Delhi 16.9, Manhattan 16.2 mag/arcsec²; central Sahara and mid-Pacific 22.0.
+
+Light domes are computed in the browser from the coarse night-lights layer (`lprad`, ~2 km) within
+150 km with the same kernel one power of distance flatter, per 10° of azimuth, and drawn above the real
+horizon by their contrast with the local sky.
+
+### Yearly light pollution update — 2 minutes
+
+NASA publishes the previous year's VNP46A4 in spring; the **Yearly light pollution** workflow runs by
+itself on 20 May. If it failed because the Earthdata token expired (they last ~60 days):
+
+1. Sign in at <https://urs.earthdata.nasa.gov> → **Generate Token** → copy the token.
+2. Repo → **Settings → Secrets and variables → Actions** → `EARTHDATA_TOKEN` → **Update** → paste.
+3. Repo → **Actions → Yearly light pollution (Black Marble to R2) → Run workflow** (leave the fields
+   empty).
+
+It takes about an hour on GitHub. The site keeps the current map until the new one passes its checks;
+the previous year is deleted only after the switch. One-time account setup (already done here): the
+Earthdata account must list **LAADS Web** under _Applications → Authorized Apps_, which needs an
+_Organization_ in the profile.
+
 ## Roadmap
 
 1. ✅ Setup, CI, license, trial build of Stellarium Web Engine
@@ -257,7 +301,7 @@ lifecycle rule).
 5. ✅ R2 bucket + Worker (range requests, caching, CORS, 7Timer proxy); deep Gaia star layer
 6. ✅ Satellite clouds (GIBS map, GMGSI hourly PMTiles, satellite + model "clouds now")
 7. ✅ Seeing model (Hufnagel–Valley from upper winds) + 7Timer second opinion
-8. Light pollution pipeline (Black Marble → sky glow → PMTiles)
+8. ✅ Light pollution pipeline (Black Marble → sky glow → PMTiles), SQM/Bortle, light domes
 9. Optional HiPS sky surveys
 10. PWA, night-vision mode, ISS passes, aurora, polish, accessibility, speed
 11. Deploy to Cloudflare Pages — needs your OK
