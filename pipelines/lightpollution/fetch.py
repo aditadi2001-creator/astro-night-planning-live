@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures as cf
+import http.cookiejar
 import json
 import os
 import re
@@ -26,6 +27,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -110,18 +112,40 @@ def _read_layer(h5file) -> np.ndarray:
     return np.nan_to_num(rad, nan=0.0).clip(min=0)
 
 
-def _check_auth(code: int) -> None:
-    if code in (401, 403) or code in (301, 302, 303):
-        raise TokenError(
-            f"LAADS refused the download (HTTP {code}): EARTHDATA_TOKEN is wrong or has "
-            "expired (they last ~60 days). Generate a new one at https://urs.earthdata.nasa.gov "
-            "and update the GitHub secret. The site keeps showing the current map meanwhile."
-        )
+TOKEN_HELP = (
+    "EARTHDATA_TOKEN was not accepted by NASA LAADS (wrong, expired or revoked; tokens last "
+    "~60 days). Generate a new one at https://urs.earthdata.nasa.gov and update the GitHub "
+    "secret. The site keeps showing the current map meanwhile."
+)
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *a, **k):  # an auth problem shows up as a redirect
-        return None
+LAADS_HOST = "ladsweb.modaps.eosdis.nasa.gov"
+
+
+class _LaadsOnlyAuth(urllib.request.HTTPRedirectHandler):
+    """Follow redirects, but send the token (and Range) only to LAADS itself."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and urllib.parse.urlsplit(newurl).hostname != LAADS_HOST:
+            for h in ("Authorization", "Range"):
+                new.remove_header(h)
+        return new
+
+
+def _opener():
+    """Like NASA's own scripts (curl -L -b session): follow redirects, keep cookies."""
+    return urllib.request.build_opener(
+        _LaadsOnlyAuth(), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+    )
+
+
+def _refused(resp) -> str | None:
+    """An HTML page instead of the file means a sign-in or licence page."""
+    if "text/html" in (resp.headers.get("Content-Type") or ""):
+        u = urllib.parse.urlsplit(resp.geturl())
+        return f"{u.netloc}{u.path}"
+    return None
 
 
 def fetch_one(name: str, year: int, tok: str, out: Path) -> tuple[str, str, float]:
@@ -145,23 +169,30 @@ def fetch_one(name: str, year: int, tok: str, out: Path) -> tuple[str, str, floa
     except Exception as e:  # no range support or a hiccup: download the whole file
         how = f"full ({type(e).__name__})"
     if rad is None:
-        opener = urllib.request.build_opener(_NoRedirect)
+        opener = _opener()
         req = urllib.request.Request(url, headers=headers)
         for attempt in range(4):
             try:
-                with opener.open(req, timeout=600) as r, tempfile.NamedTemporaryFile(
-                    suffix=".h5", delete=False, dir=out
-                ) as tmp:
-                    while chunk := r.read(8 * 2**20):
-                        tmp.write(chunk)
-                    path = tmp.name
+                with opener.open(req, timeout=600) as r:
+                    where = _refused(r)
+                    if where:
+                        hint = (" LAADS asks for a data licence: sign in at "
+                                "ladsweb.modaps.eosdis.nasa.gov and accept it once."
+                                if "licenses" in where else "")
+                        raise TokenError(f"{TOKEN_HELP} (ended at {where}){hint}")
+                    with tempfile.NamedTemporaryFile(suffix=".h5", delete=False, dir=out) as tmp:
+                        while chunk := r.read(8 * 2**20):
+                            tmp.write(chunk)
+                        path = tmp.name
                 try:
                     rad = _read_layer(path)
                 finally:
                     os.unlink(path)  # the HDF5 file never stays on disk
                 break
             except urllib.error.HTTPError as e:
-                _check_auth(e.code)
+                host = urllib.parse.urlsplit(e.geturl() or "").hostname or ""
+                if e.code in (401, 403) or host.endswith("urs.earthdata.nasa.gov"):
+                    raise TokenError(f"{TOKEN_HELP} (HTTP {e.code} from {host})") from e
                 if attempt == 3:
                     raise
                 time.sleep(10 * (attempt + 1))
