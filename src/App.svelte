@@ -5,7 +5,7 @@
   import ConditionCards from './components/ConditionCards.svelte';
   import Timeline from './components/Timeline.svelte';
   import DataStatus from './components/DataStatus.svelte';
-  import Layers, { type LayerState } from './components/Layers.svelte';
+  import Layers, { type LayerState, type SurveyStatus } from './components/Layers.svelte';
   import PhysicsPanel from './components/PhysicsPanel.svelte';
   import Credits from './pages/Credits.svelte';
   import About from './pages/About.svelte';
@@ -35,7 +35,8 @@
     shouldSaveData,
     type SiteHorizon,
   } from './lib/sky/dem';
-  import type { EngineAtmosphere } from './lib/engine/stel';
+  import type { EngineAtmosphere, EngineSurvey } from './lib/engine/stel';
+  import { pickServer, SURVEYS, surveyById } from './lib/sky/surveys';
   import { GMGSI_INDEX_URL } from './lib/sat/gmgsi';
   import { loadSatellite, type SatelliteSample } from './lib/sat/satellite';
   import { SEVEN_TIMER_ENABLED, loadSevenTimer, type SevenTimer } from './lib/data/seventimer';
@@ -65,6 +66,41 @@
     constellations: true,
     satmap: false,
     lightpollution: true,
+    surveys: false,
+    survey: SURVEYS[0]?.id ?? 'dss',
+    surveyOpacity: 0.8,
+  });
+
+  // ---- optional sky survey: find a server only once the user turns it on ----------
+  let surveyStatus = $state<SurveyStatus>({ state: 'off' });
+  let surveyUrl = $state<string | null>(null);
+  $effect(() => {
+    const on = layers.surveys;
+    const survey = surveyById(layers.survey);
+    surveyUrl = null;
+    if (!on || !survey) {
+      surveyStatus = { state: 'off' };
+      return;
+    }
+    let cancelled = false;
+    surveyStatus = { state: 'loading' };
+    void pickServer(survey).then((src) => {
+      if (cancelled) return;
+      surveyStatus = src ? { state: 'ready', host: src.host } : { state: 'down' };
+      surveyUrl = src?.url ?? null;
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
+  const engineSurvey = $derived.by((): EngineSurvey | null => {
+    const survey = surveyById(layers.survey);
+    if (!layers.surveys || !survey || !surveyUrl) return null;
+    return {
+      url: surveyUrl,
+      galactic: survey.frame === 'galactic',
+      opacity: layers.surveyOpacity,
+    };
   });
   let cursor = $state<{ alt: number; az: number } | null>(null);
 
@@ -388,6 +424,7 @@
           horizon={layers.terrain ? (siteHorizon?.profile ?? null) : null}
           groundColor={groundRgb}
           glow={domeGlow}
+          survey={engineSurvey}
           oncursor={(p) => (cursor = p)}
         />
       </section>
@@ -423,7 +460,7 @@
       {/if}
 
       <div class="pair">
-        <Layers bind:layers />
+        <Layers bind:layers {surveyStatus} />
         <PhysicsPanel
           extinction={ext}
           {dbv}

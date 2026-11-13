@@ -344,6 +344,96 @@ export const CREDITS: Credit[] = [
     kind: 'data',
     status: 'live',
   },
+  // Optional sky surveys (off by default). Streamed, never hosted by us.
+  {
+    id: 'survey-cds-hips',
+    name: 'CDS HiPS image surveys and their mirrors',
+    url: 'https://aladin.cds.unistra.fr/hips/',
+    license: 'Free access; each survey keeps its own terms (below)',
+    attribution:
+      'This site uses HiPS image surveys produced and distributed by the CDS, Strasbourg Astronomical Observatory, France (HiPS: Fernique et al. 2015, A&A 578, A114), served by CDS and by the mirrors at ESA ESDC, NASA MAST, NASA IRSA, CSIRO CASDA and China-VO.',
+    shortCredit: 'Surveys: HiPS by CDS Strasbourg',
+    usage:
+      'All optional surveys are streamed tile by tile from these servers only when you turn a survey on. Nothing is stored by this site.',
+    kind: 'survey',
+    status: 'live',
+  },
+  {
+    id: 'survey-dss',
+    name: 'Digitized Sky Survey (DSS2), colour HiPS',
+    url: 'https://archive.stsci.edu/dss/copyright.html',
+    license: 'CC BY-NC-SA 4.0 — non-commercial use only',
+    attribution:
+      'The Digitized Sky Surveys were produced at the Space Telescope Science Institute under U.S. Government grant NAG W-2166. The images of these surveys are based on photographic data obtained using the Oschin Schmidt Telescope on Palomar Mountain and the UK Schmidt Telescope. The plates were processed into the present compressed digital form with the permission of these institutions. Colour composite and HiPS by CDS.',
+    shortCredit:
+      'DSS2: STScI/NASA, Palomar & UK Schmidt; colour by CDS (CC BY-NC-SA, non-commercial)',
+    usage: 'Optional optical survey layer.',
+    kind: 'survey',
+    status: 'live',
+    notes:
+      'DSS images may be used for scientific, educational and non-profit purposes only; for-profit use is forbidden. This site is free and non-commercial. If you reuse this code commercially, remove this survey.',
+  },
+  {
+    id: 'survey-finkbeiner',
+    name: 'Finkbeiner full-sky H-alpha map',
+    url: 'https://ui.adsabs.harvard.edu/abs/2003ApJS..146..407F',
+    license: 'Public data; citation requested',
+    attribution:
+      'H-alpha composite map by Douglas Finkbeiner (2003, ApJS 146, 407), assembled from the Wisconsin H-Alpha Mapper (WHAM), the Virginia Tech Spectral-Line Survey (VTSS) and the Southern H-Alpha Sky Survey Atlas (SHASSA). HiPS by CDS.',
+    shortCredit: 'H-alpha: Finkbeiner 2003 (WHAM, VTSS, SHASSA); HiPS by CDS',
+    usage: 'Optional H-alpha (emission nebula) layer.',
+    kind: 'survey',
+    status: 'live',
+  },
+  {
+    id: 'survey-2mass',
+    name: 'Two Micron All Sky Survey (2MASS), colour HiPS',
+    url: 'https://www.ipac.caltech.edu/2mass/',
+    license: 'Public data; acknowledgement required',
+    attribution:
+      'This publication makes use of data products from the Two Micron All Sky Survey, which is a joint project of the University of Massachusetts and the Infrared Processing and Analysis Center/California Institute of Technology, funded by the National Aeronautics and Space Administration and the National Science Foundation. HiPS by CDS.',
+    shortCredit: '2MASS: UMass & IPAC/Caltech (NASA, NSF); HiPS by CDS',
+    usage: 'Optional near-infrared survey layer.',
+    kind: 'survey',
+    status: 'live',
+  },
+  {
+    id: 'survey-allwise',
+    name: 'AllWISE, colour HiPS',
+    url: 'https://wise2.ipac.caltech.edu/docs/release/allwise/',
+    license: 'Public data (NASA); acknowledgement required',
+    attribution:
+      'This uses data products from the Wide-field Infrared Survey Explorer, which is a joint project of the University of California, Los Angeles, and the Jet Propulsion Laboratory/California Institute of Technology, and NEOWISE, which is a project of the Jet Propulsion Laboratory/California Institute of Technology. WISE and NEOWISE are funded by the National Aeronautics and Space Administration. HiPS by CDS.',
+    shortCredit: 'AllWISE: NASA/JPL-Caltech/UCLA; HiPS by CDS',
+    usage: 'Optional mid-infrared survey layer.',
+    kind: 'survey',
+    status: 'live',
+  },
+  {
+    id: 'survey-panstarrs',
+    name: 'Pan-STARRS1 DR1, colour HiPS (i, r, g)',
+    url: 'https://panstarrs.stsci.edu/',
+    license: 'Public data (MAST); acknowledgement requested',
+    attribution:
+      "The Pan-STARRS1 Surveys (PS1) and the PS1 public science archive have been made possible through contributions by the Institute for Astronomy, the University of Hawaii, the Pan-STARRS Project Office, the Max-Planck Society and its participating institutes, the Max Planck Institute for Astronomy, Heidelberg and the Max Planck Institute for Extraterrestrial Physics, Garching, The Johns Hopkins University, Durham University, the University of Edinburgh, the Queen's University Belfast, the Harvard-Smithsonian Center for Astrophysics, the Las Cumbres Observatory Global Telescope Network Incorporated, the National Central University of Taiwan, the Space Telescope Science Institute, the National Aeronautics and Space Administration under Grant No. NNX08AR22G issued through the Planetary Science Division of the NASA Science Mission Directorate, the National Science Foundation Grant No. AST-1238877, the University of Maryland, Eotvos Lorand University (ELTE), the Los Alamos National Laboratory, and the Gordon and Betty Moore Foundation. Images retrieved from MAST at STScI; HiPS by CDS.",
+    shortCredit: 'Pan-STARRS1: PS1 Science Consortium, via MAST/STScI; HiPS by CDS',
+    usage: 'Optional deep optical survey layer (sky north of declination −30°).',
+    kind: 'survey',
+    status: 'live',
+  },
+  {
+    id: 'survey-gaia-density',
+    name: 'Gaia DR3 star density map (HiPS)',
+    url: 'https://www.cosmos.esa.int/web/gaia/dr3',
+    license: 'ESA open data; credit required',
+    attribution:
+      'This work has made use of data from the European Space Agency (ESA) mission Gaia (https://www.cosmos.esa.int/gaia), processed by the Gaia Data Processing and Analysis Consortium (DPAC). Credit: ESA/Gaia/DPAC. Density map HiPS by CDS.',
+    shortCredit: 'Gaia DR3 density: ESA/Gaia/DPAC; HiPS by CDS',
+    usage: 'Optional star-density layer.',
+    kind: 'survey',
+    status: 'live',
+    notes: 'Only CDS serves this map (no mirror), so it is unavailable while CDS is offline.',
+  },
 ];
 
 export function creditLine(id: string): string {

@@ -310,6 +310,34 @@ the previous year is deleted only after the switch. One-time account setup (alre
 Earthdata account must list **LAADS Web** under _Applications → Authorized Apps_, which needs an
 _Organization_ in the profile.
 
+## Optional sky surveys (HiPS)
+
+Off by default. Turn on **Layers → Sky surveys**, pick a survey and an opacity. The survey is drawn
+by the sky engine itself (patch `0003`), under the stars and behind clouds, the terrain and the
+daytime sky, so it sits in the real sky at your site.
+
+| Survey                      | Shows                                          | Coverage           | Terms                           |
+| --------------------------- | ---------------------------------------------- | ------------------ | ------------------------------- |
+| DSS2 colour                 | Photographic optical sky (POSS-II, UK Schmidt) | all sky            | CC BY-NC-SA 4.0, non-commercial |
+| H-alpha (Finkbeiner 2003)   | Emission nebulae, low resolution               | all sky (galactic) | public data, citation           |
+| 2MASS colour                | Near-infrared J, H, Ks                         | all sky            | public data, acknowledgement    |
+| AllWISE colour              | Mid-infrared W1, W2, W4                        | all sky            | public data (NASA)              |
+| Pan-STARRS DR1 colour (irg) | Deep optical                                   | north of Dec −30°  | public data (MAST)              |
+| Gaia DR3 density            | Star counts                                    | all sky            | ESA, credit required            |
+
+- **Nothing is hosted here.** Tiles stream from CDS Strasbourg or the official mirrors CDS lists
+  (ESA ESDC, NASA MAST, NASA IRSA, CSIRO CASDA, China-VO): no R2 storage, no Worker requests.
+  `src/lib/sky/surveys.ts` tries each server's `properties` file in order (6 s timeout), checks it
+  names the right survey and frame, and remembers the first that answers for the session. CDS's own
+  servers have been offline since a security incident on 9 November 2026; the mirrors carry
+  everything except the Gaia density map, which comes back when CDS does.
+- **Cost on a phone:** nothing until a survey is switched on. A wide view needs about six
+  low-resolution tiles (~50 KB each); zooming in loads sharper tiles only for the area on screen.
+- Each survey's acknowledgement is on the Credits page and its short credit sits under the menu.
+  DSS forbids for-profit use: this site is free, but a commercial fork must drop that survey.
+- **Left out for now:** Axel Mellinger's colour Milky Way panorama (`P/Mellinger/color`). Its
+  terms are "all rights reserved", so it waits for the owner's decision.
+
 ## Roadmap
 
 1. ✅ Setup, CI, license, trial build of Stellarium Web Engine
@@ -320,7 +348,7 @@ _Organization_ in the profile.
 6. ✅ Satellite clouds (GIBS map, GMGSI hourly PMTiles, satellite + model "clouds now")
 7. ✅ Seeing model (Hufnagel–Valley from upper winds) + 7Timer second opinion
 8. ✅ Light pollution pipeline (Black Marble → sky glow → PMTiles), SQM/Bortle, light domes
-9. Optional HiPS sky surveys
+9. ✅ Optional HiPS sky surveys (DSS2, H-alpha, 2MASS, AllWISE, Pan-STARRS, Gaia density; mirror fallback)
 10. PWA, night-vision mode, ISS passes, aurora, polish, accessibility, speed
 11. Deploy to Cloudflare Pages — needs your OK
 
@@ -330,6 +358,7 @@ _Organization_ in the profile.
 - Light pollution is modelled from yearly satellite data and underestimates LED light.
 - Satellite cloud images are ~35 minutes (GOES, Himawari via GIBS) to ~1.5 hours (GMGSI) old
   when they appear, and infrared cannot tell low fog or stratus from the ground.
+- Sky surveys are archival photographs (taken 1980s–2010s), not tonight's sky.
 
 ## License
 

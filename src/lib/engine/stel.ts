@@ -51,6 +51,8 @@ export interface SweCore extends SweObj {
   landscapes: SweModule;
   lines: Record<'azimuthal' | 'equatorial' | 'meridian' | 'ecliptic', SweModule>;
   cardinals: SweModule;
+  /** Optional HiPS image survey (engine/patches/0003). */
+  dss: SweModule & { opacity: number; galactic: boolean };
 }
 
 export interface Stel {
@@ -128,6 +130,34 @@ function addSkyData(stel: Stel): void {
   // Flat mathematical horizon (no invented scenery). The real terrain
   // silhouette from elevation data replaces it in a later phase.
   c.landscapes.addDataSource({ url: `${SKYDATA}landscapes/zero`, key: 'zero' });
+}
+
+/** What the optional survey layer should show (null = off). */
+export interface EngineSurvey {
+  /** HiPS base URL (no trailing slash). */
+  url: string;
+  galactic: boolean;
+  /** 0..1 */
+  opacity: number;
+}
+
+const surveyUrl = new WeakMap<Stel, string>();
+
+/** Show, change or hide the optional survey. Tiles load only while it is visible. */
+export function setSurvey(stel: Stel, s: EngineSurvey | null): void {
+  const dss = stel.core.dss;
+  if (!s) {
+    dss.visible = false;
+    return;
+  }
+  dss.galactic = s.galactic;
+  dss.opacity = Math.min(1, Math.max(0, s.opacity));
+  if (surveyUrl.get(stel) !== s.url) {
+    // Replaces the previous survey and frees its tiles.
+    dss.addDataSource({ url: s.url });
+    surveyUrl.set(stel, s.url);
+  }
+  dss.visible = true;
 }
 
 export function setObserver(

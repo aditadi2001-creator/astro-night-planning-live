@@ -1,0 +1,106 @@
+diff --git a/src/modules/dss.c b/src/modules/dss.c
+index 9f53c22..7001ca1 100644
+--- a/src/modules/dss.c
++++ b/src/modules/dss.c
+@@ -10,56 +10,54 @@
+ #include "swe.h"
+ 
+ // HIPS survey support.
++//
++// Astro Night Planning: optional image surveys chosen by the user (off by
++// default). The survey is drawn as a photograph at a user-set opacity at every
++// field of view (the upstream code only faded it in below 20 degrees and tied
++// its brightness to the eye model). Surveys in the galactic frame are rotated
++// to ICRS.
+ 
+ typedef struct dss {
+     obj_t       obj;
+     fader_t     visible;
+     hips_t      *hips;
++    double      opacity;    // 0..1, set from JS.
++    bool        galactic;   // The HiPS uses hips_frame = galactic.
+ } dss_t;
+ 
++// Galactic -> ICRS rotation (transpose of the IAU ICRS -> galactic matrix,
++// as in ERFA eraIcrs2g), in the engine's column-major mat4 layout:
++// out[i] = sum_j m[j][i] * v[j].
++static const double GAL2ICRS[4][4] = {
++    {-0.054875560416215368492398900454, -0.873437090234885048760383168409,
++     -0.483835015548713226831774175116, 0},
++    {+0.494109427875583673525222371358, -0.444829629960011178146614061616,
++     +0.746982244497218890527388004556, 0},
++    {-0.867666149019004701181616534570, -0.198076373431201528180486091412,
++     +0.455983776175066922272100478348, 0},
++    {0, 0, 0, 1},
++};
++
+ static int dss_init(obj_t *obj, json_value *args)
+ {
+     dss_t *dss = (void*)obj;
+-    fader_init(&dss->visible, true); // Visible by default.
++    fader_init(&dss->visible, false); // Off until the user picks a survey.
++    dss->opacity = 1.0;
+     return 0;
+ }
+ 
+ static int dss_render(obj_t *obj, const painter_t *painter)
+ {
+-    double visibility;
+     const dss_t *dss = (const dss_t*)obj;
+     painter_t painter2 = *painter;
+-    double lum, c, sep, ratio;
++    double c, sep;
+     int render_order, split_order;
+ 
+     if (dss->visible.value == 0.0) return 0;
+     if (!dss->hips) return 0;
+ 
+-    // For large FOV we use the milky way texture
+-    visibility = smoothstep(20 * DD2R, 10 * DD2R, core->fov);
+-    painter2.color[3] *= dss->visible.value;
+-
+-    // Adjust for eye adaptation.
+-    // 0.02 cd/m2 luminance should more or less match the brightest
+-    // non-saturated pixels brightness inside the DSS images.
+-    lum = 0.02;
+-    lum *= core->telescope.light_grasp;
+-    lum /= pow(core->telescope.magnification, 2);
+-    c = tonemapper_map(&core->tonemapper, lum);
+-    // Ad-hoc integration of the Bortle scale
+-    c *= 1.0 / (6.0 / 8.0) * (9.0 - core->bortle_index) / 8.0;
+-    c = fmax(0, c);
+-    c *= visibility;
+-    c = fmin(c, 1.2);
+-
+-    // limit mag = 4 -> no dss
+-    // limit mag > 14 -> 100% dss
+-    if (core->display_limit_mag < 14.0) {
+-        ratio = (14.0 - core->display_limit_mag) / 10;
+-        ratio = clamp(ratio, 0.0, 1.0);
+-        c *= 1.0 - ratio;
+-    }
+-
++    // User opacity (all four channels: the painter blends premultiplied).
++    c = clamp(dss->opacity, 0.0, 1.0) * dss->visible.value;
+     vec4_mul(c, painter2.color, painter2.color);
+ 
+     // Don't even try to display if the brightness is too low
+@@ -85,7 +83,8 @@ static int dss_render(obj_t *obj, const painter_t *painter)
+     render_order = hips_get_render_order(dss->hips, painter);
+     split_order = fmin(split_order, render_order + 3);
+ 
+-    hips_render(dss->hips, &painter2, NULL, split_order);
++    hips_render(dss->hips, &painter2, dss->galactic ? GAL2ICRS : NULL,
++                split_order);
+     return 0;
+ }
+ 
+@@ -118,6 +117,8 @@ static obj_klass_t dss_klass = {
+     .add_data_source = dss_add_data_source,
+     .attributes = (attribute_t[]) {
+         PROPERTY(visible, TYPE_BOOL, MEMBER(dss_t, visible.target)),
++        PROPERTY(opacity, TYPE_FLOAT, MEMBER(dss_t, opacity)),
++        PROPERTY(galactic, TYPE_BOOL, MEMBER(dss_t, galactic)),
+         {}
+     },
+ };

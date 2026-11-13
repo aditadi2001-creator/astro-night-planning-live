@@ -77,6 +77,20 @@ Two engine behaviours the module works around:
 - The OBSERVED frame is left-handed; quads must be wound with azimuth decreasing across a cell or
   they are back-face culled. The texture matrix mirrors u to match.
 
+### `0003-optional-sky-surveys.patch`
+
+Reworks the upstream `dss` module (one HiPS image survey) for user-chosen surveys:
+
+| Property   | Effect                                                                                                                                                                                 |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `visible`  | Now off by default.                                                                                                                                                                    |
+| `opacity`  | 0–1, set by the user. Replaces upstream's eye-adaptation brightness, which also faded the survey out above a 20° field of view and with the limiting magnitude.                        |
+| `galactic` | The HiPS is in the galactic frame (`hips_frame = galactic`, e.g. Finkbeiner H-alpha): tiles are rotated to ICRS with the IAU matrix (as in ERFA `eraIcrs2g`), passed to `hips_render`. |
+
+`addDataSource({url})` replaces the survey and frees the old tiles. `tests/surveys.test.ts` reads
+the matrix from the patch and checks that it puts the galactic centre and pole at their ICRS
+positions.
+
 ## Post-link fix to the generated JS (`engine/patch-js.mjs`)
 
 emsdk 1.39's WebGL layer never reuses object ids (`GL.getNewId` takes them from one growing counter;

@@ -7,9 +7,11 @@
     setAtmosphere,
     setObserver,
     setSkyLayer,
+    setSurvey,
     SKY_LAYER,
     startEngine,
     type EngineAtmosphere,
+    type EngineSurvey,
     type ObjectInfo,
     type Stel,
   } from '../lib/engine/stel';
@@ -33,6 +35,8 @@
     groundColor: Rgb;
     /** Light domes from the light-pollution map (null = none). */
     glow?: DomeGlow | null;
+    /** Optional image survey (null = off). */
+    survey?: EngineSurvey | null;
     oncursor?: (p: { alt: number; az: number } | null) => void;
   }
   let {
@@ -45,6 +49,7 @@
     horizon,
     groundColor,
     glow = null,
+    survey = null,
     oncursor,
   }: Props = $props();
 
@@ -120,6 +125,11 @@
     cons.show_only_pointed = false;
     cons.lines_visible = constellations;
     cons.labels_visible = constellations;
+  });
+
+  $effect(() => {
+    if (!stel) return;
+    setSurvey(stel, survey ? { ...survey } : null);
   });
 
   $effect(() => {
