@@ -231,6 +231,9 @@ def list_keys(day: datetime) -> list[str]:
 def published_hours(url: str | None) -> set[str]:
     if not url:
         return set()
+    # A unique query string bypasses the Worker's cache: the list must be fresh
+    # so a second run in the same hour sees that the hour is already published.
+    url = f"{url}{'&' if '?' in url else '?'}fresh={int(time.time())}"
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=30) as r:
             return {h["hour"] for h in json.load(r).get("hours", [])}

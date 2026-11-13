@@ -114,6 +114,40 @@ export function parse7timer(path: string): { lat: string; lon: string } | null {
   return { lat: lat.toFixed(1), lon: lon.toFixed(1) };
 }
 
+/** GitHub repository whose workflows the Worker's cron starts. */
+export const GH_REPO = 'aditadi2001-creator/astro-night-planning-live';
+
+/**
+ * Cron schedule → workflow to start. GitHub's own schedule for these jobs is
+ * unreliable (it never fired in this repo's first hours), so the Worker's
+ * Cron Trigger starts them through the official workflow_dispatch API too.
+ * The jobs skip work that is already done, so a double start is harmless.
+ */
+export const CRON_WORKFLOWS: Record<string, string> = {
+  '47 * * * *': 'clouds-hourly.yml',
+};
+
+export function workflowForCron(cron: string): string | null {
+  return CRON_WORKFLOWS[cron] ?? null;
+}
+
+export function dispatchRequest(workflow: string, token: string): [string, RequestInit] {
+  return [
+    `https://api.github.com/repos/${GH_REPO}/actions/workflows/${workflow}/dispatches`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'astro-night-planning-live-cron',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ref: 'main' }),
+    },
+  ];
+}
+
 export function corsHeaders(): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': '*',

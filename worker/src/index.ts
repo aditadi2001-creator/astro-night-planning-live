@@ -28,10 +28,30 @@ import {
   parseHips,
   parseTile,
   parse7timer,
+  dispatchRequest,
+  workflowForCron,
 } from './routes';
 
 export interface Env {
   DATA: R2Bucket;
+  /** Fine-grained GitHub token (this repo, Actions read/write), a Worker secret. */
+  GH_DISPATCH_TOKEN?: string;
+}
+
+/** Start a GitHub Actions workflow (the Worker's Cron Trigger). */
+async function dispatchWorkflow(env: Env, workflow: string): Promise<void> {
+  if (!env.GH_DISPATCH_TOKEN) {
+    console.log(`cron: no GH_DISPATCH_TOKEN secret, not starting ${workflow}`);
+    return;
+  }
+  // Trim: a pasted secret can carry a trailing newline.
+  const [url, init] = dispatchRequest(workflow, env.GH_DISPATCH_TOKEN.trim());
+  const r = await fetch(url, init);
+  if (r.status !== 204) {
+    console.error(
+      `cron: GitHub answered ${r.status} for ${workflow}: ${(await r.text()).slice(0, 200)}`,
+    );
+  }
 }
 
 const DEM_ORIGIN = 'https://copernicus-dem-30m.s3.amazonaws.com';
@@ -209,5 +229,9 @@ export default {
         'Content-Type': 'text/plain',
       });
     }
+  },
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    const workflow = workflowForCron(controller.cron);
+    if (workflow) ctx.waitUntil(dispatchWorkflow(env, workflow));
   },
 } satisfies ExportedHandler<Env>;

@@ -239,6 +239,24 @@ applied direction by direction, so observed cloud appears on the correct side of
 the model lacks entirely is drawn high (cirrus) when the tops are below 240 K, otherwise mid-level.
 Infrared misses low fog and stratus, which is why the forecast always keeps some weight.
 
+### Who starts the hourly job
+
+GitHub's own `schedule:` never fired in this repository's first hours, so the data Worker also
+starts the job: a **Cron Trigger** on the Worker (`47 * * * *` in `worker/wrangler.jsonc`, free plan:
+1 of 5 per account) calls GitHub's `workflow_dispatch` API for `clouds-hourly.yml`. It uses the
+Worker secret `GH_DISPATCH_TOKEN`, a **fine-grained GitHub token** limited to this one repository with
+only _Actions: read and write_ (plus the mandatory read-only _Metadata_); it cannot read or change
+code, settings or secrets. The GitHub schedule stays as a backup; if both fire, the second run sees
+the hour is already published (the list is read past the cache) and stops without touching R2.
+
+**Renewing the token (yearly — 2 minutes).** It expires on **12 Nov 2027**; GitHub emails a week
+before. Without it the Worker simply doesn't start the job (logged), nothing breaks.
+
+1. GitHub → **Settings → Developer settings → Personal access tokens → Fine-grained tokens** →
+   _astro-night-planning-live cron_ → **Regenerate token** → copy it.
+2. In the repo folder: `npx wrangler secret put GH_DISPATCH_TOKEN --config worker/wrangler.jsonc`
+   and paste it at the prompt (never into a chat or a file).
+
 ### Scheduled jobs and the 60-day pause
 
 GitHub pauses scheduled workflows in public repos after 60 days without repository activity. The

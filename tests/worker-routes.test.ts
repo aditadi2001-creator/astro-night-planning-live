@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEM_MAX_SLICE,
+  dispatchRequest,
+  workflowForCron,
   hipsToTile,
   parse7timer,
   parseDem,
@@ -79,5 +81,17 @@ describe('worker routes are strict allow-lists', () => {
     expect(parse7timer('/7timer/-33.9/151.2')).toEqual({ lat: '-33.9', lon: '151.2' });
     expect(parse7timer('/7timer/95/0')).toBeNull();
     expect(parse7timer('/7timer/1/2?x=evil')).toBeNull();
+  });
+
+  it('maps the Worker cron to the cloud workflow and builds the dispatch call', () => {
+    expect(workflowForCron('47 * * * *')).toBe('clouds-hourly.yml');
+    expect(workflowForCron('0 0 * * *')).toBeNull();
+    const [url, init] = dispatchRequest('clouds-hourly.yml', 'tok');
+    expect(url).toBe(
+      'https://api.github.com/repos/aditadi2001-creator/astro-night-planning-live/actions/workflows/clouds-hourly.yml/dispatches',
+    );
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({ ref: 'main' });
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
   });
 });

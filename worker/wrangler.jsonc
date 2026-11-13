@@ -18,6 +18,10 @@
     },
   ],
   "observability": { "enabled": false },
+  // Hourly: starts the GitHub "Hourly satellite clouds" workflow through the
+  // workflow_dispatch API (GitHub's own schedule proved unreliable). Free plan:
+  // 5 Cron Triggers per account; this uses 1. Needs the GH_DISPATCH_TOKEN secret.
+  "triggers": { "crons": ["47 * * * *"] },
   // No "limits" block: custom CPU limits are a paid-plan setting. The free
   // plan already caps every request at 10 ms CPU; tile requests use well under 5 ms.
 }
