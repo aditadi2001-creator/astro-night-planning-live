@@ -12,7 +12,12 @@ export const GIBS = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best';
 export interface GeoLayer {
   id: string;
   label: string;
-  /** Where the satellite sees (lon/lat box; MapLibre bounds cannot cross 180°). */
+  /**
+   * The region this satellite is drawn for (lon/lat box; MapLibre bounds cannot
+   * cross 180°). Each satellite keeps the part it sees well: near the edge of
+   * its disk the view is stretched and smeared. GOES-East/West split at 106° W
+   * as NOAA does; 30° W to 90° E is left to GMGSI (Meteosat 0° and IODC).
+   */
   bounds: [number, number, number, number];
   /** A tile inside the disk, used to probe which times exist. */
   probe: { z: number; x: number; y: number };
@@ -22,19 +27,19 @@ export const GEO_LAYERS: readonly GeoLayer[] = [
   {
     id: 'GOES-East_ABI_Band13_Clean_Infrared',
     label: 'GOES-East',
-    bounds: [-156, -81, 6, 81],
+    bounds: [-106, -81, -30, 81],
     probe: { z: 2, x: 1, y: 1 },
   },
   {
     id: 'GOES-West_ABI_Band13_Clean_Infrared',
     label: 'GOES-West',
-    bounds: [-180, -81, -56, 81],
+    bounds: [-180, -81, -106, 81],
     probe: { z: 2, x: 0, y: 1 },
   },
   {
     id: 'Himawari_AHI_Band13_Clean_Infrared',
     label: 'Himawari',
-    bounds: [60, -81, 180, 81],
+    bounds: [90, -81, 180, 81],
     probe: { z: 2, x: 3, y: 1 },
   },
 ];

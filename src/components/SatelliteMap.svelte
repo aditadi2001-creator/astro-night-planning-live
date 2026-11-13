@@ -27,6 +27,7 @@
     type GeoLayer,
   } from '../lib/sat/gibs';
   import { GMGSI_INDEX_URL, gmgsiTiles, loadGmgsiIndex } from '../lib/sat/gmgsi';
+  import { clipUrl, loadClipped } from '../lib/sat/mask';
   import { fmtTime } from '../lib/time/format';
 
   let { place, tz }: { place: Place; tz: string | undefined } = $props();
@@ -44,6 +45,8 @@
   let index = $state(0);
   let playing = $state(false);
   let status = $state<'loading' | 'ready' | 'error'>('loading');
+  /** True once the map style has loaded; sources can't be added before. */
+  let styleReady = $state(false);
   let message = $state('');
   let timer: ReturnType<typeof setInterval> | null = null;
   const ctrl = new AbortController();
@@ -82,7 +85,8 @@
       if (map.getLayer(id)) continue;
       map.addSource(id, {
         type: 'raster',
-        tiles: [geoTiles(g.layer.id, g.t)],
+        // Clipped to the region this satellite sees well (pixel-exact, see mask.ts).
+        tiles: [clipUrl(geoTiles(g.layer.id, g.t), g.layer.bounds[0], g.layer.bounds[2])],
         tileSize: 256,
         maxzoom: 6,
         bounds: g.layer.bounds,
@@ -113,6 +117,7 @@
   }
 
   function play(): void {
+    if (!styleReady) return;
     if (playing) {
       playing = false;
       if (timer) clearInterval(timer);
@@ -129,7 +134,7 @@
   }
 
   $effect(() => {
-    show(index);
+    if (styleReady) show(index);
   });
 
   // Keep the marker on the site when the location changes.
@@ -143,6 +148,10 @@
     try {
       const ml = await import('maplibre-gl');
       ml.setWorkerUrl(workerUrl);
+      ml.removeProtocol('gibsclip');
+      ml.addProtocol('gibsclip', async (params, abort) => ({
+        data: await loadClipped(params.url, abort.signal),
+      }));
       const now = Date.now();
       const [latest, idx] = await Promise.all([
         Promise.all(GEO_LAYERS.map((l) => latestTime(l, now, ctrl.signal))),
@@ -202,7 +211,7 @@
       dot.setAttribute('aria-label', 'Your location');
       marker = new ml.Marker({ element: dot }).setLngLat([place.lon, place.lat]).addTo(map);
       map.on('load', () => {
-        show(index);
+        styleReady = true;
         status = 'ready';
       });
       map.on('error', (e) => {
@@ -269,9 +278,11 @@
     <p class="muted">Finding the newest satellite images…</p>
   {/if}
   <p class="muted small">
-    White = cold cloud tops, dark = warm ground. Infrared works day and night but cannot tell low
-    fog from the ground. Images are 30–40 minutes (GOES, Himawari) to ~1.5 hours (GMGSI) old when
-    they appear.
+    White = cold cloud tops, dark = warm ground; infrared works day and night but cannot tell low
+    fog from the ground. Over the Americas and the Pacific (GOES, Himawari, new image every 10
+    minutes, ~20–40 minutes old) NASA colours the coldest tops: yellow, red and purple mark
+    thunderstorms and thick high cloud. Europe, Africa and India come from the hourly GMGSI mosaic
+    (Meteosat), in grey, ~1–1.5 hours old.
   </p>
   <p class="credit-line">
     Imagery: NASA GIBS (GOES-East/West: NOAA; Himawari: JMA) · NOAA/NESDIS GMGSI · base: NASA Black

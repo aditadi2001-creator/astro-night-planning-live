@@ -28,7 +28,7 @@
   >
   <label
     ><input type="checkbox" bind:checked={layers.satmap} /> Satellite cloud map
-    <span class="hint">(infrared, last ~3 hours)</span></label
+    <span class="hint">(infrared, last 2.5 hours)</span></label
   >
 </fieldset>
 

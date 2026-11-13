@@ -16,6 +16,7 @@ import {
   latestTime,
 } from '../src/lib/sat/gibs';
 import { pixelFor } from '../src/lib/sat/gmgsi';
+import { clipUrl, outsideColumns, parseClipUrl } from '../src/lib/sat/mask';
 
 describe('infrared cloud estimate', () => {
   it('uses the GMGSI brightness scale', () => {
@@ -120,5 +121,38 @@ describe('GMGSI tile addressing', () => {
     // Pune.
     const q = pixelFor(18.52, 73.86, 4);
     expect([q.tx, q.ty]).toEqual([11, 7]);
+  });
+});
+
+describe('GIBS longitude clipping', () => {
+  it('keeps whole tiles inside the region untouched', () => {
+    // z3 x2 spans 90° W … 45° W, fully inside GOES-East's −106…−30.
+    expect(outsideColumns(3, 2, -106, -30)).toEqual([]);
+  });
+
+  it('clears the columns beyond the region on an edge tile', () => {
+    // z3 x3 spans 45° W … 0°: only the western third (45° W … 30° W) is kept.
+    const cols = outsideColumns(3, 3, -106, -30);
+    expect(cols).toHaveLength(1);
+    const [a, b] = cols[0] ?? [0, 0];
+    expect(b).toBe(256);
+    expect(a).toBeGreaterThan(80);
+    expect(a).toBeLessThan(90); // 15/45 of 256 ≈ 85
+  });
+
+  it('round-trips the protocol URL', () => {
+    const u = clipUrl('https://gibs.example/L/default/T/M/{z}/{y}/{x}.png', -106, -30)
+      .replace('{z}', '3')
+      .replace('{y}', '2')
+      .replace('{x}', '3');
+    expect(u.startsWith('gibsclip://gibs.example/')).toBe(true);
+    expect(parseClipUrl(u)).toEqual({
+      real: 'https://gibs.example/L/default/T/M/3/2/3.png',
+      z: 3,
+      y: 2,
+      x: 3,
+      west: -106,
+      east: -30,
+    });
   });
 });
