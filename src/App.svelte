@@ -10,6 +10,12 @@
   import Extras from './components/Extras.svelte';
   import WeekAhead from './components/WeekAhead.svelte';
   import Equipment from './components/Equipment.svelte';
+  import ObjectDetails from './components/ObjectDetails.svelte';
+  import BestTargets from './components/BestTargets.svelte';
+  import { cloudFactor } from './lib/physics/score';
+  import * as Astronomy from 'astronomy-engine';
+  import { altAz } from './lib/astro/target';
+  import type { ObjectInfo } from './lib/engine/stel';
   import {
     fmtFov,
     loadSetups,
@@ -574,6 +580,16 @@
     return ev;
   });
 
+  // ---- selected object and "go to" requests ---------------------------------------
+  let selectedInfo = $state<ObjectInfo | null>(null);
+  let clearSignal = $state(0);
+  let gotoTarget = $state<{ ra: number; dec: number; fovDeg: number; n: number } | null>(null);
+  let gotoN = 0;
+  function gotoSky(ra: number, dec: number, fovDeg: number) {
+    gotoTarget = { ra, dec, fovDeg, n: ++gotoN };
+    document.querySelector('.sky-box')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
   // ---- equipment setups and their frames on the sky --------------------------------
   let setups = $state(loadSetups());
   let shownFrames = $state<Record<SetupKind, boolean>>({
@@ -618,6 +634,33 @@
         };
       }),
   );
+
+  // ---- best targets tonight -------------------------------------------------------
+  const darkTonight = $derived.by(() => {
+    const start = tw.astroEnd ?? tw.nauticalEnd;
+    const end = tw.astroStart ?? tw.nauticalStart;
+    return start && end && end > start ? { start: start.getTime(), end: end.getTime() } : null;
+  });
+  const clearFactorAt = (t: number) => {
+    const c = cloudAt(hourStart(t));
+    return c ? cloudFactor(c.low, c.mid, c.high) : 1;
+  };
+  const deepFrameShort = $derived.by(() => {
+    const st = setupStats(setups.deepsky);
+    return Math.min(st.fovW, st.fovH);
+  });
+  function showTarget(t: { ra: number; dec: number; sizeDeg: number; bestT?: number }) {
+    // Below 20° at the shown time: jump to its best moment tonight.
+    if (t.bestT != null) {
+      Astronomy.DefineStar(Astronomy.Body.Star2, t.ra / 15, t.dec, 1000);
+      const obs = new Astronomy.Observer(place.lat, place.lon, place.elevation);
+      if (altAz(Astronomy.Body.Star2, obs, shown).alt < 20) setTime(new Date(t.bestT), false);
+    }
+    const st = setupStats(setups.deepsky);
+    const fov = Math.max(t.sizeDeg * 3, st.fovDiag * 1.6, 1);
+    shownFrames = { ...shownFrames, deepsky: true };
+    gotoSky(t.ra, t.dec, Math.min(60, fov));
+  }
 
   function setTime(t: Date, isLive: boolean) {
     live = isLive;
@@ -684,17 +727,47 @@
           survey={engineSurvey}
           frames={skyFrames}
           onframecenter={(c) => (frameCenter = c)}
+          onselect={(i) => (selectedInfo = i)}
+          goto={gotoTarget}
+          {clearSignal}
           deepSky={layers.deepSky && !layers.surveys ? deepSkyUrl : null}
           longExposure={layers.longExposure}
           oncursor={(p) => (cursor = p)}
         />
       </section>
 
+      {#if selectedInfo}
+        <ObjectDetails
+          info={selectedInfo}
+          {place}
+          time={shown}
+          {tw}
+          {tz}
+          {setups}
+          onclose={() => {
+            clearSignal++;
+            selectedInfo = null;
+          }}
+        />
+      {/if}
+
       <Equipment
         bind:setups
         bind:shown={shownFrames}
         seeing={row.seeing?.arcsec ?? null}
         center={frameCenter}
+      />
+
+      <BestTargets
+        {place}
+        {tz}
+        dark={darkTonight}
+        clearAt={clearFactorAt}
+        sqm={siteLight?.sqm ?? 21}
+        sqmKnown={!!siteLight}
+        frameShortDeg={deepFrameShort}
+        stamp={nowMin}
+        onshow={showTarget}
       />
 
       <Timeline

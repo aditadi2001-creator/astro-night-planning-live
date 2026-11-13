@@ -28,6 +28,12 @@
     frames?: SkyFrame[];
     /** Reports the frame centre (RA/Dec degrees, J2000/ICRF) for display elsewhere. */
     onframecenter?: (c: { ra: number; dec: number; target: string | null } | null) => void;
+    /** Reports the tapped object (null when cleared). */
+    onselect?: (info: ObjectInfo | null) => void;
+    /** Point the view at J2000 coordinates (degrees); `n` changes to repeat the same target. */
+    goto?: { ra: number; dec: number; fovDeg: number; n: number } | null;
+    /** Changing this number clears the selection. */
+    clearSignal?: number;
     place: Place;
     /** The time the sky should show. */
     time: Date;
@@ -64,6 +70,9 @@
     survey = null,
     frames = [],
     onframecenter,
+    onselect,
+    goto = null,
+    clearSignal = 0,
     deepSky = null,
     longExposure = false,
     oncursor,
@@ -325,6 +334,32 @@
   });
 
   const fmt = (v: number, d = 1) => `${v.toFixed(d)}°`;
+  // Report the selection to the page (for the detailed panel).
+  $effect(() => {
+    onselect?.(selected);
+  });
+  // Point at coordinates requested by the page (best-targets list).
+  let lastGoto = -1;
+  $effect(() => {
+    const g = goto;
+    if (!stel || !g || g.n === lastGoto) return;
+    lastGoto = g.n;
+    stel.core.selection = null;
+    selected = null;
+    const ra = g.ra * stel.D2R;
+    const dec = g.dec * stel.D2R;
+    const v = stel.convertFrame(stel.core.observer, 'ICRF', 'MOUNT', stel.s2c(ra, dec));
+    stel.lookAt(v, 0.8);
+    stel.zoomTo(g.fovDeg * stel.D2R, 0.8);
+  });
+  let lastClear = 0;
+  $effect(() => {
+    if (clearSignal !== lastClear) {
+      lastClear = clearSignal;
+      clearSelection();
+    }
+  });
+
   function clearSelection() {
     if (stel) stel.core.selection = null;
     selected = null;

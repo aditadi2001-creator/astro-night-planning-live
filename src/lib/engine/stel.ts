@@ -296,7 +296,32 @@ export interface ObjectInfo {
   az: number;
   ra: number;
   dec: number;
+  /** J2000 (ICRF) right ascension and declination in degrees. */
+  ra2000: number;
+  dec2000: number;
+  /** Engine model ("star", "dso", "jpl_sso", "moon"…) and raw type code. */
+  model: string;
+  typeCode: string;
+  /** Planets/Moon: distance in AU (engine). */
+  distanceAu: number | null;
+  /** Stars: parallax (mas) and B−V colour index, when catalogued. */
+  parallaxMas: number | null;
+  bv: number | null;
+  /** Angular size: major/minor axis in arcmin (deep-sky) or diameter (planets). */
+  sizeMajor: number | null;
+  sizeMinor: number | null;
+  /** Illuminated fraction (planets, Moon). */
+  phase: number | null;
+  /** Catalogue designations without the display cleanup (e.g. "NGC 6514", "HIP 88601"). */
+  ids: string[];
 }
+
+const num = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isFinite(v)
+    ? v
+    : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))
+      ? Number(v)
+      : null;
 
 /** Human-readable info for the selected object. */
 export function describe(stel: Stel, obj: SweObj): ObjectInfo {
@@ -316,6 +341,28 @@ export function describe(stel: Stel, obj: SweObj): ObjectInfo {
   const [az, alt] = stel.c2s(observed);
   const vmag = obj.getInfo('vmag');
   const t = typeof obj.type === 'string' ? obj.type : String(obj.getInfo('type') ?? '');
+  const [ra0, dec0] = stel.c2s(radec);
+  const json = (obj as { jsonData?: { model?: string; model_data?: Record<string, unknown> } })
+    .jsonData;
+  const md = json?.model_data ?? {};
+  const model = json?.model ?? '';
+  const safe = (k: 'distance' | 'radius' | 'phase') => {
+    try {
+      return num(obj.getInfo(k));
+    } catch {
+      return null;
+    }
+  };
+  // Deep-sky axes are stored in arcmin by OpenNGC-style models (dimx/dimy) or as radians (smax/smin).
+  const RAD_ARCMIN = (180 / Math.PI) * 60;
+  let sizeMajor = num(md.dimx) ?? (num(md.smax) != null ? (num(md.smax) ?? 0) * RAD_ARCMIN : null);
+  let sizeMinor = num(md.dimy) ?? (num(md.smin) != null ? (num(md.smin) ?? 0) * RAD_ARCMIN : null);
+  const radius = safe('radius');
+  if (sizeMajor == null && radius != null && radius > 0) {
+    // Planets and the Moon: engine radius is the angular radius in radians.
+    sizeMajor = 2 * radius * RAD_ARCMIN;
+    sizeMinor = sizeMajor;
+  }
   return {
     name: names[0] ?? 'Unnamed object',
     otherNames: names.slice(1, 6),
@@ -325,5 +372,16 @@ export function describe(stel: Stel, obj: SweObj): ObjectInfo {
     az: stel.anp(az) * stel.R2D,
     ra: stel.anp(ra) * stel.R2D,
     dec: stel.anpm(dec) * stel.R2D,
+    ra2000: stel.anp(ra0) * stel.R2D,
+    dec2000: stel.anpm(dec0) * stel.R2D,
+    model,
+    typeCode: t,
+    distanceAu: model === 'star' || model === 'dso' ? null : safe('distance'),
+    parallaxMas: num(md.plx),
+    bv: num(md.BVMag) ?? num(md.bv),
+    sizeMajor,
+    sizeMinor,
+    phase: model === 'jpl_sso' || model === 'moon' ? safe('phase') : null,
+    ids: obj.designations().slice(0, 12),
   };
 }
