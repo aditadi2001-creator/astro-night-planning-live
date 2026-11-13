@@ -30,7 +30,8 @@ self.onmessage = (e: MessageEvent<PassJob>) => {
     .filter((o) => !stationIds.has(Number(o.NORAD_CAT_ID)))
     .flatMap((o) => findPasses(o, site, start, now + 86_400_000, { stepMs: 30_000, minAlt: 30 }))
     .filter((p) => p.visible && p.set.t > now)
-    .sort((a, b) => a.rise.t - b.rise.t);
+    // Listed by when each becomes visible (the time the card shows).
+    .sort((a, b) => (a.visibleFrom?.t ?? a.rise.t) - (b.visibleFrom?.t ?? b.rise.t));
   const res: PassResult = { id, stations: st, bright: br };
   (self as unknown as Worker).postMessage(res);
 };

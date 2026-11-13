@@ -81,6 +81,11 @@ describe('satellite passes (SGP4 via satellite.js)', () => {
     const evening = at('2026-11-13T19:11:15Z');
     expect(evening?.visible).toBe(true);
     expect(evening?.visibleTo?.t).toBeLessThan(Date.parse('2026-11-13T19:10:00Z'));
+    expect(evening?.intoShadow).toBe(true);
+    expect(evening?.fromShadow).toBe(false);
+    // Seen only on the way up: highest visible point ~16° (Skyfield 15.9° at 19:09), not the 35° peak.
+    expect(evening?.visiblePeak?.alt).toBeGreaterThan(14);
+    expect(evening?.visiblePeak?.alt).toBeLessThan(25);
     // Sunlit, but the Sun is only 2.5° below the horizon: sky too bright.
     expect(at('2026-11-14T16:46:48Z')?.visible).toBe(false);
     // Local midnight: the station is in Earth's shadow.

@@ -67,6 +67,15 @@
     new Intl.DateTimeFormat(undefined, { weekday: 'short', timeZone: tz }).format(ms);
   const dir = (p: { az: number; alt: number }) => `${compass16(p.az)} ${Math.round(p.alt)}°`;
   const stationName = (p: Pass) => STATIONS[p.norad] ?? p.name;
+  /** The part you can actually see: where it appears, its highest visible point, where it goes. */
+  function describeVisible(p: Pass): string {
+    const from = p.visibleFrom ?? p.rise;
+    const top = p.visiblePeak ?? p.peak;
+    const to = p.visibleTo ?? p.set;
+    const start = p.fromShadow ? `appears ${dir(from)} out of Earth's shadow` : `from ${dir(from)}`;
+    const end = p.intoShadow ? `fades out ${dir(to)} into Earth's shadow` : `to ${dir(to)}`;
+    return `${start}, highest ${dir(top)}, ${end}`;
+  }
 
   const nowMs = $derived(now.getTime());
   const stationPasses = $derived((result?.stations ?? []).filter((p) => p.set.t > nowMs));
@@ -152,11 +161,7 @@
               <strong>{stationName(p)}</strong>
               {day(p.visibleFrom?.t ?? p.rise.t)}
               {t(p.visibleFrom?.t ?? p.rise.t)}–{t(p.visibleTo?.t ?? p.set.t)}
-              <span class="sub"
-                >from {dir(p.visibleFrom ?? p.rise)}, highest {dir(p.peak)}, to {dir(
-                  p.visibleTo ?? p.set,
-                )}</span
-              >
+              <span class="sub">{describeVisible(p)}</span>
             </li>
           {/each}
         </ul>
@@ -176,7 +181,9 @@
             <li>
               {p.name}
               <span class="sub"
-                >{t(p.visibleFrom?.t ?? p.rise.t)}, highest {dir(p.peak)} at {t(p.peak.t)}</span
+                >{t(p.visibleFrom?.t ?? p.rise.t)}, highest {dir(p.visiblePeak ?? p.peak)} at {t(
+                  (p.visiblePeak ?? p.peak).t,
+                )}</span
               >
             </li>
           {/each}

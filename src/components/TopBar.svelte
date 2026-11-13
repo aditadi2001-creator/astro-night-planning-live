@@ -21,7 +21,7 @@
 <header>
   <div class="brand">
     <img src="/favicon.svg" alt="" width="28" height="28" />
-    <span>Astro Night Planning</span>
+    <h1>Astro Night Planning</h1>
   </div>
 
   <button
@@ -74,6 +74,11 @@
     gap: 8px;
     font-weight: 600;
   }
+  .brand h1 {
+    font-size: inherit;
+    font-weight: inherit;
+    margin: 0;
+  }
   .loc {
     display: flex;
     flex-direction: column;
@@ -114,8 +119,13 @@
     color: var(--muted);
   }
   @media (max-width: 480px) {
-    .brand span {
-      display: none;
+    /* Small screens: the logo alone; the heading stays for screen readers. */
+    .brand h1 {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
     }
   }
 </style>

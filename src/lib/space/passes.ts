@@ -47,6 +47,11 @@ export interface Pass {
   /** Visible part (when visible): first and last sunlit, dark-sky moments. */
   visibleFrom?: PassPoint;
   visibleTo?: PassPoint;
+  /** Highest point while visible (may be lower than `peak`). */
+  visiblePeak?: PassPoint;
+  /** Comes out of Earth's shadow / vanishes into it while still high enough to see. */
+  fromShadow?: boolean;
+  intoShadow?: boolean;
 }
 
 /** Ignore passes that never climb above this (haze, trees, buildings). */
@@ -184,6 +189,9 @@ function describePass(
   // Visibility: sample the part above minAlt every 10 s.
   let visibleFrom: PassPoint | undefined;
   let visibleTo: PassPoint | undefined;
+  let visiblePeak: PassPoint | undefined;
+  let shadowBefore = false;
+  let shadowAfter = false;
   for (let t = riseT; t <= setT; t += 10_000) {
     const l = s.look(t);
     if (!l || l.alt < minAlt) continue;
@@ -191,6 +199,11 @@ function describePass(
       const p = { t, az: l.az, alt: l.alt };
       visibleFrom ??= p;
       visibleTo = p;
+      if (!visiblePeak || p.alt > visiblePeak.alt) visiblePeak = p;
+      shadowAfter = false;
+    } else if (!l.sunlit && l.sunAlt < SUN_DARK) {
+      if (visibleFrom) shadowAfter = true;
+      else shadowBefore = true;
     }
   }
   return {
@@ -200,7 +213,9 @@ function describePass(
     peak,
     set: point(s, setT),
     visible: !!visibleFrom,
-    ...(visibleFrom ? { visibleFrom, visibleTo } : {}),
+    ...(visibleFrom
+      ? { visibleFrom, visibleTo, visiblePeak, fromShadow: shadowBefore, intoShadow: shadowAfter }
+      : {}),
   };
 }
 

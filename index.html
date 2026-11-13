@@ -9,6 +9,24 @@
       content="Free, open-source live 3D sky and observing conditions for astrophotographers: clouds, seeing, transparency, light pollution and the Moon for your exact location."
     />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- Start the sky engine downloads together with the page script, not after it. -->
+    <link
+      rel="preload"
+      href="/engine/stellarium-web-engine.js"
+      as="fetch"
+      crossorigin="anonymous"
+    />
+    <link
+      rel="preload"
+      href="/engine/stellarium-web-engine.wasm"
+      as="fetch"
+      crossorigin="anonymous"
+    />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="Astro Night" />
     <title>Astro Night Planning — live sky</title>
     <script>
       // Apply night mode before the first paint, so a dark-adapted eye never sees a bright flash.

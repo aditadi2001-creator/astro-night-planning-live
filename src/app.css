@@ -28,7 +28,8 @@
   --panel-2: #1c0202;
   --line: #3a0808;
   --text: #ff4a3a;
-  --muted: #b3291e;
+  /* 4.7:1 on the panels (WCAG AA for small text) while staying pure red. */
+  --muted: #e5382a;
   --accent: #ff5a48;
   --good: #ff5a48;
   --warn: #ff5a48;

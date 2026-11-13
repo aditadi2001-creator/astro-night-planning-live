@@ -11,6 +11,8 @@
     'Seeing (a forecast): Hufnagel–Valley turbulence profile driven by the jet-stream wind and low-level wind shear, Fried (1966) for the arcsecond value; 7Timer! as a second opinion.',
     'Satellite clouds: NOAA GMGSI and NASA GIBS thermal infrared; a pixel counts as cloud when it is well below the surface temperature, blended with the forecast and fading as the image ages.',
     'Light pollution (yearly): NASA Black Marble VNP46A4 night lights spread with a Garstang / Cinzano–Falchi style distance kernel, calibrated on Globe at Night SQM readings; light domes per compass direction from the same kernel.',
+    'Aurora: NOAA SWPC OVATION forecast (chance of visible aurora) and the planetary Kp index; the chance in view uses the geometry of an aurora whose lower edge is 110 km high.',
+    'Satellite passes: SGP4 orbit propagation (satellite.js) from CelesTrak elements; a pass is visible while the satellite is sunlit and the Sun is 6° or more below the horizon.',
     'Optional sky surveys (off by default): HiPS image tiles (Fernique et al. 2015) streamed from CDS or its official mirrors and drawn by the sky engine under the stars; galactic-frame surveys are rotated to ICRS. They are archival photographs, not the live sky.',
   ];
 </script>

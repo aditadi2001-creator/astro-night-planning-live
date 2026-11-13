@@ -141,20 +141,21 @@ each internal call is billed as a separate request, which would double usage.)
 
 **R2 free tier: 10 GB-month storage, 1 M Class A, 10 M Class B. Our rule: stay under half.**
 
-| Storage                            | Size                                         | Notes                                                         |
-| ---------------------------------- | -------------------------------------------- | ------------------------------------------------------------- |
-| Deep star layer (Gaia DR3, V ≤ 14) | 0.198 GB (uploaded)                          | 12.4 M stars with 10 < V ≤ 14, 25,987 tiles, 15.9 bytes/star  |
-| Light pollution PMTiles (2025)     | 0.249 GB (uploaded)                          | sky brightness z0–8 220 MB + night-lights radiance z0–6 29 MB |
-| Hourly satellite clouds (GMGSI)    | ≈ 0.1 GB                                     | 24 h kept × ~4.3 MB per hour (zoom 0–5 WebP)                  |
-| Small JSON etc.                    | < 0.01 GB                                    |                                                               |
-| **Total**                          | **≈ 0.55 GB** (target 5 GB, hard limit 8 GB) | during the yearly switch-over, +0.25 GB for under an hour     |
+| Storage                             | Size                                         | Notes                                                         |
+| ----------------------------------- | -------------------------------------------- | ------------------------------------------------------------- |
+| Deep star layer (Gaia DR3, V ≤ 14)  | 0.198 GB (uploaded)                          | 12.4 M stars with 10 < V ≤ 14, 25,987 tiles, 15.9 bytes/star  |
+| Light pollution PMTiles (2025)      | 0.249 GB (uploaded)                          | sky brightness z0–8 220 MB + night-lights radiance z0–6 29 MB |
+| Hourly satellite clouds (GMGSI)     | ≈ 0.1 GB                                     | 24 h kept × ~4.3 MB per hour (zoom 0–5 WebP)                  |
+| Small JSON (incl. satellite orbits) | < 0.01 GB                                    | `data/orbits.json` ≈ 50 kB, replaced every 6 h                |
+| **Total**                           | **≈ 0.55 GB** (target 5 GB, hard limit 8 GB) | during the yearly switch-over, +0.25 GB for under an hour     |
 
 | Class A (writes, lists)                                       | Per month                            |
 | ------------------------------------------------------------- | ------------------------------------ |
 | Hourly clouds: 1 LIST + 1 PUT (archive) + 1 PUT (latest.json) | 24 × 30 × 3 = **2,160**              |
+| Satellite orbits: 1 LIST + 1 PUT every 6 h                    | 4 × 30 × 2 = **240**                 |
 | Yearly light-pollution, deep stars, occasional re-uploads     | < 20                                 |
 | Deletes                                                       | free                                 |
-| **Total**                                                     | **≈ 2,200 = 0.22 % of the free 1 M** |
+| **Total**                                                     | **≈ 2,400 = 0.24 % of the free 1 M** |
 
 | Class B (reads)                                                                                                                                                                           | Per month                                               |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
@@ -338,6 +339,42 @@ daytime sky, so it sits in the real sky at your site.
 - **Left out for now:** Axel Mellinger's colour Milky Way panorama (`P/Mellinger/color`). Its
   terms are "all rights reserved", so it waits for the owner's decision.
 
+## Aurora, satellite passes, night mode and offline use
+
+- **Aurora** (NOAA SWPC, public domain): everyone gets the planetary Kp index (observed + 3-day
+  forecast, ~7 kB). Sites 40° or more from the equator also load the OVATION 30–90 minute forecast
+  (~0.9 MB); it is reduced in the browser to the chance overhead and the best chance in view, with
+  its direction and height above the horizon (lower edge of the aurora taken at 110 km, ignored
+  below 5° and below 5 % chance), and only those numbers are cached.
+- **ISS & satellite passes**: SGP4 (satellite.js) in a Web Worker, ISS and Tiangong for 3 days and
+  CelesTrak's ~150 brightest satellites for 24 h. A pass counts as visible while the satellite is
+  sunlit and the Sun is below −6° at the site; the card shows where it appears, its highest
+  _visible_ point and whether it fades into Earth's shadow. Checked against Skyfield (rise, peak and
+  set within ~1 s, altitude within 0.1°; `tests/space.test.ts`).
+- **Orbits never come from browsers.** CelesTrak blocks clients that download the same data more
+  than once every two hours (this happened to the dev machine while building this). The hourly
+  GitHub job runs `pipelines/orbits/orbits.py` at most every 6 h and publishes `data/orbits.json`
+  to R2 through the storage guard; the Worker serves it with caching. If CelesTrak is down, the
+  last copy stays (elements stay usable for days).
+- **Night mode**: deep red, no blue or green light (the sky and map canvases are filtered too),
+  remembered on the device and applied before the first paint, with a black browser bar. Secondary
+  text keeps 4.7:1 contrast.
+- **Installable app (PWA)**: `public/manifest.webmanifest` + a service worker generated at build
+  time (`scripts/pwa-plugin.mjs`, `src/pwa/sw-template.js`). The page, scripts, styles, sky engine
+  and icons (~1.5 MB) are cached on install; star tiles and lazily loaded code as they are used.
+  Each build has its own cache and old ones are deleted. Live data is not handled by the service
+  worker: each source keeps its own last good copy with its age, so offline the site opens with the
+  last forecast. `public/_headers` lets Cloudflare Pages cache hashed files for a year.
+
+### Accessibility and speed checks
+
+- axe-core 4.10 (run by hand in the dev build): no violations in day or night mode, with the survey
+  panel open, or on the Credits and About pages. The sky can be driven by keyboard (arrows look
+  around, +/− zoom, Esc clears the selection).
+- First screen: 101 kB of app script (gzip) and 3 kB of CSS; the sky engine (1.2 MB WebAssembly,
+  ~0.4 MB compressed by Pages) is preloaded in parallel. The satellite map (MapLibre), GeoTIFF
+  decoders and sky surveys load only when used.
+
 ## Roadmap
 
 1. ✅ Setup, CI, license, trial build of Stellarium Web Engine
@@ -349,7 +386,7 @@ daytime sky, so it sits in the real sky at your site.
 7. ✅ Seeing model (Hufnagel–Valley from upper winds) + 7Timer second opinion
 8. ✅ Light pollution pipeline (Black Marble → sky glow → PMTiles), SQM/Bortle, light domes
 9. ✅ Optional HiPS sky surveys (DSS2, H-alpha, 2MASS, AllWISE, Pan-STARRS, Gaia density; mirror fallback)
-10. PWA, night-vision mode, ISS passes, aurora, polish, accessibility, speed
+10. ✅ PWA (offline shell), night-vision mode, ISS and satellite passes, aurora, accessibility, speed
 11. Deploy to Cloudflare Pages — needs your OK
 
 ## Known limits

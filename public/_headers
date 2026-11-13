@@ -1,0 +1,10 @@
+# Cloudflare Pages response headers (free plan feature).
+# Hashed build files never change: let browsers keep them for a year.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+# The service worker must be checked for updates on every visit.
+/sw.js
+  Cache-Control: no-cache
+# Star tiles and catalogs change only when the catalog pipeline is re-run.
+/skydata/*
+  Cache-Control: public, max-age=604800
