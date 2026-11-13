@@ -44,6 +44,11 @@
   box-sizing: border-box;
 }
 
+/* Night mode: pictures (logo, survey thumbnails) lose their blue and green too. */
+:root[data-night='true'] img {
+  filter: var(--sky-filter);
+}
+
 html,
 body {
   margin: 0;

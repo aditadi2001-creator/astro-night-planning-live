@@ -49,3 +49,6 @@ jobs:
       - name: Light-pollution model tests
         working-directory: pipelines/lightpollution
         run: pip install numpy pillow pmtiles && python -m unittest test_model test_pipeline -v
+      - name: Orbit fetch tests
+        working-directory: pipelines/orbits
+        run: python -m unittest test_orbits -v

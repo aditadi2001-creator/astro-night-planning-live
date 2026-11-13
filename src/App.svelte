@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import TopBar from './components/TopBar.svelte';
   import SkyView from './components/SkyView.svelte';
   import TimeControls from './components/TimeControls.svelte';
@@ -6,6 +7,15 @@
   import Timeline from './components/Timeline.svelte';
   import DataStatus from './components/DataStatus.svelte';
   import Layers, { type LayerState, type SurveyStatus } from './components/Layers.svelte';
+  import Extras from './components/Extras.svelte';
+  import {
+    AURORA_MIN_LAT,
+    loadAurora,
+    loadKp,
+    type AuroraSite,
+    type KpPoint,
+  } from './lib/space/aurora';
+  import { loadOrbits, ORBITS_URL, type Orbits } from './lib/space/orbits';
   import PhysicsPanel from './components/PhysicsPanel.svelte';
   import Credits from './pages/Credits.svelte';
   import About from './pages/About.svelte';
@@ -58,7 +68,7 @@
   let shown = $state(new Date());
   let live = $state(true);
   let route = $state(location.hash);
-  let night = $state(false);
+  let night = $state(readNight());
   let layers = $state<LayerState>({
     clouds: true,
     haze: true,
@@ -116,6 +126,8 @@
     sevenTimer: LiveSource<SevenTimer> | null;
     /** Yearly light-pollution map at the site (only with the data Worker). */
     light: LiveSource<SiteLight> | null;
+    /** OVATION aurora chance (only 40° or more from the equator: the feed is ~0.9 MB). */
+    aurora: LiveSource<AuroraSite> | null;
   };
   let sources = $state<Sources | null>(null);
 
@@ -157,6 +169,15 @@
             400 * 24 * 3600_000,
           )
         : null,
+      aurora:
+        Math.abs(lat) >= AURORA_MIN_LAT
+          ? new LiveSource(
+              'aurora',
+              (sig, f) => loadAurora(lat, lon, sig, f),
+              30 * 60_000,
+              3 * 3600_000,
+            )
+          : null,
     };
     sources = s;
     // Loaders answer from the cache when it is fresh, and fall back to the last
@@ -165,6 +186,31 @@
     if (s.satellite) stops.push(s.satellite.start());
     if (s.sevenTimer) stops.push(s.sevenTimer.start());
     if (s.light) stops.push(s.light.start());
+    if (s.aurora) stops.push(s.aurora.start());
+    return () => stops.forEach((stop) => stop());
+  });
+
+  // Site-independent sources: geomagnetic index and satellite orbits.
+  const kpSource = new LiveSource<KpPoint[]>(
+    'kp',
+    (sig, f) => loadKp(sig, f),
+    3 * 3600_000,
+    12 * 3600_000,
+  );
+  // Orbits come from our own R2 copy (refreshed every 6 h by the hourly job).
+  const orbitSource = ORBITS_URL
+    ? new LiveSource<Orbits>(
+        'orbits',
+        (sig, f) => loadOrbits(sig, f),
+        60 * 60_000,
+        3 * 24 * 3600_000,
+      )
+    : null;
+  // Started once (untracked): start() reads the sources' own state, and a tracked
+  // read would restart them on every update.
+  onMount(() => {
+    const stops = [kpSource.start()];
+    if (orbitSource) stops.push(orbitSource.start());
     return () => stops.forEach((stop) => stop());
   });
 
@@ -370,8 +416,25 @@
     };
   });
 
+  /** Night mode is remembered on this device (a red screen at 2 AM should stay red). */
+  function readNight(): boolean {
+    try {
+      return localStorage.getItem('anp:night') === '1';
+    } catch {
+      return false;
+    }
+  }
   $effect(() => {
     document.documentElement.dataset.night = String(night);
+    // Phone status bar / browser chrome: black in night mode.
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', night ? '#000000' : '#05070d');
+    try {
+      localStorage.setItem('anp:night', night ? '1' : '0');
+    } catch {
+      /* private mode: not remembered */
+    }
   });
 
   function setPlace(p: Place) {
@@ -408,6 +471,9 @@
               ...(sources.satellite ? [{ label: 'Satellite', source: sources.satellite }] : []),
               ...(sources.sevenTimer ? [{ label: '7Timer!', source: sources.sevenTimer }] : []),
               ...(sources.light ? [{ label: 'Light pollution', source: sources.light }] : []),
+              ...(sources.aurora ? [{ label: 'Aurora', source: sources.aurora }] : []),
+              { label: 'Kp index', source: kpSource },
+              ...(orbitSource ? [{ label: 'Orbits', source: orbitSource }] : []),
             ]}
           />
         {/if}
@@ -447,6 +513,16 @@
         light={siteLight}
         lightStatus={layers.lightpollution ? (sources?.light?.status ?? 'off') : 'off'}
         loading={sources?.weather.status === 'loading'}
+      />
+
+      <Extras
+        {place}
+        {tz}
+        {now}
+        aurora={sources?.aurora?.data ?? null}
+        kp={kpSource.data}
+        orbits={orbitSource?.data ?? null}
+        orbitsMissing={!orbitSource || orbitSource.status === 'error'}
       />
 
       {#if layers.satmap}

@@ -75,10 +75,16 @@ export class HttpError extends Error {
  * Fetch JSON for `key`, using the cache when it is younger than `maxAgeMs`.
  * Retries up to `retries` times with 1 s, 2 s, 4 s… delays (not for 4xx).
  */
-export async function fetchJson<T>(
+export async function fetchJson<T, R = T>(
   key: string,
   url: string,
-  opts: { maxAgeMs: number; retries?: number; signal?: AbortSignal },
+  opts: {
+    maxAgeMs: number;
+    retries?: number;
+    signal?: AbortSignal;
+    /** Reduce the response before it is cached (large feeds keep only what we use). */
+    transform?: (raw: R) => T;
+  },
 ): Promise<Cached<T>> {
   const hit = peek<T>(key);
   if (hit && Date.now() - hit.fetchedAt < opts.maxAgeMs) return hit;
@@ -96,7 +102,8 @@ export async function fetchJson<T>(
         lastErr = err;
         continue;
       }
-      const data = (await res.json()) as T;
+      const raw = (await res.json()) as R;
+      const data = opts.transform ? opts.transform(raw) : (raw as unknown as T);
       const v: Cached<T> = { data, fetchedAt: Date.now() };
       memory.set(key, v);
       writePersisted(key, v);

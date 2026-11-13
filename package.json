@@ -27,6 +27,7 @@
     "geotiff": "^3.0.5",
     "maplibre-gl": "6.16.0",
     "pmtiles": "^4.5.0",
+    "satellite.js": "^6.0.2",
     "svelte": "^5.57.3"
   },
   "devDependencies": {

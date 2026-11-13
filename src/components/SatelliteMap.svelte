@@ -372,7 +372,7 @@
     height: 14px;
     border-radius: 50%;
     background: #ff4a3a;
-    border: 2px solid #fff;
+    border: 2px solid var(--text);
     box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6);
   }
   @media (max-width: 600px) {

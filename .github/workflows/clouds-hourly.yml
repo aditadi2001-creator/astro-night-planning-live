@@ -48,3 +48,24 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: python r2.py publish-hourly ../clouds/out --keep-hours 24
+      # Satellite orbits for the pass predictions ride along with this reliable hourly
+      # run instead of a cron of their own. CelesTrak blocks clients that download the
+      # same data more than once every two hours, so browsers never call it: this step
+      # fetches at most every 6 h and publishes data/orbits.json (~50 kB, 2 Class A ops).
+      - name: Fetch satellite orbits (at most every 6 h)
+        id: orbits
+        continue-on-error: true
+        working-directory: pipelines/orbits
+        run: |
+          base=$(grep -E '^VITE_DATA_BASE=' ../../.env.production | cut -d= -f2-)
+          python orbits.py run --out out/orbits.json --have-url "$base/data/orbits.json"
+      - name: Publish orbits to R2 (guarded)
+        if: steps.orbits.outcome == 'success' && hashFiles('pipelines/orbits/out/orbits.json') != ''
+        working-directory: pipelines/r2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: >-
+          python r2.py upload ../orbits/out/orbits.json data/orbits.json
+          --type application/json --cache "public, max-age=300"

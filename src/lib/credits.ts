@@ -161,14 +161,15 @@ export const CREDITS: Credit[] = [
   },
   {
     id: 'noaa-swpc',
-    name: 'NOAA SWPC OVATION aurora forecast',
+    name: 'NOAA SWPC OVATION aurora forecast and Kp index',
     url: 'https://www.swpc.noaa.gov/products/aurora-30-minute-forecast',
     license: 'Public domain (U.S. Government work)',
-    attribution: 'Aurora forecast: NOAA Space Weather Prediction Center.',
+    attribution: 'Aurora forecast and planetary K-index: NOAA Space Weather Prediction Center.',
     shortCredit: 'Aurora: NOAA SWPC',
-    usage: 'Aurora probability for high latitudes.',
+    usage:
+      'Kp index (observed and 3-day forecast) for everyone; the OVATION aurora map (about 0.9 MB) only for sites 40° or more from the equator, reduced to the chance overhead and in view.',
     kind: 'data',
-    status: 'planned',
+    status: 'live',
   },
   {
     id: 'celestrak',
@@ -177,9 +178,22 @@ export const CREDITS: Credit[] = [
     license: 'Free public data',
     attribution: 'Orbital elements: CelesTrak (Dr. T.S. Kelso).',
     shortCredit: 'Orbits: CelesTrak',
-    usage: 'ISS and satellite pass predictions.',
+    usage:
+      'Orbit elements (OMM) for the ISS, Tiangong and the brightest satellites, fetched at most every 6 hours per browser.',
     kind: 'data',
-    status: 'planned',
+    status: 'live',
+  },
+  {
+    id: 'satellite-js',
+    name: 'satellite.js',
+    url: 'https://github.com/shashwatak/satellite-js',
+    license: 'MIT',
+    attribution: 'satellite.js (SGP4/SDP4), MIT License.',
+    shortCredit: 'SGP4: satellite.js',
+    usage:
+      'Satellite positions from orbit elements for pass predictions, checked against Skyfield.',
+    kind: 'library',
+    status: 'live',
   },
   {
     id: 'gaia',
