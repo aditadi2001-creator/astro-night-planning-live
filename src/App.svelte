@@ -14,7 +14,7 @@
   import BestTargets from './components/BestTargets.svelte';
   import { cloudFactor } from './lib/physics/score';
   import * as Astronomy from 'astronomy-engine';
-  import { altAz } from './lib/astro/target';
+  import { altAz, bodyFor } from './lib/astro/target';
   import type { ObjectInfo } from './lib/engine/stel';
   import {
     fmtFov,
@@ -590,6 +590,19 @@
     document.querySelector('.sky-box')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
+  // ---- phone camera horizon view ---------------------------------------------------
+  let cameraOpen = $state(false);
+  const cameraTarget = $derived(
+    selectedInfo
+      ? {
+          name: selectedInfo.name,
+          ra2000: selectedInfo.ra2000,
+          dec2000: selectedInfo.dec2000,
+          body: bodyFor([selectedInfo.name, ...selectedInfo.otherNames, ...selectedInfo.ids]),
+        }
+      : null,
+  );
+
   // ---- equipment setups and their frames on the sky --------------------------------
   let setups = $state(loadSetups());
   let shownFrames = $state<Record<SetupKind, boolean>>({
@@ -669,6 +682,18 @@
 </script>
 
 <a class="skip" href="#main">Skip to content</a>
+{#if cameraOpen}
+  {#await import('./components/CameraView.svelte') then { default: CameraView }}
+    <CameraView
+      {place}
+      time={shown}
+      {tz}
+      target={cameraTarget}
+      horizon={siteHorizon?.profile ?? null}
+      onclose={() => (cameraOpen = false)}
+    />
+  {/await}
+{/if}
 <div class="head">
   <TopBar {place} {now} {tz} bind:night onplace={setPlace} />
   <LayerBar bind:layers {surveyStatus}>
@@ -680,6 +705,14 @@
         onclick={toggleFrames}
       >
         <span aria-hidden="true">{anyFrame ? '●' : '○'}</span>FOV frame
+      </button>
+      <button
+        class="chip"
+        aria-pressed={cameraOpen}
+        title="Phone camera with the horizon, altitude lines and your target's path, to check what blocks it"
+        onclick={() => (cameraOpen = true)}
+      >
+        <span aria-hidden="true">○</span>Camera view
       </button>
     {/snippet}
   </LayerBar>

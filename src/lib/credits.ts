@@ -377,7 +377,8 @@ export const CREDITS: Credit[] = [
     license: 'CC BY-SA 4.0',
     attribution: 'Deep-sky objects: OpenNGC by Mattia Verga, CC BY-SA 4.0.',
     shortCredit: 'Deep-sky: OpenNGC',
-    usage: 'NGC/IC deep-sky object positions, types and sizes.',
+    usage:
+      'NGC/IC deep-sky object positions, types and sizes in the sky, and the best-targets list (public/skydata/targets.json).',
     kind: 'data',
     status: 'live',
   },

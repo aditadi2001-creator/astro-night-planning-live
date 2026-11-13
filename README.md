@@ -80,13 +80,13 @@ one hourly multi-location request for the cloud field around the site:
 | Request                         | Variables                              | Open-Meteo call-equivalents* |
 | ------------------------------- | -------------------------------------- | ---------------------------- |
 | Forecast, best match            | 12 surface + 18 pressure-level, 4 days | 3                            |
-| Cloud cover, ECMWF + GFS + ICON | 1 × 3 models                           | 1                            |
+| Cloud layers, 8 models, 7 days  | 4 × 8 models                           | 4                            |
 | Air quality (CAMS)              | 6                                      | 1                            |
 | Cloud field, 16 points (hourly) | 3 per point                            | 16 (one per location)        |
 
 \*Open-Meteo counts large requests as several calls (roughly one per 10 variables).
 
-A tab left open all day: 48 refreshes × 5 + 24 × 16 ≈ 620 call-equivalents per day, about 6 % of
+A tab left open all day: 48 refreshes × 8 + 24 × 16 ≈ 770 call-equivalents per day, about 8 % of
 one visitor's daily allowance. Refreshing pauses while the tab is hidden, and failed requests retry
 after 1 s, 2 s and 4 s, then back off from 30 s up to 30 min. Location search adds one geocoding
 call per search (cached for a week).
@@ -375,6 +375,65 @@ daytime sky, so it sits in the real sky at your site.
   ~0.4 MB compressed by Pages) is preloaded in parallel. The satellite map (MapLibre), GeoTIFF
   decoders and sky surveys load only when used.
 
+## Planning tools
+
+### Clouds: model consensus, satellite correction, recorded hours
+
+One model alone can be far off for a place: in Bangalore on 13 Nov 2026 the default model forecast
+91–99 % (thick high cirrus) all evening while the sky was clear; the eight global models ranged
+from 0 % to 100 %, and the satellite measured the warm ground (292–297 K). So
+(`src/lib/clouds/estimate.ts`):
+
+- **Forecast** = the median of ECMWF, GFS, ICON, JMA, Météo-France, UK Met Office, GEM and CMA,
+  layer by layer (low, mid, high), with the range of the models shown as the uncertainty.
+- **Nowcast**: the newest GMGSI satellite image pulls the next hours towards what is overhead,
+  weight 0.85·e^(−Δt/3 h), fading back to the models.
+- **Recorded**: the timeline starts 3 hours back with the satellite measurement for each hour and
+  runs to 05:00 next morning. High cloud is shown separately as "thin" (cirrus) and counts as 60 %
+  in the score.
+- **Week ahead**: the dark hours (Sun below −12°) of each of the next 7 nights, the clearest
+  3 hours, the Moon, a rating and an "uncertain" flag when the models disagree.
+
+### The sky view
+
+- **Clouds where the satellite saw them**: a 600 × 600 km field of GMGSI pixels around the site
+  (5 km cells) gives each place a cloud fraction and a cloud-top height (surface temperature minus
+  6.5 K per km); each is drawn in its layer where the line of sight meets it, drifting with the
+  wind of that layer since the image, and blended out as the image ages.
+- **City sky glow**: the yearly light-pollution model brightens the whole night sky, not only the
+  horizon domes: opacity 0.065·ln(1 + artificial/natural) at the zenith (≈0.05 rural, 0.14
+  suburban, 0.29 inner city), rising towards the horizon; city-lit cloud bases look orange-grey.
+- **Long exposure**: a camera-like view ~4 magnitudes deeper than the eye, still limited by the
+  sky brightness at the site. **Deep-sky photos** (on by default): the DSS2 colour survey fades in
+  below a 28° field of view, so nebulae and galaxies show as real survey images.
+- **Layer bar** under the top bar (sticky), with the survey options, FOV frame and camera view.
+
+### Equipment, objects and targets
+
+- **My equipment**: three setups (deep sky, planetary, lunar & solar) with telescope, reducer or
+  Barlow and camera (17 common models or a custom sensor). Field of view, pixel scale
+  (206.265 × µm / mm), Dawes (116/D) and Rayleigh (138/D) limits, sampling against the seeing (or
+  the optics for planetary) and the critical-sampling f-ratio (≈ 5 × pixel µm). "FOV frame" draws
+  each frame on the sky (inverse gnomonic projection) around the tapped object or the view centre.
+- **Object details** for anything tapped: magnitude, size, distance (parallax / AU), colour class
+  from B−V, J2000 and current RA/Dec, altitude/azimuth/airmass, rise/transit/set, the highest point
+  and hours above 30° in tonight's darkness, distance from the Moon, and the fit in each frame.
+- **Best targets tonight**: 1,160 OpenNGC objects (`pipelines/catalogs/build_targets.py`, all
+  Messier plus bright or large galaxies, nebulae and clusters) ranked by dark hours above 30°
+  weighted by the hourly cloud estimate, the Moon, contrast against the SQM of the site (nebulae on
+  their bright core), framing in the deep-sky camera and brightness; plus planets and the Moon.
+- **Camera view** (phones): the back camera with the horizon, altitude lines, compass points, the
+  modelled terrain horizon and the path of the selected object tonight, from the orientation
+  sensors (with field-of-view and compass corrections). The picture never leaves the phone.
+
+### Places and time
+
+- Search: Open-Meteo geocoding (15 results), plus OpenStreetMap Nominatim on request for villages,
+  peaks and observatories (one request per second, cached, credited); coordinates in decimal or
+  D M S with N/S/E/W, typed or pasted, with the ground height from the Open-Meteo elevation API.
+- Time: ±1 day / hour / 10 min / 1 min, a date-time picker, playback at 1×, 60×, 600× and 3600×,
+  and a night slider with jump buttons for sunset, the twilights, darkness, midnight and the Moon.
+
 ## Roadmap
 
 1. ✅ Setup, CI, license, trial build of Stellarium Web Engine
@@ -387,7 +446,10 @@ daytime sky, so it sits in the real sky at your site.
 8. ✅ Light pollution pipeline (Black Marble → sky glow → PMTiles), SQM/Bortle, light domes
 9. ✅ Optional HiPS sky surveys (DSS2, H-alpha, 2MASS, AllWISE, Pan-STARRS, Gaia density; mirror fallback)
 10. ✅ PWA (offline shell), night-vision mode, ISS and satellite passes, aurora, accessibility, speed
-11. Deploy to Cloudflare Pages — needs your OK
+11. ✅ Planning tools: cloud consensus + satellite nowcast, week ahead, satellite-placed clouds and
+    city sky glow, long exposure and deep-sky photos, equipment FOV frames, object details, best
+    targets, camera horizon view, worldwide places and coordinates, detailed time controls
+12. Deploy to Cloudflare Pages — needs your OK
 
 ## Known limits
 
@@ -396,6 +458,10 @@ daytime sky, so it sits in the real sky at your site.
 - Satellite cloud images are ~35 minutes (GOES, Himawari via GIBS) to ~1.5 hours (GMGSI) old
   when they appear, and infrared cannot tell low fog or stratus from the ground.
 - Sky surveys are archival photographs (taken 1980s–2010s), not tonight's sky.
+- Clouds in the sky are placed from a satellite image ~1–2 hours old and moved with the forecast
+  winds; small clouds (< 5 km) and thin cirrus over a cold surface can be missed.
+- The camera view depends on the phone compass, which is often 5–20° off; use the correction.
+- Equipment results assume a flat, well-focused field; target ranking is a guide, not a promise.
 
 ## License
 

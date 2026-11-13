@@ -208,8 +208,10 @@
 </section>
 
 <style>
+  /* Recorded (past) hours: italic on a tinted background, full contrast kept. */
   .past {
-    opacity: 0.55;
+    font-style: italic;
+    background: var(--panel-2);
   }
   .kind {
     display: block;

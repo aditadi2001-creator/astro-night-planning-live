@@ -298,7 +298,6 @@
       return;
     }
     const input = $state.snapshot({ ...clouds, width: CW, height: CH }) as CloudInput;
-    if (import.meta.env.DEV) (window as unknown as { __clouds: CloudInput }).__clouds = input;
     const id = ++jobId;
     const w = cloudWorker();
     if (w) {
