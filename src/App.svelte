@@ -475,6 +475,35 @@
     savePlace(p);
   }
 
+  // Night milestones for the time slider and jump buttons.
+  const timeEvents = $derived.by(() => {
+    const ev: { label: string; t: number }[] = [];
+    const add = (label: string, d: Date | null | undefined) => {
+      if (d) ev.push({ label, t: d.getTime() });
+    };
+    add('Sunset', tw.sunset);
+    add('Civil dusk', tw.civilEnd);
+    add('Nautical dusk', tw.nauticalEnd);
+    add('Dark', tw.astroEnd);
+    add('Dark ends', tw.astroStart);
+    add('Nautical dawn', tw.nauticalStart);
+    add('Civil dawn', tw.civilStart);
+    add('Sunrise', tw.sunrise);
+    const first = tw.sunset?.getTime();
+    const last = tw.sunrise?.getTime();
+    if (first != null && last != null) {
+      // Local midnight inside the night.
+      const off = utcOff * 1000;
+      const mid = Math.ceil((first + off) / 86_400_000) * 86_400_000 - off;
+      if (mid > first && mid < last) ev.push({ label: 'Midnight', t: mid });
+      const inNight = (d: Date | null) =>
+        !!d && d.getTime() > first - 3600_000 && d.getTime() < last + 3600_000;
+      if (inNight(moon.rise)) add('Moonrise', moon.rise);
+      if (inNight(moon.set)) add('Moonset', moon.set);
+    }
+    return ev;
+  });
+
   function setTime(t: Date, isLive: boolean) {
     live = isLive;
     shown = t;
@@ -495,7 +524,7 @@
   {:else}
     <div class="stack">
       <div class="controls">
-        <TimeControls {place} time={shown} {live} {tz} onchange={setTime} />
+        <TimeControls {place} time={shown} {live} {tz} events={timeEvents} onchange={setTime} />
         {#if sources}
           <DataStatus
             now={now.getTime()}
