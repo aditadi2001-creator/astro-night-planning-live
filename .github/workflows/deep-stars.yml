@@ -7,8 +7,11 @@ on:
   workflow_dispatch:
     inputs:
       vmax:
-        description: Faintest V magnitude (keep the file under ~450 MB)
-        default: '14.0'
+        description: Faintest magnitude (G for the download, V for the layer); 16 = ~0.9 GB
+        default: '16.0'
+      version:
+        description: Key version (stars/gaia-deep-<version>.pmtiles); a new one per rebuild
+        default: 'v2'
 
 permissions:
   contents: read
@@ -28,12 +31,14 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install numpy astropy astropy-healpix pmtiles requests boto3
-      - name: Fetch Gaia DR3 G < 14 (GAVO async TAP, ~2 GB, stays on the runner)
+      - name: Fetch Gaia DR3 down to vmax (GAVO async TAP, stays on the runner)
         working-directory: pipelines/catalogs
-        run: python fetch.py --only gaia-deep
+        run: python fetch.py --only gaia-deep --deep-gmax "${{ inputs.vmax }}"
       - name: Build PMTiles
         working-directory: pipelines/catalogs
-        run: python build_gaia_deep.py --vmax "${{ inputs.vmax }}"
+        run: >-
+          python build_gaia_deep.py --vmax "${{ inputs.vmax }}"
+          --out "out/gaia-deep-${{ inputs.version }}.pmtiles"
       - name: Upload to R2 (guarded)
         working-directory: pipelines/r2
         env:
@@ -42,8 +47,8 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
           python r2.py usage
-          python r2.py upload ../catalogs/out/gaia-deep-v1.pmtiles stars/gaia-deep-v1.pmtiles \
+          python r2.py upload ../catalogs/out/gaia-deep-${{ inputs.version }}.pmtiles stars/gaia-deep-${{ inputs.version }}.pmtiles \
             --type application/vnd.pmtiles --cache "public, max-age=31536000, immutable"
-          python r2.py upload ../catalogs/out/gaia-deep-v1.properties stars/gaia-deep-v1.properties \
+          python r2.py upload ../catalogs/out/gaia-deep-${{ inputs.version }}.properties stars/gaia-deep-${{ inputs.version }}.properties \
             --type "text/plain; charset=utf-8" --cache "public, max-age=86400"
           python r2.py usage

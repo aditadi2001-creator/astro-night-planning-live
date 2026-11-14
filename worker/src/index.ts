@@ -7,8 +7,8 @@
  *
  * Routes (GET/HEAD only, everything else 404/405):
  *   /tiles/<dataset>/<z>/<x>/<y>.<ext>   one tile from <dataset>.pmtiles in R2
- *   /hips/gaia/properties                 deep Gaia star layer for the sky engine
- *   /hips/gaia/Norder<o>/Dir<d>/Npix<p>.eph
+ *   /hips/<gaia|gaia16>/properties        deep Gaia star layers for the sky engine (V<14, V<16)
+ *   /hips/<layer>/Norder<o>/Dir<d>/Npix<p>.eph
  *   /data/<name>.json                     small JSON objects in R2 (e.g. latest.json)
  *   /dem/<Copernicus tile>/<same>.tif?r=a-b  one byte slice of a Copernicus DEM tile
  *                                         (no CORS on that bucket), max 4 MiB
@@ -23,6 +23,7 @@ import {
   DATASETS,
   corsHeaders,
   hipsToTile,
+  HIPS_LAYERS,
   parseDem,
   parseDemSlice,
   parseHips,
@@ -116,13 +117,12 @@ async function serveTile(env: Env, path: string): Promise<Response> {
   return respond(tile.data, 200, { 'Content-Type': ds.type, 'Cache-Control': ds.cache });
 }
 
-const GAIA_KEY = 'stars/gaia-deep-v1.pmtiles';
-
 async function serveHips(env: Env, path: string): Promise<Response> {
   const h = parseHips(path);
   if (!h) return notFound();
+  const stem = HIPS_LAYERS[h.layer] ?? '';
   if (h.kind === 'properties') {
-    const obj = await env.DATA.get('stars/gaia-deep-v1.properties');
+    const obj = await env.DATA.get(`${stem}.properties`);
     if (!obj) return notFound('public, max-age=600');
     return respond(obj.body, 200, {
       'Content-Type': 'text/plain; charset=utf-8',
@@ -130,7 +130,7 @@ async function serveHips(env: Env, path: string): Promise<Response> {
     });
   }
   const { z, x, y } = hipsToTile(h.order, h.pix);
-  const tile = await archive(env, GAIA_KEY).getZxy(z, x, y);
+  const tile = await archive(env, `${stem}.pmtiles`).getZxy(z, x, y);
   // Short cache: a rebuilt archive (new key version) may add this tile later.
   if (!tile) return notFound('public, max-age=86400');
   return respond(tile.data, 200, {
@@ -216,7 +216,7 @@ export default {
     const path = url.pathname;
     try {
       if (path.startsWith('/tiles/')) return await serveTile(env, path);
-      if (path.startsWith('/hips/gaia/')) return await serveHips(env, path);
+      if (path.startsWith('/hips/')) return await serveHips(env, path);
       if (path.startsWith('/data/')) return await serveJson(env, path);
       if (path.startsWith('/dem/')) return await proxyDem(req, url);
       if (path.startsWith('/7timer/')) return await proxy7timer(path);

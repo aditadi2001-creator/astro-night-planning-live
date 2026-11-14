@@ -15,3 +15,6 @@ export const DEM_URL: string = DATA_BASE ? `${DATA_BASE}/dem` : import.meta.env.
 
 /** Deep Gaia star layer (HiPS) served from R2 by the Worker. */
 export const GAIA_DEEP_URL: string = DATA_BASE ? `${DATA_BASE}/hips/gaia` : '';
+
+/** Deeper Gaia layer (V 10–16); used when the Worker has it, else GAIA_DEEP_URL. */
+export const GAIA_DEEPER_URL: string = DATA_BASE ? `${DATA_BASE}/hips/gaia16` : '';

@@ -35,8 +35,11 @@ describe('worker routes are strict allow-lists', () => {
   });
 
   it('parses HiPS star tiles and checks the Dir folder', () => {
-    expect(parseHips('/hips/gaia/properties')).toEqual({ kind: 'properties' });
+    expect(parseHips('/hips/gaia/properties')).toEqual({ layer: 'gaia', kind: 'properties' });
+    expect(parseHips('/hips/gaia16/properties')).toEqual({ layer: 'gaia16', kind: 'properties' });
+    expect(parseHips('/hips/other/properties')).toBeNull();
     expect(parseHips('/hips/gaia/Norder6/Dir10000/Npix12345.eph')).toEqual({
+      layer: 'gaia',
       kind: 'tile',
       order: 6,
       pix: 12345,

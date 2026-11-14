@@ -54,18 +54,30 @@ export function parseTile(path: string): TileRef | null {
   return { dataset, z, x, y };
 }
 
-export type HipsRef = { kind: 'properties' } | { kind: 'tile'; order: number; pix: number };
+/** Deep star layers by URL name → R2 key stem (tiles are immutable: a rebuild gets a new name). */
+export const HIPS_LAYERS: Record<string, string> = {
+  gaia: 'stars/gaia-deep-v1', // V 10–14 (2026-11-12)
+  gaia16: 'stars/gaia-deep-v2', // V 10–16 (2026-11-14)
+};
 
-/** /hips/gaia/properties or /hips/gaia/Norder5/Dir10000/Npix12345.eph */
+export type HipsRef = { layer: string } & (
+  { kind: 'properties' } | { kind: 'tile'; order: number; pix: number }
+);
+
+/** /hips/<layer>/properties or /hips/<layer>/Norder5/Dir10000/Npix12345.eph */
 export function parseHips(path: string): HipsRef | null {
-  if (path === '/hips/gaia/properties') return { kind: 'properties' };
-  const m = /^\/hips\/gaia\/Norder(\d{1,2})\/Dir(\d+)\/Npix(\d+)\.eph$/.exec(path);
+  const m0 = /^\/hips\/([a-z0-9]{1,12})\//.exec(path);
+  const layer = m0?.[1];
+  if (!layer || !(layer in HIPS_LAYERS)) return null;
+  const rest = path.slice(m0[0].length);
+  if (rest === 'properties') return { layer, kind: 'properties' };
+  const m = /^Norder(\d{1,2})\/Dir(\d+)\/Npix(\d+)\.eph$/.exec(rest);
   if (!m) return null;
   const order = Number(m[1]);
   const dir = Number(m[2]);
   const pix = Number(m[3]);
   if (order > 11 || pix >= 12 * 4 ** order || dir !== Math.floor(pix / 10000) * 10000) return null;
-  return { kind: 'tile', order, pix };
+  return { layer, kind: 'tile', order, pix };
 }
 
 /**

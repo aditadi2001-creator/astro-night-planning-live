@@ -84,7 +84,7 @@ type EngineFactory = (opts: {
   onReady: (stel: Stel) => void;
 }) => void;
 
-import { GAIA_DEEP_URL } from '../config';
+import { GAIA_DEEP_URL, GAIA_DEEPER_URL } from '../config';
 
 const BASE = import.meta.env.BASE_URL;
 /** Content hash of the engine files (scripts/engine-version.mjs): JS and WASM always match. */
@@ -121,12 +121,28 @@ export async function startEngine(canvas: HTMLCanvasElement): Promise<Stel> {
   });
 }
 
+/**
+ * Deep stars from R2 via the data Worker (engine key 'gaia': it starts where the
+ * bundled layer's max_vmag ends). The V < 16 layer is used once it is published;
+ * until then (or if it cannot be reached) the V < 14 layer.
+ */
+async function addDeepStars(stel: Stel): Promise<void> {
+  let url = GAIA_DEEP_URL;
+  if (GAIA_DEEPER_URL) {
+    try {
+      const r = await fetch(`${GAIA_DEEPER_URL}/properties`);
+      if (r.ok && /max_vmag\s*=\s*1[5-9]/.test(await r.text())) url = GAIA_DEEPER_URL;
+    } catch {
+      /* keep the V < 14 layer */
+    }
+  }
+  stel.core.stars.addDataSource({ url, key: 'gaia' });
+}
+
 function addSkyData(stel: Stel): void {
   const c = stel.core;
   c.stars.addDataSource({ url: `${SKYDATA}stars` });
-  // Deep layer V 10–14 from R2 via the data Worker (engine key 'gaia': it
-  // starts where the bundled layer's max_vmag ends).
-  if (GAIA_DEEP_URL) c.stars.addDataSource({ url: GAIA_DEEP_URL, key: 'gaia' });
+  if (GAIA_DEEP_URL) void addDeepStars(stel);
   c.dsos.addDataSource({ url: `${SKYDATA}dso` });
   c.skycultures.addDataSource({ url: `${SKYDATA}skycultures/western`, key: 'western' });
   c.milkyway.addDataSource({ url: `${SKYDATA}surveys/milkyway` });

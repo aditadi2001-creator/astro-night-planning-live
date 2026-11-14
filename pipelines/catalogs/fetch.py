@@ -141,13 +141,37 @@ def tap_async_fmt(query: str, fmt: str) -> bytes:
     return content
 
 
-# G bands for the deep layer, each under GAVO's per-job row limit.
-DEEP_BANDS = [(-5.0, 12.0), (12.0, 13.0), (13.0, 13.5), (13.5, 13.75), (13.75, 14.0)]
+# G bands for the deep layer, each under GAVO's per-job row limit (6 M rows):
+# the star count roughly doubles per magnitude, so the bands narrow towards G 16.
+DEEP_BANDS = [
+    (-5.0, 12.0),
+    (12.0, 13.0),
+    (13.0, 13.5),
+    (13.5, 13.75),
+    (13.75, 14.0),
+    (14.0, 14.2),
+    (14.2, 14.4),
+    (14.4, 14.6),
+    (14.6, 14.8),
+    (14.8, 15.0),
+    (15.0, 15.1),
+    (15.1, 15.2),
+    (15.2, 15.3),
+    (15.3, 15.4),
+    (15.4, 15.5),
+    (15.5, 15.6),
+    (15.6, 15.7),
+    (15.7, 15.8),
+    (15.8, 15.9),
+    (15.9, 16.0),
+]
 
 
-def fetch_gaia_deep() -> None:
-    """Gaia DR3 G < 14 as binary FITS, one file per magnitude band (~17 M rows)."""
+def fetch_gaia_deep(gmax: float = 14.0) -> None:
+    """Gaia DR3 G < gmax as binary FITS, one file per magnitude band (G < 16: ~60 M rows)."""
     for lo, hi in DEEP_BANDS:
+        if hi > gmax + 1e-9:
+            break
         name = f"gaia_deep_{lo:g}_{hi:g}.fits"
         if (RAW / name).exists():
             print(f"  {name} already present")
@@ -225,6 +249,7 @@ SOURCES = {
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--gaia-gmax", type=float, default=10.6)
+    ap.add_argument("--deep-gmax", type=float, default=14.0, help="faintest G of the deep layer (<= 16)")
     ap.add_argument("--only", default="", help="comma-separated subset: " + ",".join([*SOURCES, "gaia", "gaia-deep"]))
     args = ap.parse_args()
     only = set(filter(None, args.only.split(",")))
@@ -235,7 +260,7 @@ def main() -> None:
         fetch_gaia(args.gaia_gmax)
     # The deep layer (~2 GB of downloads) is only fetched when asked for.
     if "gaia-deep" in only:
-        fetch_gaia_deep()
+        fetch_gaia_deep(args.deep_gmax)
 
 
 if __name__ == "__main__":

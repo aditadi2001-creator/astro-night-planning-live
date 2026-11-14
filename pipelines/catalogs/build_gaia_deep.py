@@ -14,7 +14,10 @@ build_stars.py (Riello et al. 2021; cubic fit to the Hipparcos cross-match).
 HEALPix (order, pix) → PMTiles z/x/y: z = order + 2, x = pix mod 2^z,
 y = pix div 2^z (same mapping as worker/src/routes.ts).
 
-Usage: python build_gaia_deep.py [--vmin 10] [--vmax 14] [--cap 1024]
+Usage: python build_gaia_deep.py [--vmin 10] [--vmax 16] [--cap 1024] [--out out/gaia-deep-v2.pmtiles]
+
+v1 (2026-11-12): V 10 → 14, 12.4 M stars, 198 MB. v2 (2026-11-14): V 10 → 16, served at
+/hips/gaia16/ (a new key, because tiles are cached as immutable).
 """
 
 from __future__ import annotations
@@ -64,6 +67,9 @@ def load(files: list[str], vmin: float, vmax: float) -> dict[str, np.ndarray]:
         with fits.open(f, memmap=True) as h:
             d = h[1].data
             g = np.asarray(d["phot_g_mean_mag"], dtype=np.float64)
+            if len(g) >= 6_000_000:
+                # GAVO stops at MAXREC rows: a full band means stars were cut off.
+                raise SystemExit(f"{Path(f).name}: hit the 6 M row limit; narrow DEEP_BANDS")
             c = np.asarray(d["phot_bp_mean_mag"], dtype=np.float64) - np.asarray(
                 d["phot_rp_mean_mag"], dtype=np.float64)
             has_c = np.isfinite(c)
@@ -196,8 +202,8 @@ def main() -> None:
     size = out.stat().st_size
     print(f"wrote {out.name}: {len(entries):,} tiles, {size / 1e6:.1f} MB "
           f"({size / max(1, n):.1f} bytes/star), max order {max_order}")
-    if size > 450e6:
-        print("WARNING: above 450 MB; lower --vmax to stay inside the 0.5 GB catalog budget.")
+    if size > 1.2e9:
+        print("WARNING: above 1.2 GB; lower --vmax (the owner approved about +0.7 GB for G < 16).")
 
 
 if __name__ == "__main__":
