@@ -388,10 +388,10 @@ export const CREDITS: Credit[] = [
     url: 'https://vizier.cds.unistra.fr/',
     license: 'Public catalogues; citation requested',
     attribution:
-      'Galaxies: PGC/HyperLEDA, Paturel et al. 2003 (VizieR VII/237; Makarov et al. 2014, HyperLEDA). Nebulae: Sharpless 1959 (VII/20), Lynds 1962 and 1965 (VII/7A, VII/9), van den Bergh 1966 (VII/21), Barnard 1927 (VII/220A). This research has made use of the VizieR catalogue access tool, CDS, Strasbourg (via the CfA mirror).',
+      'Galaxies: PGC/HyperLEDA, Paturel et al. 2003 (VizieR VII/237; Makarov et al. 2014, HyperLEDA). Nebulae: Sharpless 1959 (VII/20), Lynds 1962 and 1965 (VII/7A, VII/9), van den Bergh 1966 (VII/21), Barnard 1927 (VII/220A). Galaxies with spectra: SDSS DR17 (Abdurro’uf et al. 2022); funding for SDSS-IV was provided by the Alfred P. Sloan Foundation, the U.S. Department of Energy Office of Science and the Participating Institutions. This research has made use of the VizieR catalogue access tool, CDS, Strasbourg (via the CfA mirror).',
     shortCredit: 'Deep-sky: PGC/HyperLEDA, Sharpless, Lynds, vdB, Barnard via VizieR',
     usage:
-      'About 980,000 extra galaxies and 3,700 nebulae in the 3D sky (from R2, alongside OpenNGC).',
+      'About 980,000 PGC galaxies, about 2.6 million SDSS DR17 galaxies with spectra and 3,700 nebulae in the 3D sky (from R2, alongside OpenNGC).',
     kind: 'data',
     status: 'live',
   },

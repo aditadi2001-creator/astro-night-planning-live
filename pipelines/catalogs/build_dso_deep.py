@@ -9,6 +9,9 @@ Catalogues (all from VizieR, J2000 positions computed by VizieR):
   * Lynds bright nebulae, VII/9 (Lynds 1965) and Lynds dark nebulae, VII/7A (Lynds 1962).
   * van den Bergh reflection nebulae, VII/21 (van den Bergh 1966).
   * Barnard dark nebulae, VII/220A (Barnard 1927).
+  * With --sdss: SDSS DR17 spectroscopic galaxies (~2.6 M, zWarning = 0) from the
+    SDSS SkyServer, with Petrosian r magnitude and radius; galaxies within 3″ of
+    a PGC galaxy are skipped (they are already drawn).
 
 The engine draws galaxies without a magnitude by their size, so the tiling puts
 large objects first (ordering key: magnitude when known, else a size-based one).
@@ -179,6 +182,78 @@ def write_search(nebulae: list[dict], pgc: list[dict], folder: Path, neb_path: P
     print(f"search: {len(neb_rows)} nebulae, {len(pgc):,} PGC galaxies in {len(chunks)} chunks")
 
 
+SKYSERVER = "https://skyserver.sdss.org/dr17/SkyServerWS/SearchTools/SqlSearch"
+
+
+def sdss_name(ra: float, de: float) -> str:
+    """IAU-style SDSS name, e.g. SDSS J103843.58+484917.7."""
+    h = ra / 15
+    hh, mm = int(h), int((h - int(h)) * 60)
+    ss = ((h - hh) * 60 - mm) * 60
+    sign = "+" if de >= 0 else "-"
+    a = abs(de)
+    dd, dm = int(a), int((a - int(a)) * 60)
+    ds = ((a - dd) * 60 - dm) * 60
+    return f"SDSS J{hh:02d}{mm:02d}{int(ss * 100) / 100:05.2f}{sign}{dd:02d}{dm:02d}{int(ds * 10) / 10:04.1f}"
+
+
+def read_sdss(step: float = 5.0) -> list[dict]:
+    """SDSS DR17 spectroscopic galaxies, fetched in RA slices (cached in raw/)."""
+    RAW.mkdir(parents=True, exist_ok=True)
+    out = []
+    ra0 = 0.0
+    while ra0 < 360:
+        ra1 = ra0 + step
+        cache = RAW / f"sdss_{ra0:05.1f}.csv"
+        if not cache.exists():
+            sql = ("SELECT s.ra, s.dec, s.z, p.petroMag_r, p.petroR90_r FROM SpecObj s "
+                   "JOIN PhotoObj p ON s.bestObjID = p.objID WHERE s.class = 'GALAXY' "
+                   f"AND s.zWarning = 0 AND s.ra >= {ra0} AND s.ra < {ra1}")
+            for attempt in range(6):
+                try:
+                    r = requests.get(SKYSERVER, params={"cmd": sql, "format": "csv"},
+                                     headers=UA, timeout=900)
+                    r.raise_for_status()
+                    if b"ra,dec" not in r.content[:200]:
+                        raise requests.RequestException(r.text[:200])
+                    cache.write_bytes(r.content)
+                    break
+                except requests.RequestException as e:
+                    print(f"  SDSS {ra0}: {e}; retrying", flush=True)
+                    time.sleep(30 * (attempt + 1))
+            else:
+                raise SystemExit(f"SDSS slice {ra0} failed")
+        n0 = len(out)
+        for line in cache.read_text(encoding="utf-8").splitlines():
+            parts = line.split(",")
+            if len(parts) != 5 or not parts[0][:1].isdigit():
+                continue
+            ra, de, z, mr, r90 = (f(x) for x in parts)
+            if not (math.isfinite(ra) and math.isfinite(de)):
+                continue
+            size = 2 * r90 / 60 if math.isfinite(r90) and r90 > 0 else 0.1  # arcmin diameter
+            o = obj("G", ra, de, [sdss_name(ra, de)], size, size,
+                    vmag=mr if math.isfinite(mr) and 5 < mr < 30 else math.nan,
+                    morp=f"z={z:.3f}" if math.isfinite(z) else "")
+            out.append(o)
+        print(f"  SDSS RA {ra0:5.1f}-{ra1:5.1f}: {len(out) - n0:,}", flush=True)
+        ra0 = ra1
+    return out
+
+
+def drop_near(objs: list[dict], ref: list[dict], arcsec: float = 3.0) -> list[dict]:
+    """Objects with no reference object within `arcsec`."""
+    from astropy.coordinates import SkyCoord
+
+    if not objs or not ref:
+        return objs
+    a = SkyCoord(np.array([o["ra"] for o in objs]) * u.deg, np.array([o["de"] for o in objs]) * u.deg)
+    b = SkyCoord(np.array([o["ra"] for o in ref]) * u.deg, np.array([o["de"] for o in ref]) * u.deg)
+    _, sep, _ = a.match_to_catalog_sky(b)
+    keep = sep.arcsec > arcsec
+    return [o for o, k in zip(objs, keep, strict=True) if k]
+
+
 def order_key(o: dict) -> float:
     """Magnitude when known; otherwise bigger objects first (15 for 10', 20 for 0.1')."""
     if math.isfinite(o["vmag"]):
@@ -197,6 +272,7 @@ def main() -> None:
     ap.add_argument("--search-dir", default=str(HERE / "out" / "search"))
     ap.add_argument("--nebulae-json", default=str(HERE.parent.parent / "public" / "skydata" / "nebulae.json"))
     ap.add_argument("--search-only", action="store_true", help="write the search indexes, no tiles")
+    ap.add_argument("--sdss", action="store_true", help="add SDSS DR17 spectroscopic galaxies")
     args = ap.parse_args()
 
     base = read_openngc()
@@ -218,6 +294,12 @@ def main() -> None:
     if args.search_only:
         return
     objs = base + nebulae + pgc
+    if args.sdss:
+        sdss = read_sdss()
+        print(f"SDSS: {len(sdss):,} galaxies before matching")
+        sdss = drop_near(sdss, pgc + base)
+        print(f"SDSS: {len(sdss):,} not already in PGC/OpenNGC")
+        objs += sdss
     objs.sort(key=order_key)
     print(f"{len(objs):,} deep-sky objects in total")
 

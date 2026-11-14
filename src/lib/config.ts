@@ -21,3 +21,5 @@ export const GAIA_DEEPER_URL: string = DATA_BASE ? `${DATA_BASE}/hips/gaia16` : 
 
 /** Deep-sky layer with PGC galaxies and nebula catalogues (used when the Worker has it). */
 export const DSO_DEEP_URL: string = DATA_BASE ? `${DATA_BASE}/hips/dso` : '';
+/** The same with the SDSS DR17 galaxies; preferred when published. */
+export const DSO_SDSS_URL: string = DATA_BASE ? `${DATA_BASE}/hips/dso2` : '';

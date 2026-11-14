@@ -84,7 +84,7 @@ type EngineFactory = (opts: {
   onReady: (stel: Stel) => void;
 }) => void;
 
-import { DSO_DEEP_URL, GAIA_DEEP_URL, GAIA_DEEPER_URL } from '../config';
+import { DSO_DEEP_URL, DSO_SDSS_URL, GAIA_DEEP_URL, GAIA_DEEPER_URL } from '../config';
 
 const BASE = import.meta.env.BASE_URL;
 /** Content hash of the engine files (scripts/engine-version.mjs): JS and WASM always match. */
@@ -146,12 +146,16 @@ async function addDeepStars(stel: Stel): Promise<void> {
  */
 async function addDsos(stel: Stel): Promise<void> {
   let url = `${SKYDATA}dso`;
-  if (DSO_DEEP_URL) {
+  for (const u of [DSO_SDSS_URL, DSO_DEEP_URL]) {
+    if (!u) continue;
     try {
-      const r = await fetch(`${DSO_DEEP_URL}/properties`);
-      if (r.ok && (await r.text()).includes('type                     = dso')) url = DSO_DEEP_URL;
+      const r = await fetch(`${u}/properties`);
+      if (r.ok && (await r.text()).includes('type                     = dso')) {
+        url = u;
+        break;
+      }
     } catch {
-      /* keep the bundled set */
+      /* try the next one, then keep the bundled set */
     }
   }
   stel.core.dsos.addDataSource({ url });

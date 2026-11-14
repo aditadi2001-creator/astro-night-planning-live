@@ -102,6 +102,32 @@
     ['Izar', 72105],
   ];
   const norm = (s: string) => s.toLowerCase().replace(/[\s._-]+/g, '');
+  /** Famous objects found by nickname (SDSS discoveries and others). */
+  const NOTABLE: {
+    label: string;
+    sub: string;
+    keys: string[];
+    ra: number;
+    dec: number;
+    am: number;
+  }[] = [
+    {
+      label: 'SDSS J1038+4849 · Cheshire Cat “smiley face” lens',
+      sub: 'galaxy group lensing background galaxies into a smile (best in Hubble images)',
+      keys: ['smiley', 'smile', 'cheshire', 'sdssj1038', 'sdss'],
+      ra: 159.6816,
+      dec: 48.8216,
+      am: 0.6,
+    },
+    {
+      label: 'Hanny’s Voorwerp · SDSS J094103.80+344334.2',
+      sub: 'glowing gas cloud found by Galaxy Zoo volunteers in SDSS images',
+      keys: ['hanny', 'voorwerp', 'sdssj0941', 'sdss'],
+      ra: 145.2658,
+      dec: 34.7262,
+      am: 0.5,
+    },
+  ];
 </script>
 
 <script lang="ts">
@@ -342,6 +368,17 @@
         dec: c.dec,
       });
     const starts = (s: string) => norm(s).startsWith(n);
+    for (const o of NOTABLE)
+      if (n.length >= 3 && o.keys.some((k) => k.startsWith(n) || n.startsWith(k)))
+        out.push({
+          kind: 'dso',
+          id: o.label,
+          label: o.label,
+          sub: o.sub,
+          ra: o.ra,
+          dec: o.dec,
+          sizeDeg: o.am / 60,
+        });
     for (const p of PLANETS)
       if (starts(p)) out.push({ kind: 'engine', label: p, sub: 'Solar system', id: `NAME ${p}` });
     for (const [s, hip] of STARS)
@@ -492,6 +529,7 @@
         <li>Nebulae: Sh 2-n (Sharpless), LBN n, LDN n, vdB n, B n (Barnard)</li>
         <li>Type just a catalogue name (NGC, IC, M, PGC, Sh2, LBN, LDN, vdB, B) to list it</li>
         <li>Coordinates: 83.82 -5.39 or 5h35m17s -5d23m28s</li>
+        <li>Nicknames: smiley (SDSS Cheshire Cat lens), Hanny’s Voorwerp</li>
       </ul>
     </div>
   {/if}

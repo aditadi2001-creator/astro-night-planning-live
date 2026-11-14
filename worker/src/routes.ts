@@ -67,6 +67,7 @@ export const HIPS_LAYERS: Record<string, string> = {
   gaia: 'stars/gaia-deep-v1', // V 10–14 (2026-11-12)
   gaia16: 'stars/gaia-deep-v2', // V 10–16 (2026-11-14)
   dso: 'dso/deep-v1', // OpenNGC + PGC + nebula catalogues (2026-11-14)
+  dso2: 'dso/deep-v2', // the same + SDSS DR17 spectroscopic galaxies (2026-11-14)
 };
 
 export type HipsRef = { layer: string } & (

@@ -13,6 +13,10 @@ on:
         description: Only rebuild and upload the PGC search index (data/pgc-NNN.json)
         type: boolean
         default: false
+      sdss:
+        description: Add the SDSS DR17 spectroscopic galaxies (~2.6 M)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -40,7 +44,8 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
           SEARCH_ONLY: ${{ inputs.search_only && '--search-only' || '' }}
-        run: python build_dso_deep.py --out "out/dso-deep-$VERSION.pmtiles" $SEARCH_ONLY
+          SDSS: ${{ inputs.sdss && '--sdss' || '' }}
+        run: python build_dso_deep.py --out "out/dso-deep-$VERSION.pmtiles" $SEARCH_ONLY $SDSS
       - name: Upload the PGC search index to R2 (data/pgc-NNN.json)
         working-directory: pipelines/r2
         env:
