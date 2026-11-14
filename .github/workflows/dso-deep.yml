@@ -35,7 +35,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install
-        run: pip install numpy astropy astropy-healpix pmtiles requests boto3
+        run: pip install numpy scipy astropy astropy-healpix pmtiles requests boto3
       - name: OpenNGC
         working-directory: pipelines/catalogs
         run: python fetch.py --only openngc
