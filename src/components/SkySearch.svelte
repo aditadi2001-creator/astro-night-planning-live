@@ -108,6 +108,16 @@
   import type { Target } from '../lib/targets';
   import { parseTargets } from '../lib/targets';
   import { fmtDMS, fmtRA, parseRaDec } from '../lib/astro/skycoords';
+  import { DATA_BASE } from '../lib/config';
+
+  type NebRow = [string, number, number, number, string];
+  type PgcRow = [number, number, number, number, string];
+  const NEB_KIND: Record<string, string> = {
+    HII: 'H II region',
+    ISM: 'bright nebula',
+    DNe: 'dark nebula',
+    RNe: 'reflection nebula',
+  };
 
   let { onpick }: { onpick: (hit: SearchHit) => boolean | Promise<boolean> } = $props();
   let input: HTMLInputElement;
@@ -120,20 +130,87 @@
   let activeI = $state(0);
   let message = $state('');
   let catalog = $state<Target[] | null>(null);
+  let nebulae = $state<NebRow[] | null>(null);
+  let pgcHits = $state<SearchHit[]>([]);
+  let pgcNote = $state('');
 
   let catalogLoad: Promise<void> | null = null;
   function loadCatalog(): Promise<void> {
     if (catalogLoad) return catalogLoad;
-    catalogLoad = fetch(`${import.meta.env.BASE_URL}skydata/targets.json`)
-      .then((r) => r.json())
-      .then((d: { rows: unknown[] }) => {
-        catalog = parseTargets(d);
-      })
+    const base = import.meta.env.BASE_URL;
+    catalogLoad = Promise.all([
+      fetch(`${base}skydata/targets.json`)
+        .then((r) => r.json())
+        .then((d: { rows: unknown[] }) => {
+          catalog = parseTargets(d);
+        }),
+      fetch(`${base}skydata/nebulae.json`)
+        .then((r) => r.json())
+        .then((d: { rows: NebRow[] }) => {
+          nebulae = d.rows;
+        })
+        .catch(() => undefined),
+    ])
+      .then(() => undefined)
       .catch(() => {
         catalogLoad = null; // try again next time
       });
     return catalogLoad;
   }
+
+  // PGC / LEDA numbers: looked up in the chunk files the deep-sky job publishes
+  // in R2 (data/pgc-NNN.json, PGC number // 10000), loaded only when asked for.
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- a request cache, not UI state
+  const pgcChunks = new Map<number, Promise<PgcRow[] | null>>();
+  function pgcChunk(c: number): Promise<PgcRow[] | null> {
+    let p = pgcChunks.get(c);
+    if (!p) {
+      p = fetch(`${DATA_BASE}/data/pgc-${String(c).padStart(3, '0')}.json`)
+        .then((r) => (r.ok ? (r.json() as Promise<{ rows: PgcRow[] }>) : null))
+        .then((d) => {
+          if (!d) throw new Error('no index');
+          return d.rows;
+        })
+        .catch(() => {
+          pgcChunks.delete(c);
+          return null;
+        });
+      pgcChunks.set(c, p);
+    }
+    return p;
+  }
+  $effect(() => {
+    const m = /^(?:pgc|leda)\s*(\d{1,7})$/i.exec(q.trim());
+    pgcHits = [];
+    pgcNote = '';
+    if (!m || !DATA_BASE) return;
+    const digits = m[1] ?? '';
+    const num = Number(digits);
+    let cancelled = false;
+    pgcNote = 'Looking up PGC…';
+    void pgcChunk(Math.floor(num / 10000)).then((rows) => {
+      if (cancelled) return;
+      if (!rows) {
+        pgcNote = 'The PGC lookup could not be reached right now.';
+        return;
+      }
+      const exact = rows.filter((r) => r[0] === num);
+      const more = rows.filter((r) => r[0] !== num && String(r[0]).startsWith(digits));
+      pgcHits = [...exact, ...more].slice(0, 8).map((r) => ({
+        kind: 'dso',
+        id: `PGC ${r[0]}`,
+        label: `PGC ${r[0]}${r[4] ? ` · ${r[4]}` : ''}`,
+        sub: `galaxy${r[3] ? `, ${r[3]}′` : ''}`,
+        ra: r[1],
+        dec: r[2],
+        sizeDeg: Math.max(r[3] || 0.5, 0.3) / 60,
+      }));
+      pgcNote = pgcHits.length ? '' : `No PGC ${digits} in the catalogue.`;
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
 
   const hits = $derived.by((): SearchHit[] => {
     const n = norm(q);
@@ -172,6 +249,22 @@
           });
       }
     }
+    if (nebulae && n.length >= 2) {
+      for (const r of nebulae) {
+        if (out.length >= 12) break;
+        if (norm(r[0]).startsWith(n))
+          out.push({
+            kind: 'dso',
+            id: r[0],
+            label: r[0],
+            sub: `${NEB_KIND[r[4]] ?? 'nebula'}${r[3] ? `, ${r[3]}′` : ''}`,
+            ra: r[1],
+            dec: r[2],
+            sizeDeg: Math.max(r[3] || 5, 1) / 60,
+          });
+      }
+    }
+    out.unshift(...pgcHits);
     return out.slice(0, 12);
   });
 
@@ -261,6 +354,20 @@
       {/each}
     </ul>
   {/if}
+  {#if open && !q.trim()}
+    <div class="cats">
+      <p>Search by name or catalogue number:</p>
+      <ul>
+        <li>Sun, Moon, planets</li>
+        <li>Stars: name, HIP n, HD n</li>
+        <li>Messier, NGC, IC (OpenNGC): M 31, NGC 7000</li>
+        <li>Galaxies: PGC n (HyperLEDA, about 980,000)</li>
+        <li>Nebulae: Sh 2-n (Sharpless), LBN n, LDN n, vdB n, B n (Barnard)</li>
+        <li>Coordinates: 83.82 -5.39 or 5h35m17s -5d23m28s</li>
+      </ul>
+    </div>
+  {/if}
+  {#if pgcNote && q.trim()}<p class="msg info" role="status">{pgcNote}</p>{/if}
   {#if message}<p class="msg" role="status">{message}</p>{/if}
 </div>
 
@@ -318,6 +425,26 @@
     color: var(--muted);
     font-size: 12px;
     white-space: nowrap;
+  }
+  .cats {
+    margin-top: 4px;
+    padding: 8px 10px;
+    font-size: 12px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    color: var(--muted);
+  }
+  .cats p {
+    margin: 0 0 4px;
+    color: var(--text);
+  }
+  .cats ul {
+    margin: 0;
+    padding-left: 16px;
+  }
+  .msg.info {
+    color: var(--muted);
   }
   .msg {
     margin: 4px 0 0;

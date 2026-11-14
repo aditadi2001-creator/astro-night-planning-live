@@ -213,7 +213,8 @@ def main() -> None:
     print(f"OpenNGC: {len(base):,} objects ({len(known_pgc):,} with PGC numbers)")
     nebulae = read_nebulae(known_ids)
     pgc = read_pgc(known_pgc)
-    write_search(read_nebulae(set()), pgc, Path(args.search_dir), Path(args.nebulae_json))
+    # The search index lists every PGC galaxy, including those OpenNGC also has (M31 = PGC 2557).
+    write_search(read_nebulae(set()), read_pgc(set()), Path(args.search_dir), Path(args.nebulae_json))
     if args.search_only:
         return
     objs = base + nebulae + pgc
