@@ -102,6 +102,105 @@
     return toPng(c);
   }
 
+  // ---- 10-year history player ----------------------------------------------------
+  // data/lphistory.json lists the years built by the history workflow (same model
+  // every year, zoom 0–6). "Change" colours each year against the first one.
+  let histYears = $state<number[]>([]);
+  let histOn = $state(false);
+  let histDiff = $state(false);
+  let histIdx = $state(0);
+  let histPlaying = $state(false);
+  let histTimer: ReturnType<typeof setInterval> | null = null;
+  const histYear = $derived(histYears[histIdx] ?? null);
+  async function greyTile(url: string, signal: AbortSignal): Promise<Uint8ClampedArray | null> {
+    const res = await fetchRetry(url, signal);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`tile ${res.status}`);
+    const bmp = await createImageBitmap(await res.blob());
+    const c = newCanvas(bmp.width, bmp.height);
+    const ctx = c.getContext('2d', { willReadFrequently: true }) as
+      CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+    if (!ctx) throw new Error('no 2D canvas');
+    ctx.drawImage(bmp, 0, 0);
+    bmp.close();
+    return ctx.getImageData(0, 0, c.width, c.height).data;
+  }
+  /** Change of zenith brightness, year vs first year: red brighter, blue darker (±1 mag full). */
+  async function diffTile(url: string, signal: AbortSignal): Promise<ArrayBuffer> {
+    const [cur, base] = url.split('|');
+    const [a, b] = await Promise.all([greyTile(cur ?? '', signal), greyTile(base ?? '', signal)]);
+    const c = newCanvas(256, 256);
+    const ctx = c.getContext('2d') as
+      CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+    if (!ctx) throw new Error('no 2D canvas');
+    const img = ctx.createImageData(256, 256);
+    const step = info?.lp.magPerStep ?? 0.025;
+    for (let i = 0; i < img.data.length; i += 4) {
+      const d = (((a?.[i] ?? 0) - (b?.[i] ?? 0)) * step) as number; // mag brighter than the first year
+      const m = Math.min(1, Math.abs(d));
+      if (m < 0.05) continue;
+      img.data[i] = d > 0 ? 255 : 40;
+      img.data[i + 1] = d > 0 ? 70 : 120;
+      img.data[i + 2] = d > 0 ? 40 : 255;
+      img.data[i + 3] = Math.round(60 + 180 * m);
+    }
+    ctx.putImageData(img, 0, 0);
+    return toPng(c);
+  }
+  const histUrl = (y: number) => `${DATA_BASE}/tiles/lphist-${y}/{z}/{x}/{y}.webp`;
+  function histLayers() {
+    if (!map) return;
+    for (const y of histYears) {
+      for (const kind of ['h', 'd'] as const) {
+        const id = `${kind}${y}`;
+        if (map.getSource(id)) continue;
+        const first = histYears[0] ?? y;
+        const tiles =
+          kind === 'h'
+            ? histUrl(y).replace(/^https:\/\//, 'lpcolor://')
+            : `lpdiff://${histUrl(y).replace(/^https:\/\//, '')}|${histUrl(first).replace(/^https:\/\//, '')}`;
+        map.addSource(id, { type: 'raster', tiles: [tiles], tileSize: 256, maxzoom: 6 });
+        map.addLayer({
+          id,
+          type: 'raster',
+          source: id,
+          paint: { 'raster-opacity': 0, 'raster-fade-duration': 0, 'raster-resampling': 'linear' },
+        });
+      }
+    }
+  }
+  $effect(() => {
+    const on = histOn;
+    const y = histYear;
+    const diff = histDiff;
+    const o = opacity;
+    if (status !== 'ready' || !map) return;
+    if (on) histLayers();
+    map.setPaintProperty('lp', 'raster-opacity', on ? 0 : o);
+    for (const yy of histYears) {
+      for (const kind of ['h', 'd'] as const) {
+        const id = `${kind}${yy}`;
+        if (!map.getLayer(id)) continue;
+        const show = on && yy === y && (kind === 'd') === diff;
+        map.setPaintProperty(id, 'raster-opacity', show ? o : 0);
+      }
+    }
+  });
+  function histPlay() {
+    if (histPlaying) {
+      histPlaying = false;
+      if (histTimer) clearInterval(histTimer);
+      histTimer = null;
+      return;
+    }
+    histOn = true;
+    histPlaying = true;
+    if (histIdx >= histYears.length - 1) histIdx = 0;
+    histTimer = setInterval(() => {
+      histIdx = (histIdx + 1) % histYears.length;
+    }, 1300);
+  }
+
   // ---- clicked point readout -----------------------------------------------------
   async function readPoint(lat: number, lon: number) {
     if (!info) return;
@@ -170,7 +269,8 @@
   });
   $effect(() => {
     const o = opacity;
-    if (status === 'ready' && map?.getLayer('lp')) map.setPaintProperty('lp', 'raster-opacity', o);
+    if (status === 'ready' && !histOn && map?.getLayer('lp'))
+      map.setPaintProperty('lp', 'raster-opacity', o);
   });
 
   onMount(() => {
@@ -196,6 +296,27 @@
       ml.addProtocol('lpcolor', async (params, abort) => ({
         data: await colouredTile(params.url.replace(/^lpcolor:\/\//, 'https://'), abort.signal),
       }));
+      ml.removeProtocol('lpdiff');
+      ml.addProtocol('lpdiff', async (params, abort) => ({
+        data: await diffTile(
+          params.url
+            .replace(/^lpdiff:\/\//, 'https://')
+            .split('|')
+            .map((u, i) => (i ? `https://${u}` : u))
+            .join('|'),
+          abort.signal,
+        ),
+      }));
+      // Years of the history player (published by the history workflow).
+      void fetch(`${DATA_BASE}/data/lphistory.json`)
+        .then((r) => (r.ok ? (r.json() as Promise<{ years?: number[] }>) : null))
+        .then((h) => {
+          if (h?.years?.length) {
+            histYears = h.years;
+            histIdx = h.years.length - 1;
+          }
+        })
+        .catch(() => undefined);
       const lpTiles = tileUrl(lp.data.lp.tiles, 0, 0, 0)
         .replace('/0/0/0.', '/{z}/{x}/{y}.')
         .replace(/^https:\/\//, 'lpcolor://');
@@ -275,6 +396,7 @@
   onDestroy(() => {
     ctrl.abort();
     stopWatch?.();
+    if (histTimer) clearInterval(histTimer);
     marker?.remove();
     pick?.remove();
     map?.remove();
@@ -315,6 +437,13 @@
             <li><span class="sw" style:background={l.color}></span>{l.sqm} · {l.bortle}</li>
           {/each}
         </ul>
+        {#if histOn && histDiff}
+          <p class="lg-title">Change since {histYears[0]}</p>
+          <p class="chg">
+            <span class="sw" style:background="rgb(40 120 255)"></span>darker ·
+            <span class="sw" style:background="rgb(255 70 40)"></span>brighter (full colour = 1 mag)
+          </p>
+        {/if}
         <label class="op">
           Opacity
           <input type="range" min="0.2" max="1" step="0.05" bind:value={opacity} />
@@ -372,6 +501,39 @@
     </div>
   {/if}
 
+  {#if histYears.length > 1}
+    <div class="hist" role="group" aria-label="Light pollution through the years">
+      <button onclick={histPlay} aria-pressed={histPlaying}
+        >{histPlaying ? 'Pause' : `Play ${histYears[0]}–${histYears[histYears.length - 1]}`}</button
+      >
+      <label class="yr"
+        ><span class="visually-hidden">Year</span>
+        <input
+          type="range"
+          min="0"
+          max={histYears.length - 1}
+          step="1"
+          bind:value={histIdx}
+          oninput={() => (histOn = true)}
+          aria-valuetext={String(histYear ?? '')}
+        /></label
+      >
+      <strong class="yv">{histOn ? histYear : `${info?.year ?? ''} (current)`}</strong>
+      <label class="ck"
+        ><input type="checkbox" bind:checked={histDiff} /> Change since {histYears[0]}</label
+      >
+      {#if histOn}<button
+          onclick={() => {
+            if (histPlaying) histPlay();
+            histOn = false;
+          }}>Back to {info?.year}</button
+        >{/if}
+    </div>
+  {:else}
+    <p class="muted small note">
+      The 10-year history (2015 onwards) appears here once it has been published.
+    </p>
+  {/if}
   <p class="muted small note">
     A yearly model of the artificial sky glow (moonless, zenith), not a measurement. Satellites
     under-count blue/white LED light, so real skies can be brighter; typical error vs. Globe at
@@ -557,6 +719,42 @@
   }
   .note {
     margin: 8px 0 0;
+  }
+  .hist {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    margin-top: 8px;
+    font-size: 13px;
+  }
+  .hist button {
+    font-size: 13px;
+    min-height: 32px;
+  }
+  .yr {
+    flex: 1 1 160px;
+    display: flex;
+  }
+  .yr input {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+  .yv {
+    font-variant-numeric: tabular-nums;
+    min-width: 4ch;
+  }
+  .ck {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+  }
+  .chg {
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
   .credit-line {
     font-size: 11px;

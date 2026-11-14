@@ -382,6 +382,19 @@ export const CREDITS: Credit[] = [
     kind: 'data',
     status: 'live',
   },
+  {
+    id: 'dso-catalogues',
+    name: 'HyperLEDA PGC, Sharpless, Lynds, van den Bergh and Barnard catalogues (VizieR)',
+    url: 'https://vizier.cds.unistra.fr/',
+    license: 'Public catalogues; citation requested',
+    attribution:
+      'Galaxies: PGC/HyperLEDA, Paturel et al. 2003 (VizieR VII/237; Makarov et al. 2014, HyperLEDA). Nebulae: Sharpless 1959 (VII/20), Lynds 1962 and 1965 (VII/7A, VII/9), van den Bergh 1966 (VII/21), Barnard 1927 (VII/220A). This research has made use of the VizieR catalogue access tool, CDS, Strasbourg (via the CfA mirror).',
+    shortCredit: 'Deep-sky: PGC/HyperLEDA, Sharpless, Lynds, vdB, Barnard via VizieR',
+    usage:
+      'About 980,000 extra galaxies and 3,700 nebulae in the 3D sky (from R2, alongside OpenNGC).',
+    kind: 'data',
+    status: 'live',
+  },
   // Optional sky surveys (off by default). Streamed, never hosted by us.
   {
     id: 'survey-cds-hips',

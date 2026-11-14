@@ -18,3 +18,6 @@ export const GAIA_DEEP_URL: string = DATA_BASE ? `${DATA_BASE}/hips/gaia` : '';
 
 /** Deeper Gaia layer (V 10–16); used when the Worker has it, else GAIA_DEEP_URL. */
 export const GAIA_DEEPER_URL: string = DATA_BASE ? `${DATA_BASE}/hips/gaia16` : '';
+
+/** Deep-sky layer with PGC galaxies and nebula catalogues (used when the Worker has it). */
+export const DSO_DEEP_URL: string = DATA_BASE ? `${DATA_BASE}/hips/dso` : '';

@@ -7,6 +7,7 @@ import {
   galactic,
   hourAngle,
   localSiderealHours,
+  parseRaDec,
 } from '../src/lib/astro/skycoords';
 import { LEGEND, lpColor, paletteTable, recolor, sqmFromGrey } from '../src/lib/lp/lpmap';
 
@@ -80,5 +81,24 @@ describe('sexagesimal formatting', () => {
     expect(fmtRA(359.99999)).toBe('0h 00m 00.0s');
     expect(fmtDMS(-5.3911)).toBe('−5° 23′ 28″');
     expect(fmtDMS(38.99999)).toBe('+39° 00′ 00″');
+  });
+});
+
+describe('RA/Dec typed in the search box', () => {
+  it('reads degrees, h m s, colons and plain triples', () => {
+    expect(parseRaDec('83.82 -5.39')).toEqual({ ra: 83.82, dec: -5.39 });
+    const m42 = parseRaDec('5h35m17.3s -5d23m28s');
+    expect(m42?.ra).toBeCloseTo(83.822, 3);
+    expect(m42?.dec).toBeCloseTo(-5.3911, 4);
+    expect(parseRaDec('05:35:17.3 -05:23:28')?.ra).toBeCloseTo(83.822, 3);
+    expect(parseRaDec('5 35 17.3 -5 23 28')?.dec).toBeCloseTo(-5.3911, 4);
+    expect(parseRaDec('RA 5h35.3m, Dec -5°23′')?.ra).toBeCloseTo(83.825, 3);
+    expect(parseRaDec('0 30 0 -0 30 0')?.dec).toBeCloseTo(-0.5, 6);
+  });
+  it('rejects names and impossible values', () => {
+    expect(parseRaDec('M31')).toBeNull();
+    expect(parseRaDec('400 10')).toBeNull();
+    expect(parseRaDec('10 95')).toBeNull();
+    expect(parseRaDec('5 75 0 10 0 0')).toBeNull();
   });
 });

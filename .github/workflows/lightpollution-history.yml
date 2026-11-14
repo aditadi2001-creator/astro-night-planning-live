@@ -1,0 +1,93 @@
+name: Light pollution history (10 years to R2)
+
+# Builds one zenith sky-brightness file per year (zoom 0-6) for the light-pollution
+# map's year player, using the PUBLISHED model (same kernel and scale every year)
+# on each year's NASA Black Marble VNP46A4 night lights, so the years compare.
+# Files go to lightpollution/history/lp-<year>.pmtiles (outside the yearly job's
+# cleanup pattern) and the list of years to data/lphistory.json.
+# Needs the EARTHDATA_TOKEN secret, like the yearly job.
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: Comma-separated years
+        default: '2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025'
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      years: ${{ steps.p.outputs.years }}
+    steps:
+      - id: p
+        run: echo "years=$(echo '${{ inputs.years }}' | python3 -c "import sys,json; print(json.dumps([int(y) for y in sys.stdin.read().split(',') if y.strip()]))")" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: 3 # gentle on NASA LAADS
+      matrix:
+        year: ${{ fromJSON(needs.plan.outputs.years) }}
+    concurrency:
+      group: r2-writes-lphist-${{ matrix.year }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: pipelines/lightpollution
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pipelines/lightpollution/requirements.txt
+      - run: pip install -r requirements.txt boto3
+      - name: Published model
+        run: |
+          base=$(grep -E '^VITE_DATA_BASE=' ../../.env.production | cut -d= -f2-)
+          curl -fsS "$base/data/lightpollution.json" -o published.json
+      - name: Download night lights (raw HDF5 never leaves the runner)
+        env:
+          EARTHDATA_TOKEN: ${{ secrets.EARTHDATA_TOKEN }}
+        run: python fetch.py --year ${{ matrix.year }} --workers 6
+      - name: Glow and history tiles
+        run: python skyglow.py history --year ${{ matrix.year }} --calib-json published.json
+      - name: Upload to R2 (guarded)
+        working-directory: pipelines/r2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          y=${{ matrix.year }}
+          python r2.py upload ../lightpollution/out/lphist-$y.pmtiles lightpollution/history/lp-$y.pmtiles \
+            --type application/vnd.pmtiles --cache "public, max-age=31536000, immutable"
+
+  index:
+    needs: [plan, build]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install boto3
+      - name: List the years in R2 and publish data/lphistory.json
+        working-directory: pipelines/r2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          python r2.py lphist-index > ../../lphistory.json
+          cat ../../lphistory.json
+          python r2.py upload ../../lphistory.json data/lphistory.json \
+            --type application/json --cache "public, max-age=3600"
+          python r2.py usage

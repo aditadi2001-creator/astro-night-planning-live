@@ -87,3 +87,37 @@ export function fmtDMS(deg: number): string {
   }
   return `${deg < 0 ? '−' : '+'}${d}° ${String(m).padStart(2, '0')}′ ${String(s).padStart(2, '0')}″`;
 }
+
+/**
+ * Sky coordinates typed in the search box, J2000:
+ *   "83.82 -5.39" (degrees), "5h35m17.3s -5d23m28s", "05:35:17.3 -05:23:28",
+ *   "5 35 17.3 -5 23 28", "RA 5h35.3m Dec -5°23′". RA in degrees unless written
+ *   in hours (h, ":" or three parts). Returns degrees, or null.
+ */
+export function parseRaDec(text: string): { ra: number; dec: number } | null {
+  const t = text
+    .trim()
+    .toLowerCase()
+    .replace(/[\u2212\u2013]/g, '-')
+    .replace(/\b(ra|dec|de)\b/g, ' ')
+    .replace(/[,;]/g, ' ');
+  if (!/\d/.test(t) || t.length > 80) return null;
+  const hoursMarked = /\d\s*h/.test(t) || /\d:\d/.test(t);
+  const tokens = t.replace(/[hdms:°º′'″"]/g, ' ').match(/[+-]?\d+(?:\.\d+)?/g) ?? [];
+  const n = tokens.length;
+  if (n !== 2 && n !== 4 && n !== 6) return null;
+  const half = n / 2;
+  const raT = tokens.slice(0, half);
+  const deT = tokens.slice(half);
+  const sexa = (parts: string[]) =>
+    parts.reduce((acc, p, i) => acc + Math.abs(Number(p)) / 60 ** i, 0);
+  const raVal = sexa(raT);
+  const ra = hoursMarked || half > 1 ? raVal * 15 : raVal;
+  const neg = (deT[0] ?? '').startsWith('-');
+  const dec = (neg ? -1 : 1) * sexa(deT);
+  if (raT.some((p) => p.startsWith('-'))) return null;
+  if (!(ra >= 0 && ra < 360) || !(dec >= -90 && dec <= 90)) return null;
+  if (half > 1 && raT.slice(1).some((p) => Number(p) >= 60)) return null;
+  if (half > 1 && deT.slice(1).some((p) => Number(p) >= 60)) return null;
+  return { ra, dec };
+}

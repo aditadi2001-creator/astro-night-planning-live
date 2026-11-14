@@ -155,6 +155,59 @@
     shown = [...want];
   }
 
+  /** Frames of the last ~2.5 h from the newest images each source has published. */
+  async function buildFrames(): Promise<Frame[]> {
+    const now = Date.now();
+    const [latest, idx] = await Promise.all([
+      Promise.all(GEO_LAYERS.map((l) => latestTime(l, now, ctrl.signal))),
+      GMGSI_INDEX_URL ? loadGmgsiIndex(ctrl.signal, true).catch(() => null) : Promise.resolve(null),
+    ]);
+    const hours = (idx?.data.hours ?? []).map((h) => ({ hour: h.hour, t: Date.parse(h.time) }));
+    const newestGeo = Math.max(...latest.filter((t): t is number => t != null));
+    const end = Number.isFinite(newestGeo) ? newestGeo : (hours[0]?.t ?? null);
+    if (end == null) throw new Error('No recent satellite images are available right now.');
+    return frameTimes(end, 6, 30).map((t) => ({
+      t,
+      geo: GEO_LAYERS.flatMap((layer, i) => {
+        const last = latest[i];
+        if (last == null) return [];
+        const lt = Math.min(floorSlot(t), last);
+        return t - lt <= 60 * 60_000 ? [{ layer, t: lt }] : [];
+      }),
+      // Newest GMGSI hour not after the frame, if under 3 hours older.
+      gmgsi: hours.find((h) => h.t <= t && t - h.t <= 3 * 3600_000) ?? null,
+    }));
+  }
+
+  // ---- Live: keep looping and look for new images every 5 minutes ----------------
+  let live = $state(false);
+  let liveTimer: ReturnType<typeof setInterval> | null = null;
+  let lastCheck = $state<number | null>(null);
+  async function refreshFrames() {
+    try {
+      const next = await buildFrames();
+      lastCheck = Date.now();
+      const newest = next[next.length - 1]?.t ?? 0;
+      if (newest > (frames[frames.length - 1]?.t ?? 0)) {
+        frames = next;
+        if (index >= frames.length) index = frames.length - 1;
+      }
+    } catch {
+      /* keep the current frames; try again at the next check */
+    }
+  }
+  function toggleLive() {
+    live = !live;
+    if (live) {
+      if (!playing) play();
+      void refreshFrames();
+      liveTimer = setInterval(() => void refreshFrames(), 5 * 60_000);
+    } else {
+      if (liveTimer) clearInterval(liveTimer);
+      liveTimer = null;
+    }
+  }
+
   function play(): void {
     if (!styleReady) return;
     if (playing) {
@@ -191,27 +244,7 @@
       ml.addProtocol('gibsclip', async (params, abort) => ({
         data: await loadClipped(params.url, abort.signal),
       }));
-      const now = Date.now();
-      const [latest, idx] = await Promise.all([
-        Promise.all(GEO_LAYERS.map((l) => latestTime(l, now, ctrl.signal))),
-        GMGSI_INDEX_URL ? loadGmgsiIndex(ctrl.signal).catch(() => null) : Promise.resolve(null),
-      ]);
-      if (ctrl.signal.aborted) return;
-      const hours = (idx?.data.hours ?? []).map((h) => ({ hour: h.hour, t: Date.parse(h.time) }));
-      const newestGeo = Math.max(...latest.filter((t): t is number => t != null));
-      const end = Number.isFinite(newestGeo) ? newestGeo : (hours[0]?.t ?? null);
-      if (end == null) throw new Error('No recent satellite images are available right now.');
-      frames = frameTimes(end, 6, 30).map((t) => ({
-        t,
-        geo: GEO_LAYERS.flatMap((layer, i) => {
-          const last = latest[i];
-          if (last == null) return [];
-          const lt = Math.min(floorSlot(t), last);
-          return t - lt <= 60 * 60_000 ? [{ layer, t: lt }] : [];
-        }),
-        // Newest GMGSI hour not after the frame, if under 3 hours older.
-        gmgsi: hours.find((h) => h.t <= t && t - h.t <= 3 * 3600_000) ?? null,
-      }));
+      frames = await buildFrames();
       index = frames.length - 1;
 
       const mobile = matchMedia('(max-width: 600px)').matches;
@@ -284,6 +317,7 @@
     ctrl.abort();
     stopWatch?.();
     if (timer) clearInterval(timer);
+    if (liveTimer) clearInterval(liveTimer);
     marker?.remove();
     pick?.remove();
     map?.remove();
@@ -333,6 +367,16 @@
       <button type="button" onclick={play} aria-pressed={playing}>
         {playing ? 'Pause' : 'Play last 2.5 h'}
       </button>
+      <button
+        type="button"
+        onclick={toggleLive}
+        aria-pressed={live}
+        title="Loop the newest images and add new ones as they are published (checked every 5 minutes)"
+        ><span class="dot" class:on={live} aria-hidden="true"></span>Live</button
+      >
+      {#if live && lastCheck}<span class="muted small live-note"
+          >new images checked {fmtTime(lastCheck, tz)}</span
+        >{/if}
       <label class="slider">
         <span class="sr">Image time</span>
         <input
@@ -466,6 +510,18 @@
     color: var(--text);
     font: inherit;
     cursor: pointer;
+  }
+  .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+  .dot.on {
+    background: var(--bad);
+    box-shadow: 0 0 6px var(--bad);
   }
   .slider {
     flex: 1 1 160px;

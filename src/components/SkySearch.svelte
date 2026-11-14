@@ -1,6 +1,7 @@
 <script lang="ts" module>
   export type SearchHit =
     | { kind: 'engine'; label: string; sub: string; id: string }
+    | { kind: 'coords'; label: string; sub: string; ra: number; dec: number }
     | {
         kind: 'dso';
         label: string;
@@ -106,6 +107,7 @@
 <script lang="ts">
   import type { Target } from '../lib/targets';
   import { parseTargets } from '../lib/targets';
+  import { fmtDMS, fmtRA, parseRaDec } from '../lib/astro/skycoords';
 
   let { onpick }: { onpick: (hit: SearchHit) => boolean | Promise<boolean> } = $props();
   let input: HTMLInputElement;
@@ -137,6 +139,16 @@
     const n = norm(q);
     if (n.length < 1) return [];
     const out: SearchHit[] = [];
+    // Coordinates typed directly (J2000): "83.82 -5.39", "5h35m17s -5d23m28s", "05:35:17 -05:23:28".
+    const c = parseRaDec(q);
+    if (c)
+      out.push({
+        kind: 'coords',
+        label: `RA ${fmtRA(c.ra)}  Dec ${fmtDMS(c.dec)}`,
+        sub: 'Go to coordinates (J2000)',
+        ra: c.ra,
+        dec: c.dec,
+      });
     const starts = (s: string) => norm(s).startsWith(n);
     for (const p of PLANETS)
       if (starts(p)) out.push({ kind: 'engine', label: p, sub: 'Solar system', id: `NAME ${p}` });
@@ -211,7 +223,7 @@
   <input
     id="sky-search"
     type="search"
-    placeholder="Search: Mars, Vega, M31, HIP…"
+    placeholder="Search: Mars, Vega, M31, or RA Dec…"
     autocomplete="off"
     role="combobox"
     aria-expanded={open && hits.length > 0}

@@ -606,6 +606,12 @@
   async function onSearch(h: SearchHit): Promise<boolean> {
     const s = stel;
     if (!s) return false;
+    if (h.kind === 'coords') {
+      s.core.selection = null;
+      selected = null;
+      lookAtRaDec(h.ra, h.dec, Math.min(s.core.fov * s.R2D, 10));
+      return true;
+    }
     if (h.kind === 'dso') {
       await selectOrPoint(h.id, h.ra, h.dec, Math.min(60, Math.max(0.5, h.sizeDeg * 4)));
       return true;

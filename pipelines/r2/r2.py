@@ -245,6 +245,17 @@ def cmd_keep_lp_year(s3, bucket: str, year: int) -> None:
         print(f"deleted previous year: {k}")
 
 
+LPHIST_RE = re.compile(r"^lightpollution/history/lp-(\d{4})\.pmtiles$")
+
+
+def cmd_lphist_index(s3, bucket: str) -> None:
+    """Print data/lphistory.json: the history years present in the bucket."""
+    years = sorted(int(m.group(1)) for o in list_objects(s3, bucket) if (m := LPHIST_RE.match(o.key)))
+    print(json.dumps({"years": years,
+                      "tiles": "/tiles/lphist-{year}/{z}/{x}/{y}.webp", "maxzoom": 6,
+                      "magPerStep": 0.025}))
+
+
 def cmd_prune_hourly(s3, bucket: str, keep_hours: int) -> None:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=keep_hours)
     removed = 0
@@ -275,6 +286,7 @@ def main() -> None:
     ph.add_argument("--keep-hours", type=int, default=24)
     ky = sub.add_parser("keep-lp-year")
     ky.add_argument("year", type=int)
+    sub.add_parser("lphist-index")
     de = sub.add_parser("delete")
     de.add_argument("key")
     a = ap.parse_args()
@@ -291,6 +303,8 @@ def main() -> None:
         cmd_publish_hourly(s3, bucket, Path(a.folder), a.keep_hours)
     elif a.cmd == "keep-lp-year":
         cmd_keep_lp_year(s3, bucket, a.year)
+    elif a.cmd == "lphist-index":
+        cmd_lphist_index(s3, bucket)
     elif a.cmd == "delete":
         s3.delete_object(Bucket=bucket, Key=a.key)
         print(f"deleted {a.key}")

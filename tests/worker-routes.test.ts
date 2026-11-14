@@ -34,9 +34,19 @@ describe('worker routes are strict allow-lists', () => {
     expect(parseTile('/tiles/anything-else/1/0/0.webp')).toBeNull();
   });
 
+  it('parses light-pollution history tiles', () => {
+    expect(parseTile('/tiles/lphist-2015/6/45/28.webp')).toEqual({
+      dataset: { kind: 'lphist', year: 2015 },
+      z: 6,
+      x: 45,
+      y: 28,
+    });
+  });
+
   it('parses HiPS star tiles and checks the Dir folder', () => {
     expect(parseHips('/hips/gaia/properties')).toEqual({ layer: 'gaia', kind: 'properties' });
     expect(parseHips('/hips/gaia16/properties')).toEqual({ layer: 'gaia16', kind: 'properties' });
+    expect(parseHips('/hips/dso/properties')).toEqual({ layer: 'dso', kind: 'properties' });
     expect(parseHips('/hips/other/properties')).toBeNull();
     expect(parseHips('/hips/gaia/Norder6/Dir10000/Npix12345.eph')).toEqual({
       layer: 'gaia',

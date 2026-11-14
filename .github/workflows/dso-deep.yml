@@ -1,0 +1,52 @@
+name: Deep-sky catalogue to R2
+
+# OpenNGC + PGC/HyperLEDA galaxies + Sharpless, Lynds (bright and dark), van den
+# Bergh and Barnard nebulae, from VizieR, packed into one PMTiles archive that the
+# data Worker serves at /hips/dso/ (key dso/deep-<version>.pmtiles).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Key version (dso/deep-<version>.pmtiles); a new one per rebuild
+        default: 'v1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-writes-dso
+  cancel-in-progress: false
+
+jobs:
+  build-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install numpy astropy astropy-healpix pmtiles requests boto3
+      - name: OpenNGC
+        working-directory: pipelines/catalogs
+        run: python fetch.py --only openngc
+      - name: Build (VizieR catalogues download inside)
+        working-directory: pipelines/catalogs
+        env:
+          VERSION: ${{ inputs.version }}
+        run: python build_dso_deep.py --out "out/dso-deep-$VERSION.pmtiles"
+      - name: Upload to R2 (guarded)
+        working-directory: pipelines/r2
+        env:
+          VERSION: ${{ inputs.version }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          python r2.py usage
+          python r2.py upload "../catalogs/out/dso-deep-$VERSION.pmtiles" "dso/deep-$VERSION.pmtiles" \
+            --type application/vnd.pmtiles --cache "public, max-age=31536000, immutable"
+          python r2.py upload "../catalogs/out/dso-deep-$VERSION.properties" "dso/deep-$VERSION.properties" \
+            --type "text/plain; charset=utf-8" --cache "public, max-age=86400"
+          python r2.py usage

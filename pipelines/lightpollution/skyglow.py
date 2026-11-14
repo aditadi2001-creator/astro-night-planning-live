@@ -461,11 +461,69 @@ def cmd_tiles(year: int) -> None:
     print(f"tiles: {n_lp} lp, {n_rad} lprad in {time.time() - t0:.0f} s")
 
 
+# ------------------------------------------------------------------ history (10-year player)
+
+def use_published_calibration(path: Path) -> None:
+    """History years reuse the published model (same kernel and scale for every year),
+    so a change between years comes from the night lights, not from a refit."""
+    info = json.loads(path.read_text())
+    m = info["model"]
+    best = {"p": m["p"], "d0": m["d0Km"], "D": m["DKm"], "A": m["A"],
+            "from_year": info["year"]}
+    OUT.mkdir(exist_ok=True)
+    (OUT / "calibration.json").write_text(json.dumps({"year": info["year"], "best": best}))
+
+
+def cmd_history_tiles(year: int) -> Path:
+    """Zenith brightening only, zoom 0–6, sampled straight from the glow grid."""
+    g = Mosaic(HERE / "glow" / str(year), key="mag", cache=24)
+    have = {(int(t[1:3]), int(t[4:6])) for t in g.have}
+    t0 = time.time()
+    lp = Pyramid(lambda r: encode_brightening(r), 6)
+    for Y in range(8):
+        for X in range(8):
+            lat, lon = merc_grid(3, X, Y, 256)
+            lat_n, lat_s = float(lat[0]), float(lat[-1])
+            hs = {int((l + 180) // 10) % 36 for l in (lon[0], lon[-1])}
+            vs = range(max(0, int((90 - min(lat_n, 89.9)) // 10)), min(18, int((90 - max(lat_s, -89.9)) // 10) + 1))
+            if not any((h, v) in have for h in range(min(hs), max(hs) + 1) for v in vs):
+                continue
+            la, lo = merc_grid(6, X * 8, Y * 8, 2048)
+            rr = (90 - la) / PIX_DEG
+            cc = (lo + 180) / PIX_DEG
+            r0 = int(max(0, math.floor(rr.min()) - 1))
+            c0 = int(math.floor(cc.min()) - 1)
+            win = g.window(r0, c0, int(math.ceil(rr.max())) - r0 + 3, int(math.ceil(cc.max())) - c0 + 3,
+                           np.uint16).astype(np.float32)
+            if not win.any():
+                continue
+            R, C = np.meshgrid(rr - r0 - 0.5, cc - c0 - 0.5, indexing="ij")
+            lin = 10 ** (bilinear(win, R, C) / 2500.0) - 1
+            lp.block(6, X * 8, Y * 8, lin, stop=3)
+        print(f"  history row {Y + 1}/8 ({time.time() - t0:.0f} s, {len(lp.entries)} tiles)", flush=True)
+    lp.finish(3)
+    OUT.mkdir(exist_ok=True)
+    path = OUT / f"lphist-{year}.pmtiles"
+    n = lp.write(path, {"name": f"Artificial sky brightness {year} (history)",
+                        "attribution": "Model by astro-night-planning-live from NASA Black Marble VNP46A4",
+                        "encoding": "grey/40 = mag brighter than 22.0"}, 6)
+    print(f"{path.name}: {n} tiles, {path.stat().st_size / 1e6:.1f} MB")
+    return path
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["calibrate", "glow", "tiles", "all"])
+    ap.add_argument("cmd", choices=["calibrate", "glow", "tiles", "all", "history"])
     ap.add_argument("--year", type=int, required=True)
+    ap.add_argument("--calib-json", default="", help="history: published lightpollution.json")
     a = ap.parse_args()
+    if a.cmd == "history":
+        if not a.calib_json:
+            sys.exit("history needs --calib-json (the published lightpollution.json)")
+        use_published_calibration(Path(a.calib_json))
+        cmd_glow(a.year)
+        cmd_history_tiles(a.year)
+        return 0
     if a.cmd in ("calibrate", "all"):
         cmd_calibrate(a.year)
     if a.cmd in ("glow", "all"):

@@ -84,7 +84,7 @@ type EngineFactory = (opts: {
   onReady: (stel: Stel) => void;
 }) => void;
 
-import { GAIA_DEEP_URL, GAIA_DEEPER_URL } from '../config';
+import { DSO_DEEP_URL, GAIA_DEEP_URL, GAIA_DEEPER_URL } from '../config';
 
 const BASE = import.meta.env.BASE_URL;
 /** Content hash of the engine files (scripts/engine-version.mjs): JS and WASM always match. */
@@ -139,11 +139,29 @@ async function addDeepStars(stel: Stel): Promise<void> {
   stel.core.stars.addDataSource({ url, key: 'gaia' });
 }
 
+/**
+ * Deep-sky objects: the large catalogue from R2 (OpenNGC + ~980,000 PGC galaxies +
+ * Sharpless, LBN, LDN, vdB and Barnard nebulae) when the Worker serves it,
+ * otherwise the OpenNGC set bundled with the site. The engine takes one source.
+ */
+async function addDsos(stel: Stel): Promise<void> {
+  let url = `${SKYDATA}dso`;
+  if (DSO_DEEP_URL) {
+    try {
+      const r = await fetch(`${DSO_DEEP_URL}/properties`);
+      if (r.ok && (await r.text()).includes('type                     = dso')) url = DSO_DEEP_URL;
+    } catch {
+      /* keep the bundled set */
+    }
+  }
+  stel.core.dsos.addDataSource({ url });
+}
+
 function addSkyData(stel: Stel): void {
   const c = stel.core;
   c.stars.addDataSource({ url: `${SKYDATA}stars` });
   if (GAIA_DEEP_URL) void addDeepStars(stel);
-  c.dsos.addDataSource({ url: `${SKYDATA}dso` });
+  void addDsos(stel);
   c.skycultures.addDataSource({ url: `${SKYDATA}skycultures/western`, key: 'western' });
   c.milkyway.addDataSource({ url: `${SKYDATA}surveys/milkyway` });
   c.planets.addDataSource({ url: `${SKYDATA}surveys/sso/moon`, key: 'moon' });
