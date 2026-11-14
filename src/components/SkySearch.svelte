@@ -559,13 +559,9 @@
   input::placeholder {
     color: var(--muted);
   }
-  ul {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    right: 0;
-    z-index: 6;
-    margin: 0;
+  /* In the flow of the corner panel (which scrolls): an absolutely placed list was clipped. */
+  ul[role='listbox'] {
+    margin: 4px 0 0;
     padding: 4px;
     list-style: none;
     background: var(--panel);

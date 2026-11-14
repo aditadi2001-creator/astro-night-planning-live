@@ -166,7 +166,8 @@
     const newestGeo = Math.max(...latest.filter((t): t is number => t != null));
     const end = Number.isFinite(newestGeo) ? newestGeo : (hours[0]?.t ?? null);
     if (end == null) throw new Error('No recent satellite images are available right now.');
-    return frameTimes(end, 6, 30).map((t) => ({
+    // Every image the satellites publish (GOES/Himawari every 10 minutes), last 2.5 hours.
+    return frameTimes(end, 16, 10).map((t) => ({
       t,
       geo: GEO_LAYERS.flatMap((layer, i) => {
         const last = latest[i];
@@ -219,10 +220,17 @@
     playing = true;
     if (index >= frames.length - 1) index = 0;
     ensureFrame(frames[index + 1]);
+    let hold = 0;
     timer = setInterval(() => {
+      // Live: rest on the newest image for a few seconds before starting over.
+      if (live && index === frames.length - 1 && hold < 4) {
+        hold++;
+        return;
+      }
+      hold = 0;
       index = (index + 1) % frames.length;
       ensureFrame(frames[(index + 1) % frames.length]); // preload the next one
-    }, 1100);
+    }, 700);
   }
 
   $effect(() => {
