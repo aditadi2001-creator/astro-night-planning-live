@@ -418,7 +418,7 @@ Laid out like the Stellarium desktop program, and the same in normal view and fu
 - **Bottom button bar** (Stellarium order and keys): constellation lines C, names V, boundaries
   B · equatorial grid E, azimuthal grid Z, meridian ;, ecliptic , · ground G, cardinal points Q,
   atmosphere A · deep-sky objects D, planet labels P, star labels · equatorial mount Ctrl+M,
-  centre on selected Space, centre crosshair Alt+C, ocular view Ctrl+O · night mode Ctrl+N,
+  centre on selected Space (or double-click or middle-click an object), centre crosshair Alt+C, ocular view Ctrl+O · night mode Ctrl+N,
   full screen F · time slower J, normal K, faster L, now 8 (×10 steps, into reverse) · then our
   own layer switches. A status line shows the place, field of view, date/time and time rate.
 - **Zoom** is animated every frame about the screen centre (wheel, pinch, Page Up/Down, + / −,
@@ -522,6 +522,8 @@ Laid out like the Stellarium desktop program, and the same in normal view and fu
 - Equipment results assume a flat, well-focused field; target ranking is a guide, not a promise.
 - Screen-aligned ocular frames are drawn with the scale at the screen centre, so frames wider than
   ~10° are slightly approximate; "True PA" mode projects every edge exactly.
+- The maps stream tiles from the data Worker and NASA GIBS; on a slow connection they show a
+  notice with a Retry button while tiles arrive (stuck downloads are retried automatically).
 - Only the stereographic and perspective projections are built into the sky engine (others
   crash it, so they are not offered). No constellation artwork is bundled.
 - The phone camera view and full screen on phones need checking on a real phone.

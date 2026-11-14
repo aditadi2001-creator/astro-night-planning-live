@@ -23,6 +23,7 @@
   import {
     altAzAt,
     describe,
+    screenToIcrf,
     setAtmosphere,
     setObserver,
     setSkyLayer,
@@ -386,7 +387,7 @@
       dsos: Record<string, unknown>;
       planets: Record<string, unknown>;
     };
-    cx.mount_frame = v.eqMount ? 3 : 5;
+    setMount(v.eqMount);
     // Only stereographic (2) and perspective (1) are compiled into the engine.
     cx.projection = v.projection === 1 ? 1 : 2;
     cx.flip_view_horizontal = v.flipH;
@@ -397,6 +398,32 @@
     cx.planets.scale_moon = v.scaleMoon;
     if (v.projection === 1 && c.fov * stel.R2D > 150) zoomToDeg(120);
   });
+
+  /**
+   * Alt-azimuth (observed frame, 5) or equatorial mount (of date, 3). The engine
+   * keeps its pointing angles when the frame changes, which would jump to another
+   * part of the sky, so re-point at the same sky centre after switching. In the
+   * equatorial mount celestial north stays up and the stars do not rotate as time runs.
+   */
+  let mountNow = 5;
+  function setMount(eq: boolean) {
+    const s = stel;
+    if (!s) return;
+    const want = eq ? 3 : 5;
+    if (want === mountNow) return;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    const centre = w && h ? screenToIcrf(s, w / 2, h / 2) : null;
+    const sel = s.core.selection;
+    (s.core as unknown as { mount_frame: number }).mount_frame = want;
+    mountNow = want;
+    if (sel) {
+      s.pointAndLock(sel, 0);
+    } else if (centre) {
+      unlock();
+      s.lookAt(s.convertFrame(s.core.observer, 'ICRF', 'MOUNT', centre), 0);
+    }
+  }
 
   // Field of view in degrees, polled (zoom animations run every frame).
   let fovDeg = $state(120);
@@ -567,6 +594,33 @@
     const img = renderTerrain(profile, groundColor, 2048, 512, -90, 30, glow);
     setSkyLayer(stel, SKY_LAYER.terrain, img, 2048, 512, -90, 30);
   });
+
+  /** Double-click: centre and follow the object under the pointer (it is selected by the first click). */
+  function onDblClick(e: MouseEvent) {
+    e.preventDefault();
+    setTimeout(gotoSelected, 30);
+  }
+  /**
+   * Middle button: select the object under the pointer and go to it. The engine
+   * selects on a left click, so the click is passed to it as one.
+   */
+  function onCanvasPointerDown(e: PointerEvent) {
+    canvas.focus();
+    if (e.button !== 1 || !stel) return;
+    e.preventDefault(); // no auto-scroll
+    const m = stel as unknown as {
+      _core_on_mouse: (id: number, state: number, x: number, y: number, b: number) => void;
+    };
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    // The engine needs a rendered frame between press and release to see a click.
+    m._core_on_mouse(0, 1, x, y, 1);
+    setTimeout(() => {
+      m._core_on_mouse(0, 0, x, y, 1);
+      setTimeout(gotoSelected, 80);
+    }, 60);
+  }
 
   let raf = 0;
   function onPointerMove(e: PointerEvent) {
@@ -1043,7 +1097,9 @@
     tabindex="0"
     onpointermove={onPointerMove}
     onpointerleave={() => oncursor?.(null)}
-    onpointerdown={() => canvas.focus()}
+    onpointerdown={onCanvasPointerDown}
+    ondblclick={onDblClick}
+    onauxclick={(e) => e.button === 1 && e.preventDefault()}
     aria-label="Interactive 3D sky. Drag or use the arrow keys to look around; scroll, pinch, Page Up/Down or +/- to zoom; tap an object for details. Press F1 for all shortcuts."
   ></canvas>
 
@@ -1124,8 +1180,8 @@
             <dd>zoom on the centre</dd>
             <dt>/ and \</dt>
             <dd>zoom in on the selection / zoom out</dd>
-            <dt>Space</dt>
-            <dd>centre on the selected object</dd>
+            <dt>Space, double-click, middle button</dt>
+            <dd>go to (centre and follow) the object</dd>
             <dt>C V B</dt>
             <dd>constellation lines, names, boundaries</dd>
             <dt>E Z ; ,</dt>

@@ -7,6 +7,7 @@
  * instead: tiles fully inside the region pass through untouched; edge tiles
  * get the outside columns made transparent so the layer below (GMGSI) shows.
  */
+import { fetchRetry } from '../data/maptiles';
 
 /** Columns [from, to) of a 256-px tile at zoom z, column x, that fall outside [west, east]. */
 export function outsideColumns(
@@ -50,7 +51,7 @@ export function parseClipUrl(url: string) {
 export async function loadClipped(url: string, signal: AbortSignal): Promise<ArrayBuffer> {
   const p = parseClipUrl(url);
   if (!p) throw new Error(`bad gibsclip url: ${url}`);
-  const res = await fetch(p.real, { signal });
+  const res = await fetchRetry(p.real, signal);
   if (!res.ok) throw new Error(`GIBS ${res.status}`);
   const cols = outsideColumns(p.z, p.x, p.west, p.east);
   if (!cols.length) return res.arrayBuffer();

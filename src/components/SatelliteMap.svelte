@@ -29,6 +29,7 @@
   import { GMGSI_INDEX_URL, gmgsiTiles, loadGmgsiIndex } from '../lib/sat/gmgsi';
   import { clipUrl, loadClipped } from '../lib/sat/mask';
   import { fmtTime } from '../lib/time/format';
+  import { reloadRasterSources, watchTiles, type TileStatus } from '../lib/data/maptiles';
 
   let { place, tz }: { place: Place; tz: string | undefined } = $props();
 
@@ -73,6 +74,11 @@
   let message = $state('');
   let timer: ReturnType<typeof setInterval> | null = null;
   const ctrl = new AbortController();
+  let tiles = $state<TileStatus>({ pending: false, slow: false });
+  let stopWatch: (() => void) | null = null;
+  function retryTiles() {
+    if (map) reloadRasterSources(map);
+  }
 
   const OPACITY = 0.9;
   /** Layer ids currently drawn (bookkeeping only, not UI state). */
@@ -234,10 +240,14 @@
       dot.setAttribute('role', 'img');
       dot.setAttribute('aria-label', 'Your location');
       marker = new ml.Marker({ element: dot }).setLngLat([place.lon, place.lat]).addTo(map);
-      map.on('load', () => {
+      // Sources can be added once the style is in; do not wait for every first tile.
+      const ready = () => {
         styleReady = true;
         status = 'ready';
-      });
+      };
+      map.once('style.load', ready);
+      map.once('load', ready);
+      stopWatch = watchTiles(map, (t) => (tiles = t));
       map.on('error', (e) => {
         // A missing tile is normal (time not published, outside a disk); keep quiet.
         if (!String(e.error?.message ?? '').includes('404')) console.warn('map:', e.error);
@@ -251,6 +261,7 @@
 
   onDestroy(() => {
     ctrl.abort();
+    stopWatch?.();
     if (timer) clearInterval(timer);
     marker?.remove();
     map?.remove();
@@ -282,7 +293,15 @@
       >{full ? 'Exit full screen' : 'Full screen'}</button
     >
   </header>
-  <div class="map" bind:this={container} role="region" aria-label="Satellite cloud map"></div>
+  <div class="stage">
+    <div class="map" bind:this={container} role="region" aria-label="Satellite cloud map"></div>
+    {#if tiles.pending}
+      <p class="tiles-chip" role="status">
+        {tiles.slow ? 'Map tiles are downloading slowly on this connection…' : 'Loading map tiles…'}
+        {#if tiles.slow}<button onclick={retryTiles}>Retry</button>{/if}
+      </p>
+    {/if}
+  </div>
 
   {#if status === 'error'}
     <p class="muted">Satellite map unavailable: {message}</p>
@@ -367,6 +386,39 @@
     font-weight: 400;
     text-transform: none;
     letter-spacing: 0;
+  }
+  .tiles-chip {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: calc(100% - 140px);
+    z-index: 3;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    font-size: 12px;
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--muted);
+  }
+  .tiles-chip button {
+    min-height: 26px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  .stage {
+    position: relative;
+  }
+  .full .stage {
+    flex: 1 0 300px;
+    display: flex;
+  }
+  .full .stage .map {
+    flex: 1;
   }
   .map {
     height: 380px;

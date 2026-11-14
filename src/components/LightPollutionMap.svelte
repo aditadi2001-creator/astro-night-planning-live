@@ -15,6 +15,12 @@
   import { BASE_TILES } from '../lib/sat/gibs';
   import { decodeTile, pixelFor } from '../lib/data/tiles';
   import {
+    fetchRetry,
+    reloadRasterSources,
+    watchTiles,
+    type TileStatus,
+  } from '../lib/data/maptiles';
+  import {
     BORTLE_LABELS,
     LP_INFO_URL,
     loadLpInfo,
@@ -48,6 +54,11 @@
     loading: boolean;
   } | null>(null);
   const ctrl = new AbortController();
+  let tiles = $state<TileStatus>({ pending: false, slow: false });
+  let stopWatch: (() => void) | null = null;
+  function retryTiles() {
+    if (map) reloadRasterSources(map);
+  }
 
   const tileUrl = (tpl: string, z: number, x: number, y: number) =>
     DATA_BASE + tpl.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
@@ -70,7 +81,7 @@
     return blob.arrayBuffer();
   }
   async function colouredTile(url: string, signal: AbortSignal): Promise<ArrayBuffer> {
-    const res = await fetch(url, { signal });
+    const res = await fetchRetry(url, signal);
     if (res.status === 404) {
       // No tile: natural sky everywhere in it.
       emptyTile ??= toPng(newCanvas(256, 256));
@@ -233,7 +244,10 @@
         if (map) pick.setLngLat([lng, lat]).addTo(map);
         void readPoint(lat, lng);
       });
-      map.on('load', () => (status = 'ready'));
+      // Usable as soon as the style is in; tiles keep arriving (slow links show a notice).
+      map.once('style.load', () => (status = 'ready'));
+      map.once('load', () => (status = 'ready'));
+      stopWatch = watchTiles(map, (t) => (tiles = t));
       map.on('error', (e) => {
         if (!String(e.error?.message ?? '').includes('404')) console.warn('lp map:', e.error);
       });
@@ -246,6 +260,7 @@
 
   onDestroy(() => {
     ctrl.abort();
+    stopWatch?.();
     marker?.remove();
     pick?.remove();
     map?.remove();
@@ -328,6 +343,14 @@
       </div>
 
       {#if status === 'loading'}<p class="loading" role="status">Loading the map…</p>{/if}
+      {#if tiles.pending}
+        <p class="tiles-chip" role="status">
+          {tiles.slow
+            ? 'Map tiles are downloading slowly on this connection…'
+            : 'Loading map tiles…'}
+          {#if tiles.slow}<button onclick={retryTiles}>Retry</button>{/if}
+        </p>
+      {/if}
       {#if status === 'error'}<p class="loading error" role="alert">
           Map unavailable: {message}
         </p>{/if}
@@ -475,6 +498,29 @@
     font-size: 13px;
     min-height: 32px;
     padding: 2px 10px;
+  }
+  .tiles-chip {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: calc(100% - 140px);
+    z-index: 3;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    font-size: 12px;
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--muted);
+  }
+  .tiles-chip button {
+    min-height: 26px;
+    padding: 0 10px;
+    font-size: 12px;
   }
   .loading {
     position: absolute;
