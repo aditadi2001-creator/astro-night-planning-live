@@ -16,6 +16,10 @@
   import { icrfToScreen, screenToIcrf, selectionIcrf, type Stel } from '../lib/engine/stel';
   import {
     EYEPIECES,
+    LENSES_MM,
+    nightscapeStats,
+    SENSORS,
+    timelapseStats,
     eyepieceStats,
     fitFov,
     fmtFov,
@@ -40,6 +44,8 @@
     onframecenter?: (c: { ra: number; dec: number; target: string | null } | null) => void;
     /** Smooth zoom to a field of view in degrees (the sky view's own animation). */
     onzoom?: (deg: number) => void;
+    /** Time-lapse preview: run the sky clock at this rate (0 = stop). */
+    onpreview?: (rate: number) => void;
   }
   let {
     stel,
@@ -49,6 +55,7 @@
     selectedName,
     onframecenter,
     onzoom,
+    onpreview,
   }: Props = $props();
 
   const KINDS: SetupKind[] = ['deepsky', 'planetary', 'lunarsolar'];
@@ -61,6 +68,12 @@
     epAfov: number;
     binning: number;
     showInfo: boolean;
+    nsSensor: number;
+    nsLens: number;
+    nsF: number;
+    nsPortrait: boolean;
+    tlInterval: number;
+    tlFrames: number;
   }
   function load(): Saved {
     const d: Saved = {
@@ -71,6 +84,12 @@
       epAfov: 52,
       binning: 1,
       showInfo: typeof matchMedia !== 'function' || !matchMedia('(max-width: 600px)').matches,
+      nsSensor: 0,
+      nsLens: 14,
+      nsF: 2.8,
+      nsPortrait: false,
+      tlInterval: 20,
+      tlFrames: 300,
     };
     try {
       return { ...d, ...(JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Saved>) };
@@ -86,9 +105,41 @@
   let epAfov = $state(saved.epAfov);
   let binning = $state(saved.binning);
   let showInfo = $state(saved.showInfo);
+  let nsSensor = $state(saved.nsSensor);
+  let nsLens = $state(saved.nsLens);
+  let nsF = $state(saved.nsF);
+  let nsPortrait = $state(saved.nsPortrait);
+  let tlInterval = $state(saved.tlInterval);
+  let tlFrames = $state(saved.tlFrames);
+  let previewing = $state(false);
+  const FULL_FRAME = { name: 'Full frame (36 × 24 mm)', widthMm: 36, heightMm: 24, pixelUm: 5.9 };
+  const sensor = $derived(SENSORS[nsSensor] ?? FULL_FRAME);
+  const ns = $derived(nightscapeStats(sensor, nsLens, nsF, nsPortrait));
+  const tl = $derived(timelapseStats(tlInterval, tlFrames));
+  /** Play the time-lapse's duration in about 12 seconds of sky time. */
+  function preview() {
+    previewing = !previewing;
+    onpreview?.(previewing ? Math.max(1, Math.round(tl.durationS / 12)) : 0);
+  }
+  /** Nightscape frame: level with the horizon, exact projection (wide lenses). */
+  let nsPath = $state('');
   let open = $state(typeof matchMedia !== 'function' || !matchMedia('(max-width: 640px)').matches);
   $effect(() => {
-    const s: Saved = { mode, active, northUp, epFocal, epAfov, binning, showInfo };
+    const s: Saved = {
+      mode,
+      active,
+      northUp,
+      epFocal,
+      epAfov,
+      binning,
+      showInfo,
+      nsSensor,
+      nsLens,
+      nsF,
+      nsPortrait,
+      tlInterval,
+      tlFrames,
+    };
     try {
       localStorage.setItem(KEY, JSON.stringify(s));
     } catch {
@@ -160,6 +211,8 @@
       }
       polys = out;
     } else if (polys.length) polys = [];
+    if (mode === 'nightscape') nsPath = nightscapePath(s, c);
+    else if (nsPath) nsPath = '';
     // Report the frame centre (J2000) for the Equipment tab.
     const ra = (((s.anp(ra0) * s.R2D) % 360) + 360) % 360;
     const dec = s.anpm(dec0) * s.R2D;
@@ -194,6 +247,52 @@
   export function rotate(by: number) {
     setups[active].rotationDeg = normRotation(setups[active].rotationDeg + by);
   }
+  /**
+   * Corners of a camera frame held level (a tripod): gnomonic projection around the
+   * view centre in the horizontal frame, with "up" towards the zenith, then each edge
+   * point projected to the screen. Exact for wide lenses.
+   */
+  function nightscapePath(s: Stel, cIcrf: number[]): string {
+    const o = s.core.observer;
+    const c = s.convertFrame(o, 'ICRF', 'OBSERVED', cIcrf);
+    const len = Math.hypot(c[0] ?? 0, c[1] ?? 0, c[2] ?? 0) || 1;
+    const C = [(c[0] ?? 0) / len, (c[1] ?? 0) / len, (c[2] ?? 0) / len];
+    // Horizontal axis = zenith × centre; vertical = centre × horizontal.
+    let U = [-(C[1] ?? 0), C[0] ?? 0, 0];
+    const ul = Math.hypot(U[0] ?? 0, U[1] ?? 0) || 1;
+    U = [(U[0] ?? 0) / ul, (U[1] ?? 0) / ul, 0];
+    const V = [
+      (C[1] ?? 0) * (U[2] ?? 0) - (C[2] ?? 0) * (U[1] ?? 0),
+      (C[2] ?? 0) * (U[0] ?? 0) - (C[0] ?? 0) * (U[2] ?? 0),
+      (C[0] ?? 0) * (U[1] ?? 0) - (C[1] ?? 0) * (U[0] ?? 0),
+    ];
+    const hw = Math.tan(((ns.fovW / 2) * Math.PI) / 180);
+    const hh = Math.tan(((ns.fovH / 2) * Math.PI) / 180);
+    const corners: [number, number][] = [
+      [-hw, -hh],
+      [hw, -hh],
+      [hw, hh],
+      [-hw, hh],
+    ];
+    const pts: string[] = [];
+    const N = 16;
+    for (let k = 0; k < 4; k++) {
+      const [x0, y0] = corners[k] ?? [0, 0];
+      const [x1, y1] = corners[(k + 1) % 4] ?? [0, 0];
+      for (let i = 0; i < N; i++) {
+        const t = i / N;
+        const x = x0 + (x1 - x0) * t;
+        const y = y0 + (y1 - y0) * t;
+        const d = [0, 1, 2].map((j) => (C[j] ?? 0) + x * (U[j] ?? 0) + y * (V[j] ?? 0));
+        const icrf = s.convertFrame(o, 'OBSERVED', 'ICRF', d);
+        const p = icrfToScreen(s, icrf);
+        if (!p) return '';
+        pts.push(`${p[0].toFixed(1)},${p[1].toFixed(1)}`);
+      }
+    }
+    return `M${pts.join('L')}Z`;
+  }
+
   export function zoomToFit(pass = 0) {
     const s = stel;
     if (!s || !pxPerDeg || !w || !h) return;
@@ -201,6 +300,9 @@
     let fov: number;
     if (mode === 'eyepiece') fov = fitFov(fovNow, pxPerDeg, ep.trueFovDeg, Math.min(w, h), 0.92);
     else if (mode === 'telrad') fov = fitFov(fovNow, pxPerDeg, 4, Math.min(w, h), 0.85);
+    else if (mode === 'nightscape')
+      // Wide lenses: the view needs some margin around the frame.
+      fov = Math.min(185, Math.max(ns.fovW, (ns.fovH * w) / Math.max(1, h)) * 1.25);
     else {
       // Rotated frame: fit its bounding box.
       const th = (setup.rotationDeg * Math.PI) / 180;
@@ -221,7 +323,14 @@
     showInfo = !showInfo;
   }
   export function cycleMode() {
-    mode = mode === 'sensor' ? 'eyepiece' : mode === 'eyepiece' ? 'telrad' : 'sensor';
+    mode =
+      mode === 'sensor'
+        ? 'eyepiece'
+        : mode === 'eyepiece'
+          ? 'telrad'
+          : mode === 'telrad'
+            ? 'nightscape'
+            : 'sensor';
   }
   function pick(k: SetupKind) {
     active = k;
@@ -297,6 +406,9 @@
       />
       <circle {cx} {cy} r={epR} class="ring" />
       <path class="cross" d={cross} />
+    {:else if mode === 'nightscape'}
+      {#if nsPath}<path d={nsPath} class="ns main" />{/if}
+      <path class="cross" d={cross} />
     {:else}
       {#each TELRAD_RINGS as d (d)}
         <circle {cx} {cy} r={(d / 2) * pxPerDeg} class="telrad" />
@@ -317,8 +429,14 @@
           >Eyepiece</button
         >
         <button aria-pressed={mode === 'telrad'} onclick={() => (mode = 'telrad')}>Telrad</button>
+        <button
+          aria-pressed={mode === 'nightscape'}
+          onclick={() => (mode = 'nightscape')}
+          title="Camera and lens on a tripod: nightscape framing and time-lapse planning"
+          >Nightscape</button
+        >
       </div>
-      {#if mode !== 'telrad'}
+      {#if mode !== 'telrad' && mode !== 'nightscape'}
         <div class="grp" role="group" aria-label="Setup">
           {#each KINDS as k (k)}
             <button aria-pressed={active === k} onclick={() => pick(k)} title={setups[k].telescope}
@@ -346,6 +464,32 @@
             {#each [1, 2, 3, 4] as b (b)}<option value={b}>{b}×{b}</option>{/each}
           </select></label
         >
+      {:else if mode === 'nightscape'}
+        <label class="sel"
+          >Camera <select bind:value={nsSensor}>
+            {#each SENSORS as s, i (s.name)}<option value={i}>{s.name}</option>{/each}
+          </select></label
+        >
+        <label class="sel"
+          >Lens <select bind:value={nsLens}>
+            {#each LENSES_MM as l (l)}<option value={l}>{l} mm</option>{/each}
+          </select></label
+        >
+        <label class="sel num"
+          >f/<input type="number" min="0.95" max="16" step="0.1" bind:value={nsF} /></label
+        >
+        <button aria-pressed={nsPortrait} onclick={() => (nsPortrait = !nsPortrait)}
+          >Portrait</button
+        >
+        <label class="sel num"
+          >Every <input type="number" min="1" max="3600" step="1" bind:value={tlInterval} /> s</label
+        >
+        <label class="sel num"
+          >× <input type="number" min="2" max="10000" step="10" bind:value={tlFrames} /> frames</label
+        >
+        <button aria-pressed={previewing} onclick={preview}
+          >{previewing ? 'Stop preview' : 'Preview time-lapse'}</button
+        >
       {:else if mode === 'eyepiece'}
         <label class="sel"
           >Eyepiece <select
@@ -370,7 +514,11 @@
           : mode === 'eyepiece'
             ? 'eyepiece field'
             : 'rings'} fill the view (Alt+Z)"
-        >Zoom to {mode === 'sensor' ? 'frame' : mode === 'eyepiece' ? 'eyepiece' : 'Telrad'}</button
+        >Zoom to {mode === 'sensor' || mode === 'nightscape'
+          ? 'frame'
+          : mode === 'eyepiece'
+            ? 'eyepiece'
+            : 'Telrad'}</button
       >
       <button aria-pressed={showInfo} onclick={() => (showInfo = !showInfo)}>Info</button>
     {/if}
@@ -422,6 +570,27 @@
           <dt>Exit pupil</dt>
           <dd>{ep.exitPupilMm.toFixed(1)} mm</dd>
         </dl>
+      {:else if mode === 'nightscape'}
+        <p class="oc-title">Nightscape · {nsLens} mm f/{nsF}</p>
+        <dl>
+          <dt>Camera</dt>
+          <dd>{sensor.name}{nsPortrait ? ', portrait' : ''}</dd>
+          <dt>Field</dt>
+          <dd>
+            {ns.fovW.toFixed(1)}° × {ns.fovH.toFixed(1)}° (diagonal {ns.fovDiag.toFixed(0)}°)
+          </dd>
+          <dt>Sharp stars</dt>
+          <dd>
+            NPF {ns.npf.toFixed(1)} s · 500 rule {ns.rule500.toFixed(0)} s (untracked)
+          </dd>
+          <dt>Time-lapse</dt>
+          <dd>
+            {Math.floor(tl.durationS / 3600)} h {Math.round((tl.durationS % 3600) / 60)} min of shooting
+            → {tl.clipS.toFixed(0)} s clip at 25 fps
+          </dd>
+          <dt>Sky turns</dt>
+          <dd>{tl.skyRotationDeg.toFixed(1)}° about the pole</dd>
+        </dl>
       {:else}
         <p class="oc-title telrad-t">Telrad</p>
         <dl>
@@ -471,6 +640,11 @@
     fill: none;
     stroke: #8a8a8a;
     stroke-width: 1.5;
+  }
+  .ocular .ns {
+    fill: none;
+    stroke: #c8a2ff;
+    stroke-width: 1.8;
   }
   .ocular .telrad {
     fill: none;

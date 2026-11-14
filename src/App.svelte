@@ -703,6 +703,11 @@
   const RATES = [-100000, -10000, -1000, -100, -10, -1, 0, 1, 10, 100, 1000, 10000, 100000];
   function timeCmd(cmd: TimeCmd) {
     if (cmd === 'now') return setTime(new Date(), true);
+    if (cmd === 'pause') {
+      live = false;
+      rate = 0;
+      return;
+    }
     const cur = live ? 1 : rate;
     if (cmd === 'real') {
       if (Math.abs(shown.getTime() - Date.now()) < 5000) return setTime(new Date(), true);
@@ -784,6 +789,14 @@
           longExposure={layers.longExposure}
           oncursor={(p) => (cursor = p)}
           ontime={timeCmd}
+          onsettime={setTime}
+          onrate={(r) => {
+            if (r === 0) setTime(new Date(), true);
+            else {
+              live = false;
+              rate = r;
+            }
+          }}
           oncamera={() => (cameraOpen = true)}
         >
           {#snippet panel(p: SkyPanel, close: () => void)}

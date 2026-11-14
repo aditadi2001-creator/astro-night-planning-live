@@ -1,6 +1,6 @@
 <script lang="ts" module>
   export type SkyPanel = 'location' | 'time' | 'layers' | 'config' | 'calc' | 'help';
-  export type TimeCmd = 'slower' | 'real' | 'faster' | 'now' | 'back' | 'fwd';
+  export type TimeCmd = 'slower' | 'real' | 'faster' | 'now' | 'pause' | 'back' | 'fwd';
 </script>
 
 <script lang="ts">
@@ -38,7 +38,7 @@
   import { renderClouds, type CloudInput } from '../lib/sky/clouds';
   import CloudWorker from '../lib/sky/clouds.worker.ts?worker';
   import { renderTerrain, type DomeGlow, type Rgb } from '../lib/sky/horizon';
-  import { fmtDateTime } from '../lib/time/format';
+  import { fmtDateTime, fromLocalInput, toLocalInput } from '../lib/time/format';
 
   interface Props {
     setups: Record<SetupKind, Setup>;
@@ -67,6 +67,10 @@
     layers: LayerState;
     night?: boolean;
     ontime?: (cmd: TimeCmd) => void;
+    /** Set the shown time (the always-visible time bar). */
+    onsettime?: (t: Date, live: boolean) => void;
+    /** Run the clock at a rate (time-lapse preview); 0 = back to now. */
+    onrate?: (rate: number) => void;
     oncamera?: () => void;
     /** Window contents supplied by the page (location picker, time controls, layer options). */
     panel?: Snippet<[SkyPanel, () => void]>;
@@ -95,6 +99,8 @@
     layers = $bindable(),
     night = $bindable(false),
     ontime,
+    onsettime,
+    onrate,
     oncamera,
     panel,
   }: Props = $props();
@@ -312,7 +318,8 @@
     flipH: boolean;
     flipV: boolean;
     info: 'all' | 'short' | 'none';
-    autoHide: boolean;
+    /** Off by default: the bars stay until the user hides them (renamed so old saved "on" values are dropped). */
+    autoHideBars: boolean;
   }
   function loadView(): View {
     try {
@@ -351,7 +358,7 @@
       flipH: false,
       flipV: false,
       info: 'all',
-      autoHide: true,
+      autoHideBars: false,
     };
     return d;
   }
@@ -1154,6 +1161,20 @@
             : `×${rate.toLocaleString()}`,
   );
   let barOpen = $state(!phone);
+  // ---- always-visible time bar ---------------------------------------------------
+  const STEPS = [
+    { label: '−1 h', ms: -3600_000 },
+    { label: '−10 m', ms: -600_000 },
+    { label: '−1 m', ms: -60_000 },
+    { label: '+1 m', ms: 60_000 },
+    { label: '+10 m', ms: 600_000 },
+    { label: '+1 h', ms: 3600_000 },
+  ];
+  const stepTime = (ms: number) => onsettime?.(new Date(time.getTime() + ms), false);
+  function onTimeInput(e: Event) {
+    const d = fromLocalInput((e.currentTarget as HTMLInputElement).value, tz);
+    if (d) onsettime?.(d, false);
+  }
   // Full screen: the bars fade after 3 s without mouse or touch (Stellarium auto-hide).
   let idle = $state(false);
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1172,7 +1193,7 @@
 <div
   class="wrap"
   class:full
-  class:idle={full && view.autoHide && idle && !openPanel}
+  class:idle={full && view.autoHideBars && idle && !openPanel}
   bind:this={wrap}
   onkeydown={onKey}
   onkeyup={onKeyUp}
@@ -1217,6 +1238,7 @@
       selectedName={selected?.name ?? null}
       {onframecenter}
       onzoom={zoomToDeg}
+      onpreview={onrate}
     />
   {/if}
 
@@ -1367,8 +1389,8 @@
             <label><input type="checkbox" bind:checked={view.flipV} /> Flip upside down</label>
             <label><input type="checkbox" bind:checked={view.crosshair} /> Centre crosshair</label>
             <label
-              ><input type="checkbox" bind:checked={view.autoHide} /> Hide the bars in full screen when
-              the mouse is still</label
+              ><input type="checkbox" bind:checked={view.autoHideBars} /> Hide the bars in full screen
+              when the mouse is still</label
             >
           </fieldset>
           <fieldset>
@@ -1403,6 +1425,35 @@
       onclick={() => (barOpen = !barOpen)}
       title="Show or hide the button bar">{barOpen ? '▾' : '▴ Buttons'}</button
     >
+    <div class="timebar" role="group" aria-label="Time">
+      <input
+        type="datetime-local"
+        aria-label="Shown date and time (site time)"
+        value={toLocalInput(time, tz)}
+        onchange={onTimeInput}
+      />
+      {#each STEPS.slice(0, 3) as st (st.label)}
+        <button onclick={() => stepTime(st.ms)} title={`Step ${st.label}`}>{st.label}</button>
+      {/each}
+      <button class:on={live} onclick={() => ontime?.('now')} title="Back to now (8)">Now</button>
+      {#each STEPS.slice(3) as st (st.label)}
+        <button onclick={() => stepTime(st.ms)} title={`Step ${st.label}`}>{st.label}</button>
+      {/each}
+      <span class="sep" aria-hidden="true"></span>
+      <button onclick={() => ontime?.('slower')} aria-label="Slower (J)" title="Slower (J)"
+        >◀◀</button
+      >
+      <button
+        onclick={() => ontime?.(live || rate !== 0 ? 'pause' : 'real')}
+        aria-label={live || rate !== 0 ? 'Pause' : 'Play at normal speed (K)'}
+        title={live || rate !== 0 ? 'Pause' : 'Play at normal speed (K)'}
+        >{live || rate !== 0 ? '❚❚' : '▶'}</button
+      >
+      <button onclick={() => ontime?.('faster')} aria-label="Faster (L)" title="Faster (L)"
+        >▶▶</button
+      >
+      <span class="rate" class:hot={!live}>{rateText}</span>
+    </div>
     <div id="sky-bar" class="bar" hidden={!barOpen} role="toolbar" aria-label="Sky display">
       {#each mainBtns as group, gi (gi)}
         <div class="grp">
@@ -1643,6 +1694,74 @@
   }
   .bottom > * {
     pointer-events: auto;
+  }
+  /* Always-visible time bar: compact, right-aligned above the button bar. */
+  .timebar {
+    justify-self: end;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 3px;
+    max-width: 100%;
+    padding: 3px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--panel) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+    backdrop-filter: blur(6px);
+  }
+  .timebar input {
+    min-height: 30px;
+    font: inherit;
+    font-size: 12px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 1px 4px;
+    color-scheme: dark;
+  }
+  .timebar button {
+    min-height: 30px;
+    padding: 0 7px;
+    font-size: 12px;
+    background: transparent;
+    border-color: transparent;
+  }
+  .timebar button:hover {
+    border-color: var(--line);
+  }
+  .timebar button.on {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+  .timebar .sep {
+    width: 1px;
+    height: 20px;
+    background: var(--line);
+    margin: 0 2px;
+  }
+  .timebar .rate {
+    font-size: 11px;
+    color: var(--muted);
+    padding: 0 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .timebar .rate.hot {
+    color: var(--warn);
+  }
+  @media (max-width: 640px) {
+    /* Phones: one row that scrolls sideways, so the sky keeps its space. */
+    .timebar {
+      flex-wrap: nowrap;
+      justify-content: flex-start;
+      overflow-x: auto;
+      scrollbar-width: none;
+      justify-self: stretch;
+    }
+    .timebar > * {
+      flex: none;
+    }
   }
   .bar-toggle {
     justify-self: start;

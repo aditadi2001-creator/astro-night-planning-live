@@ -7,7 +7,10 @@ import {
   frameFill,
   framePolygon,
   normRotation,
+  nightscapeStats,
   plateScale,
+  SENSORS,
+  timelapseStats,
   setupStats,
 } from '../src/lib/equipment';
 
@@ -95,5 +98,24 @@ describe('ocular view maths', () => {
     expect(plateScale(DEFAULT_SETUPS.deepsky)).toBeCloseTo(429.72, 1);
     // A 2° frame at 100 px/° on a 800 px view: 80 % fill needs 320 px/°, so fov / 3.2.
     expect(fitFov(40, 100, 2, 800)).toBeCloseTo(12.5, 6);
+  });
+});
+
+describe('nightscape and time-lapse', () => {
+  it('14 mm on full frame: about 104° × 81°, 500 rule ~36 s, NPF ~13 s at f/2.8', () => {
+    const ff = SENSORS[0] ?? { name: '', widthMm: 36, heightMm: 24, pixelUm: 5.9 };
+    const st = nightscapeStats(ff, 14, 2.8);
+    expect(st.fovW).toBeCloseTo(104.25, 1);
+    expect(st.fovH).toBeCloseTo(81.2, 1);
+    expect(st.rule500).toBeCloseTo(35.7, 0);
+    expect(st.npf).toBeCloseTo((35 * 2.8 + 30 * 5.9) / 14, 6);
+    const p = nightscapeStats(ff, 14, 2.8, true);
+    expect(p.fovW).toBeCloseTo(st.fovH, 6);
+  });
+  it('time-lapse: 300 frames every 20 s = 100 min, 12 s clip, 25° of sky rotation', () => {
+    const t = timelapseStats(20, 300, 25);
+    expect(t.durationS).toBe(6000);
+    expect(t.clipS).toBe(12);
+    expect(t.skyRotationDeg).toBeCloseTo(25.07, 2);
   });
 });

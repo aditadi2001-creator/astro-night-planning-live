@@ -244,7 +244,7 @@ export function framePolygon(
 
 // ---- Stellarium-style ocular view (sky overlay) ------------------------------------
 
-export type OcularMode = 'sensor' | 'eyepiece' | 'telrad';
+export type OcularMode = 'sensor' | 'eyepiece' | 'telrad' | 'nightscape';
 
 export interface Eyepiece {
   name: string;
@@ -312,4 +312,76 @@ export function fitFov(
 ) {
   const want = (fill * viewPx) / Math.max(1e-6, sizeDeg);
   return fovNow * (pxPerDeg / want);
+}
+
+// ---- Nightscape / time-lapse (camera + lens on a fixed tripod) ----------------------
+
+export interface Sensor {
+  name: string;
+  widthMm: number;
+  heightMm: number;
+  /** Typical pixel pitch, µm (for the NPF rule). */
+  pixelUm: number;
+}
+
+export const SENSORS: readonly Sensor[] = [
+  { name: 'Full frame (36 × 24 mm)', widthMm: 36, heightMm: 24, pixelUm: 5.9 },
+  { name: 'APS-C Canon (22.3 × 14.9 mm)', widthMm: 22.3, heightMm: 14.9, pixelUm: 3.7 },
+  { name: 'APS-C Nikon/Sony/Fuji (23.5 × 15.6 mm)', widthMm: 23.5, heightMm: 15.6, pixelUm: 3.9 },
+  { name: 'Micro Four Thirds (17.3 × 13 mm)', widthMm: 17.3, heightMm: 13, pixelUm: 3.3 },
+  { name: '1-inch (13.2 × 8.8 mm)', widthMm: 13.2, heightMm: 8.8, pixelUm: 2.4 },
+];
+
+export const LENSES_MM = [8, 10, 12, 14, 16, 20, 24, 28, 35, 50, 85, 135, 200] as const;
+
+export interface NightscapeStats {
+  /** Field of view in degrees (width, height, diagonal) for the given orientation. */
+  fovW: number;
+  fovH: number;
+  fovDiag: number;
+  /** Longest untracked exposure, seconds: the classic 500 rule and the simple NPF rule. */
+  rule500: number;
+  npf: number;
+}
+
+/** Field of view and longest sharp exposure for a camera + lens on a fixed tripod. */
+export function nightscapeStats(
+  sensor: Sensor,
+  focalMm: number,
+  fNumber: number,
+  portrait = false,
+): NightscapeStats {
+  const f = Math.max(1, focalMm);
+  const w = portrait ? sensor.heightMm : sensor.widthMm;
+  const h = portrait ? sensor.widthMm : sensor.heightMm;
+  const ang = (mm: number) => (2 * Math.atan(mm / (2 * f)) * 180) / Math.PI;
+  const crop = 43.27 / Math.hypot(sensor.widthMm, sensor.heightMm);
+  return {
+    fovW: ang(w),
+    fovH: ang(h),
+    fovDiag: ang(Math.hypot(w, h)),
+    rule500: 500 / (f * crop),
+    // Simplified NPF rule (Frédéric Michaud, Société Astronomique de France).
+    npf: (35 * Math.max(0.7, fNumber) + 30 * sensor.pixelUm) / f,
+  };
+}
+
+export interface TimelapseStats {
+  /** Shooting time, seconds. */
+  durationS: number;
+  /** Length of the finished clip, seconds. */
+  clipS: number;
+  /** Rotation of the sky about the celestial pole during the sequence, degrees. */
+  skyRotationDeg: number;
+}
+
+/** A time-lapse: `frames` photos taken every `intervalS` seconds, played at `fps`. */
+export function timelapseStats(intervalS: number, frames: number, fps = 25): TimelapseStats {
+  const durationS = Math.max(0, intervalS) * Math.max(0, frames);
+  return {
+    durationS,
+    clipS: frames / Math.max(1, fps),
+    // Sidereal rate: 360° in 23 h 56 min 4 s.
+    skyRotationDeg: (durationS / 86164.0905) * 360,
+  };
 }
