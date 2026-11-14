@@ -9,6 +9,10 @@ on:
       version:
         description: Key version (dso/deep-<version>.pmtiles); a new one per rebuild
         default: 'v1'
+      search_only:
+        description: Only rebuild and upload the PGC search index (data/pgc-NNN.json)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -35,8 +39,18 @@ jobs:
         working-directory: pipelines/catalogs
         env:
           VERSION: ${{ inputs.version }}
-        run: python build_dso_deep.py --out "out/dso-deep-$VERSION.pmtiles"
+          SEARCH_ONLY: ${{ inputs.search_only && '--search-only' || '' }}
+        run: python build_dso_deep.py --out "out/dso-deep-$VERSION.pmtiles" $SEARCH_ONLY
+      - name: Upload the PGC search index to R2 (data/pgc-NNN.json)
+        working-directory: pipelines/r2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          python r2.py upload-dir ../catalogs/out/search data/             --type application/json --cache "public, max-age=86400"
       - name: Upload to R2 (guarded)
+        if: ${{ !inputs.search_only }}
         working-directory: pipelines/r2
         env:
           VERSION: ${{ inputs.version }}

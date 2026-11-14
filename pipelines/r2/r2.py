@@ -161,6 +161,26 @@ def cmd_upload(s3, bucket: str, path: Path, key: str, ctype: str | None, cache: 
         print(f"WARNING: bucket is above the {TARGET / GB:.0f} GB target.")
 
 
+def cmd_upload_dir(s3, bucket: str, folder: Path, prefix: str, ctype: str | None,
+                   cache: str | None) -> None:
+    """Upload every file of a folder under `prefix` (one guard check for the lot)."""
+    files = sorted(p for p in folder.iterdir() if p.is_file())
+    size = sum(p.stat().st_size for p in files)
+    objs = list_objects(s3, bucket)
+    keys = {prefix + p.name for p in files}
+    after = sum(o.size for o in objs if o.key not in keys) + size
+    if after > HARD_LIMIT:
+        sys.exit(f"REFUSED: {len(files)} files ({size / GB:.3f} GB) would pass the hard limit.")
+    extra = {}
+    if ctype:
+        extra["ContentType"] = ctype
+    if cache:
+        extra["CacheControl"] = cache
+    for p in files:
+        s3.put_object(Bucket=bucket, Key=prefix + p.name, Body=p.read_bytes(), **extra)
+    print(f"uploaded {len(files)} files ({size / 1e6:.1f} MB) under {prefix}; bucket now ~{after / GB:.3f} GB")
+
+
 def hour_time(hour: str) -> datetime:
     return datetime.strptime(hour, "%Y%m%d%H").replace(tzinfo=timezone.utc)
 
@@ -287,6 +307,11 @@ def main() -> None:
     ky = sub.add_parser("keep-lp-year")
     ky.add_argument("year", type=int)
     sub.add_parser("lphist-index")
+    ud = sub.add_parser("upload-dir")
+    ud.add_argument("folder")
+    ud.add_argument("prefix")
+    ud.add_argument("--type")
+    ud.add_argument("--cache")
     de = sub.add_parser("delete")
     de.add_argument("key")
     a = ap.parse_args()
@@ -303,6 +328,8 @@ def main() -> None:
         cmd_publish_hourly(s3, bucket, Path(a.folder), a.keep_hours)
     elif a.cmd == "keep-lp-year":
         cmd_keep_lp_year(s3, bucket, a.year)
+    elif a.cmd == "upload-dir":
+        cmd_upload_dir(s3, bucket, Path(a.folder), a.prefix, a.type, a.cache)
     elif a.cmd == "lphist-index":
         cmd_lphist_index(s3, bucket)
     elif a.cmd == "delete":

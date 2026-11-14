@@ -151,6 +151,34 @@ def read_nebulae(known_ids: set[str]) -> list[dict]:
     return [o for o in out if math.isfinite(o["ra"]) and math.isfinite(o["de"])]
 
 
+def write_search(nebulae: list[dict], pgc: list[dict], folder: Path, neb_path: Path) -> None:
+    """Search indexes: nebulae.json for the site, and PGC lookup chunks
+    (pgc-NNN.json, PGC number // 10000) served from R2 at /data/pgc-NNN.json."""
+    import json
+
+    def size_am(o: dict) -> float:
+        return round((o["smax"] or 0) / ARCMIN, 1)
+
+    neb_rows = [[o["ids"].split("|")[0], round(o["ra"], 4), round(o["de"], 4), size_am(o), o["type"]]
+                for o in nebulae]
+    neb_path.parent.mkdir(parents=True, exist_ok=True)
+    neb_path.write_text(json.dumps({
+        "source": "Sharpless 1959, Lynds 1962/1965, van den Bergh 1966, Barnard 1927 (VizieR)",
+        "columns": ["id", "ra", "dec", "sizeArcmin", "type"], "rows": neb_rows}, separators=(",", ":")))
+    folder.mkdir(parents=True, exist_ok=True)
+    chunks: dict[int, list] = {}
+    for o in pgc:
+        num = int(o["ids"].split("|")[0][4:])
+        aliases = [a for a in o["ids"].split("|")[1:4]]
+        chunks.setdefault(num // 10000, []).append(
+            [num, round(o["ra"], 4), round(o["de"], 4), size_am(o), " ".join(aliases)])
+    for c, rows in chunks.items():
+        rows.sort()
+        (folder / f"pgc-{c:03d}.json").write_text(json.dumps(
+            {"source": "PGC/HyperLEDA (VizieR VII/237)", "rows": rows}, separators=(",", ":")))
+    print(f"search: {len(neb_rows)} nebulae, {len(pgc):,} PGC galaxies in {len(chunks)} chunks")
+
+
 def order_key(o: dict) -> float:
     """Magnitude when known; otherwise bigger objects first (15 for 10', 20 for 0.1')."""
     if math.isfinite(o["vmag"]):
@@ -166,6 +194,9 @@ def main() -> None:
     ap.add_argument("--cap", type=int, default=512)
     ap.add_argument("--max-order", type=int, default=7)
     ap.add_argument("--out", default=str(HERE / "out" / "dso-deep-v1.pmtiles"))
+    ap.add_argument("--search-dir", default=str(HERE / "out" / "search"))
+    ap.add_argument("--nebulae-json", default=str(HERE.parent.parent / "public" / "skydata" / "nebulae.json"))
+    ap.add_argument("--search-only", action="store_true", help="write the search indexes, no tiles")
     args = ap.parse_args()
 
     base = read_openngc()
@@ -180,7 +211,12 @@ def main() -> None:
                 except ValueError:
                     pass
     print(f"OpenNGC: {len(base):,} objects ({len(known_pgc):,} with PGC numbers)")
-    objs = base + read_nebulae(known_ids) + read_pgc(known_pgc)
+    nebulae = read_nebulae(known_ids)
+    pgc = read_pgc(known_pgc)
+    write_search(read_nebulae(set()), pgc, Path(args.search_dir), Path(args.nebulae_json))
+    if args.search_only:
+        return
+    objs = base + nebulae + pgc
     objs.sort(key=order_key)
     print(f"{len(objs):,} deep-sky objects in total")
 
