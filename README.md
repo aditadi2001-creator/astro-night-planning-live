@@ -410,7 +410,11 @@ Laid out like the Stellarium desktop program, and the same in normal view and fu
 
 - **Left tool bar** opens windows over the sky: Location (F6), Date and time (F5), Sky and
   viewing options (F4: clouds, light pollution, haze, terrain, long exposure, deep-sky photos,
-  sky surveys with picker and opacity, satellite map) and Help (F1, all shortcuts).
+  sky surveys with picker and opacity, satellite map), Astronomical calculations (F10: Sun, Moon
+  and planets with magnitude, constellation, altitude now, rise, transit and set; click one to
+  select it), Configuration (F2: stereographic or perspective projection, star brightness and
+  size, amount of star and deep-sky labels, Milky Way, enlarged Moon, mirror/flip for diagonals,
+  crosshair, full-screen auto-hide, object information all/short/none) and Help (F1).
 - **Bottom button bar** (Stellarium order and keys): constellation lines C, names V, boundaries
   B · equatorial grid E, azimuthal grid Z, meridian ;, ecliptic , · ground G, cardinal points Q,
   atmosphere A · deep-sky objects D, planet labels P, star labels · equatorial mount Ctrl+M,
@@ -438,9 +442,10 @@ Laid out like the Stellarium desktop program, and the same in normal view and fu
 - **Layer bar** at the top of the Sky tab, with the survey options, FOV frame and camera view.
 - **Stellarium-style info** (top left) for the selected object: magnitude, Az/Alt, RA/Dec J2000
   and of date, hour angle, galactic coordinates, IAU constellation (Astronomy Engine boundaries),
-  distance, size, rise/transit/set and airmass. **Search** finds planets, the Moon and Sun, ~70
-  named bright stars and the 1,160 deep-sky targets (M/NGC/IC or common name); deep-sky objects are
-  reached by their coordinates (the engine cannot select them by name; tap them once there).
+  distance, size, rise/transit/set and airmass. **Search** finds planets, the Moon and Sun, 73
+  named bright stars (by their Hipparcos numbers; any "HIP n", "HD n" or "* alf Lyr" works too)
+  and the 1,160 deep-sky targets (M/NGC/IC or common name), and selects them; "Show in sky" in
+  Targets selects the object too.
 - **View menu**: equatorial and azimuthal grids, meridian, ecliptic, deep-sky markers, cardinal
   points, atmosphere and ground.
 - **Full screen** (button or F): the layer switches, time controls and ocular toolbar stay
@@ -517,7 +522,8 @@ Laid out like the Stellarium desktop program, and the same in normal view and fu
 - Equipment results assume a flat, well-focused field; target ranking is a guide, not a promise.
 - Screen-aligned ocular frames are drawn with the scale at the screen centre, so frames wider than
   ~10° are slightly approximate; "True PA" mode projects every edge exactly.
-- Search cannot select deep-sky objects in the engine by name; it turns the view to them.
+- Only the stereographic and perspective projections are built into the sky engine (others
+  crash it, so they are not offered). No constellation artwork is bundled.
 - The phone camera view and full screen on phones need checking on a real phone.
 
 ## License

@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type SkyPanel = 'location' | 'time' | 'layers' | 'help';
+  export type SkyPanel = 'location' | 'time' | 'layers' | 'config' | 'calc' | 'help';
   export type TimeCmd = 'slower' | 'real' | 'faster' | 'now' | 'back' | 'fwd';
 </script>
 
@@ -19,6 +19,7 @@
   import Oculars from './Oculars.svelte';
   import SkyInfo from './SkyInfo.svelte';
   import SkySearch, { type SearchHit } from './SkySearch.svelte';
+  import SkyEphem from './SkyEphem.svelte';
   import {
     altAzAt,
     describe,
@@ -43,7 +44,8 @@
     shownFrames: Record<SetupKind, boolean>;
     onframecenter?: (c: { ra: number; dec: number; target: string | null } | null) => void;
     onselect?: (info: ObjectInfo | null) => void;
-    goto?: { ra: number; dec: number; fovDeg: number; n: number } | null;
+    /** Point at J2000 coordinates; with `id`, also select that object when the engine knows it. */
+    goto?: { ra: number; dec: number; fovDeg: number; n: number; id?: string } | null;
     clearSignal?: number;
     place: Place;
     time: Date;
@@ -123,6 +125,8 @@
   // ---- smooth zoom about the screen centre (as in Stellarium) ---------------------
   const FOV_MIN = 0.2 / 60;
   const FOV_MAX = 185;
+  // Perspective cannot show more than ~150° without extreme stretching.
+  const fovMax = () => (view.projection === 1 ? 150 : FOV_MAX);
   let fovTarget = 0; // degrees; 0 = no zoom animation running
   let zoomRaf = 0;
   function zoomStep() {
@@ -148,13 +152,13 @@
     const s = stel;
     if (!s) return;
     const base = fovTarget || s.core.fov * s.R2D;
-    fovTarget = Math.min(FOV_MAX, Math.max(FOV_MIN, base * f));
+    fovTarget = Math.min(fovMax(), Math.max(FOV_MIN, base * f));
     if (!zoomRaf) zoomRaf = requestAnimationFrame(zoomStep);
   }
   function zoomToDeg(deg: number) {
     const s = stel;
     if (!s) return;
-    fovTarget = Math.min(FOV_MAX, Math.max(FOV_MIN, deg));
+    fovTarget = Math.min(fovMax(), Math.max(FOV_MIN, deg));
     if (!zoomRaf) zoomRaf = requestAnimationFrame(zoomStep);
   }
   onMount(() => {
@@ -296,8 +300,30 @@
     starLabels: boolean;
     eqMount: boolean;
     crosshair: boolean;
+    /** Configuration window (F2). */
+    projection: 1 | 2;
+    starBrightness: number;
+    starSize: number;
+    starLabelAmount: number;
+    dsoLabelAmount: number;
+    milkyWay: boolean;
+    scaleMoon: boolean;
+    flipH: boolean;
+    flipV: boolean;
+    info: 'all' | 'short' | 'none';
+    autoHide: boolean;
   }
   function loadView(): View {
+    try {
+      return {
+        ...loadDefaults(),
+        ...(JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}') as Partial<View>),
+      };
+    } catch {
+      return loadDefaults();
+    }
+  }
+  function loadDefaults(): View {
     const d: View = {
       conLines: true,
       conLabels: true,
@@ -314,12 +340,19 @@
       starLabels: true,
       eqMount: false,
       crosshair: true,
+      projection: 2,
+      starBrightness: 1,
+      starSize: 1,
+      starLabelAmount: 0,
+      dsoLabelAmount: 0,
+      milkyWay: true,
+      scaleMoon: false,
+      flipH: false,
+      flipV: false,
+      info: 'all',
+      autoHide: true,
     };
-    try {
-      return { ...d, ...(JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}') as Partial<View>) };
-    } catch {
-      return d;
-    }
+    return d;
   }
   let view = $state(loadView());
   $effect(() => {
@@ -336,7 +369,7 @@
     cons.show_only_pointed = false;
     cons.lines_visible = v.conLines;
     cons.labels_visible = v.conLabels;
-    cons.boundaries_visible = v.conBounds;
+    (cons as unknown as { bounds_visible: boolean }).bounds_visible = v.conBounds;
     c.lines.equatorial.visible = v.eqGrid;
     c.lines.azimuthal.visible = v.azGrid;
     c.lines.meridian.visible = v.meridian;
@@ -348,7 +381,21 @@
     c.planets.hints_visible = v.planetLabels;
     c.stars.hints_visible = v.starLabels;
     // Mount: alt-azimuth (observed frame, 5) or equatorial (of date, 3).
-    (c as unknown as { mount_frame: number }).mount_frame = v.eqMount ? 3 : 5;
+    const cx = c as unknown as Record<string, unknown> & {
+      stars: Record<string, unknown>;
+      dsos: Record<string, unknown>;
+      planets: Record<string, unknown>;
+    };
+    cx.mount_frame = v.eqMount ? 3 : 5;
+    // Only stereographic (2) and perspective (1) are compiled into the engine.
+    cx.projection = v.projection === 1 ? 1 : 2;
+    cx.flip_view_horizontal = v.flipH;
+    cx.flip_view_vertical = v.flipV;
+    c.milkyway.visible = v.milkyWay;
+    cx.stars.hints_mag_offset = v.starLabelAmount;
+    cx.dsos.hints_mag_offset = v.dsoLabelAmount;
+    cx.planets.scale_moon = v.scaleMoon;
+    if (v.projection === 1 && c.fov * stel.R2D > 150) zoomToDeg(120);
   });
 
   // Field of view in degrees, polled (zoom animations run every frame).
@@ -378,8 +425,8 @@
   $effect(() => {
     if (!stel) return;
     const c = stel.core as typeof stel.core & Record<string, number>;
-    c.exposure_scale = longExposure ? 7 : 2;
-    c.star_linear_scale = longExposure ? 1.0 : 1.25;
+    c.exposure_scale = (longExposure ? 7 : 2) * view.starBrightness;
+    c.star_linear_scale = (longExposure ? 1.0 : 1.25) * view.starSize;
     c.star_relative_scale = longExposure ? 1.1 : 1.15;
   });
 
@@ -438,13 +485,28 @@
       return null;
     }
   }
+  /** Select a catalogue object and centre it; if the engine does not know it, point at its coordinates. */
+  async function selectOrPoint(id: string, ra: number, dec: number, fov: number) {
+    const s = stel;
+    if (!s) return;
+    // Look there first: the engine loads the object's data tile once it is in view.
+    s.core.selection = null;
+    selected = null;
+    lookAtRaDec(ra, dec, fov);
+    let obj = findObj(id);
+    for (let i = 0; !obj && i < 12; i++) {
+      await new Promise((r) => setTimeout(r, 150));
+      obj = findObj(id);
+    }
+    if (!obj) return;
+    s.core.selection = obj;
+    s.pointAndLock(obj, 0.6);
+  }
   async function onSearch(h: SearchHit): Promise<boolean> {
     const s = stel;
     if (!s) return false;
     if (h.kind === 'dso') {
-      s.core.selection = null;
-      selected = null;
-      lookAtRaDec(h.ra, h.dec, Math.min(60, Math.max(0.5, h.sizeDeg * 4)));
+      await selectOrPoint(h.id, h.ra, h.dec, Math.min(60, Math.max(0.5, h.sizeDeg * 4)));
       return true;
     }
     // Star tiles load on demand: the first lookup can miss while the tile arrives.
@@ -530,9 +592,12 @@
     const g = goto;
     if (!stel || !g || g.n === lastGoto) return;
     lastGoto = g.n;
-    stel.core.selection = null;
-    selected = null;
-    lookAtRaDec(g.ra, g.dec, g.fovDeg);
+    if (g.id) void selectOrPoint(g.id, g.ra, g.dec, g.fovDeg);
+    else {
+      stel.core.selection = null;
+      selected = null;
+      lookAtRaDec(g.ra, g.dec, g.fovDeg);
+    }
   });
   let lastClear = 0;
   $effect(() => {
@@ -547,7 +612,8 @@
   }
 
   // ---- keyboard: Stellarium's default shortcuts --------------------------------------
-  const toggle = (k: keyof View) => (view[k] = !view[k]);
+  type BoolKey = { [K in keyof View]: View[K] extends boolean ? K : never }[keyof View];
+  const toggle = (k: BoolKey) => (view[k] = !view[k]);
   function panel_(p: SkyPanel) {
     openPanel = openPanel === p ? null : p;
   }
@@ -696,6 +762,12 @@
       case 'F11':
         toggleFull();
         break;
+      case 'F2':
+        panel_('config');
+        break;
+      case 'F10':
+        panel_('calc');
+        break;
       case 'F1':
       case '?':
         panel_('help');
@@ -727,7 +799,7 @@
 
   // ---- bottom bar ----------------------------------------------------------------
   type Btn = { id: string; label: string; key: string; on: boolean; act: () => void; icon: string };
-  const viewBtn = (id: keyof View, label: string, key: string, icon: string): Btn => ({
+  const viewBtn = (id: BoolKey, label: string, key: string, icon: string): Btn => ({
     id,
     label,
     key,
@@ -895,6 +967,18 @@
       icon: 'M12 3l9 5-9 5-9-5zM3 13l9 5 9-5M3 17l9 5 9-5',
     },
     {
+      id: 'calc',
+      label: 'Astronomical calculations',
+      key: 'F10',
+      icon: 'M5 3h14v18H5zM8 7h8M8 11h2M12 11h2M16 11h0M8 15h2M12 15h2M8 18h2M12 18h2M16 15v3',
+    },
+    {
+      id: 'config',
+      label: 'Configuration',
+      key: 'F2',
+      icon: 'M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 14.4H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9.6 4V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z',
+    },
+    {
       id: 'help',
       label: 'Help and keyboard shortcuts',
       key: 'F1',
@@ -905,6 +989,8 @@
     location: 'Location',
     time: 'Date and time',
     layers: 'Sky and viewing options',
+    config: 'Configuration',
+    calc: 'Astronomical calculations',
     help: 'Keyboard shortcuts',
   };
   const fmtFovLine = (d: number) =>
@@ -917,11 +1003,31 @@
     live ? 'live' : rate === 0 ? 'paused' : rate === 1 ? 'real speed' : `×${rate.toLocaleString()}`,
   );
   let barOpen = $state(!phone);
+  // Full screen: the bars fade after 3 s without mouse or touch (Stellarium auto-hide).
+  let idle = $state(false);
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  function wake() {
+    idle = false;
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => (idle = true), 3000);
+  }
+  onMount(() => () => {
+    if (idleTimer) clearTimeout(idleTimer);
+  });
   const closePanel = () => (openPanel = null);
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="wrap" class:full bind:this={wrap} onkeydown={onKey} onkeyup={onKeyUp}>
+<div
+  class="wrap"
+  class:full
+  class:idle={full && view.autoHide && idle && !openPanel}
+  bind:this={wrap}
+  onkeydown={onKey}
+  onkeyup={onKeyUp}
+  onpointermove={wake}
+  onpointerdown={wake}
+>
   <canvas
     bind:this={canvas}
     class="sky"
@@ -963,8 +1069,18 @@
 
   <div class="topleft">
     <SkySearch bind:this={search} onpick={onSearch} />
-    {#if selected}
-      <SkyInfo info={selected} {place} {time} {tz} onclose={clearSelection} ongoto={gotoSelected} />
+    {#if selected && view.info !== 'none'}
+      {#key view.info}
+        <SkyInfo
+          info={selected}
+          {place}
+          {time}
+          {tz}
+          short={view.info === 'short'}
+          onclose={clearSelection}
+          ongoto={gotoSelected}
+        />
+      {/key}
     {/if}
   </div>
 
@@ -990,7 +1106,7 @@
         <button class="x" onclick={closePanel} aria-label="Close window">×</button>
       </header>
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <div class="win-body" tabindex="0" role="region" aria-labelledby="sky-win-title">
+      <div class="win-body" tabindex="0">
         {#if openPanel === 'help'}
           <dl class="keys">
             <dt>Drag / arrows</dt>
@@ -1025,10 +1141,99 @@
             <dd>night mode, full screen</dd>
             <dt>F3 / Ctrl+F, F4, F5, F6</dt>
             <dd>search, sky options, date and time, location</dd>
+            <dt>F2, F10</dt>
+            <dd>configuration, astronomical calculations</dd>
             <dt>Esc</dt>
             <dd>close the window, then clear the selection</dd>
           </dl>
           <p class="note">Shortcuts work while the sky has focus (click it once).</p>
+        {:else if openPanel === 'calc'}
+          <SkyEphem
+            {place}
+            {time}
+            {tz}
+            onpick={(n) => void onSearch({ kind: 'engine', label: n, sub: '', id: `NAME ${n}` })}
+          />
+        {:else if openPanel === 'config'}
+          <fieldset>
+            <legend>Projection</legend>
+            <label
+              ><input type="radio" bind:group={view.projection} value={2} /> Stereographic (default)</label
+            >
+            <label><input type="radio" bind:group={view.projection} value={1} /> Perspective</label>
+          </fieldset>
+          <fieldset>
+            <legend>Stars</legend>
+            <label class="rng"
+              >Brightness <input
+                type="range"
+                min="0.4"
+                max="3"
+                step="0.05"
+                bind:value={view.starBrightness}
+              /><output>{view.starBrightness.toFixed(2)}×</output></label
+            >
+            <label class="rng"
+              >Size <input
+                type="range"
+                min="0.6"
+                max="1.6"
+                step="0.05"
+                bind:value={view.starSize}
+              /><output>{view.starSize.toFixed(2)}×</output></label
+            >
+          </fieldset>
+          <fieldset>
+            <legend>Labels and markers</legend>
+            <label class="rng"
+              >Star labels <input
+                type="range"
+                min="-3"
+                max="3"
+                step="0.5"
+                bind:value={view.starLabelAmount}
+              /><output>{view.starLabelAmount > 0 ? '+' : ''}{view.starLabelAmount}</output></label
+            >
+            <label class="rng"
+              >Deep-sky labels <input
+                type="range"
+                min="-3"
+                max="3"
+                step="0.5"
+                bind:value={view.dsoLabelAmount}
+              /><output>{view.dsoLabelAmount > 0 ? '+' : ''}{view.dsoLabelAmount}</output></label
+            >
+          </fieldset>
+          <fieldset>
+            <legend>Display</legend>
+            <label><input type="checkbox" bind:checked={view.milkyWay} /> Milky Way</label>
+            <label><input type="checkbox" bind:checked={view.scaleMoon} /> Enlarge the Moon</label>
+            <label
+              ><input type="checkbox" bind:checked={view.flipH} /> Mirror left–right (diagonal)</label
+            >
+            <label><input type="checkbox" bind:checked={view.flipV} /> Flip upside down</label>
+            <label><input type="checkbox" bind:checked={view.crosshair} /> Centre crosshair</label>
+            <label
+              ><input type="checkbox" bind:checked={view.autoHide} /> Hide the bars in full screen when
+              the mouse is still</label
+            >
+          </fieldset>
+          <fieldset>
+            <legend>Selected object information</legend>
+            <label><input type="radio" bind:group={view.info} value="all" /> All</label>
+            <label><input type="radio" bind:group={view.info} value="short" /> Short</label>
+            <label><input type="radio" bind:group={view.info} value="none" /> None</label>
+          </fieldset>
+          <button
+            onclick={() => {
+              const keep = { ...view };
+              view = {
+                ...loadDefaults(),
+                conLines: keep.conLines,
+                conLabels: keep.conLabels,
+              };
+            }}>Restore defaults</button
+          >
         {:else}
           {@render panel?.(openPanel, closePanel)}
         {/if}
@@ -1339,6 +1544,49 @@
   }
   .status a {
     color: inherit;
+  }
+  .side,
+  .bottom,
+  .topleft {
+    transition: opacity 0.4s;
+  }
+  .wrap.idle .side,
+  .wrap.idle .bottom,
+  .wrap.idle .topleft {
+    opacity: 0;
+  }
+  .wrap.idle {
+    cursor: none;
+  }
+  fieldset {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin: 0;
+    padding: 6px 10px 8px;
+    display: grid;
+    gap: 4px;
+    font-size: 13px;
+  }
+  legend {
+    color: var(--muted);
+    font-size: 12px;
+    padding: 0 4px;
+  }
+  fieldset label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+  }
+  .rng input {
+    flex: 1;
+    min-width: 0;
+    accent-color: var(--accent);
+  }
+  .rng output {
+    width: 46px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
   }
   @media (max-width: 640px) {
     .topleft {

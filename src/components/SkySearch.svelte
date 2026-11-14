@@ -1,7 +1,16 @@
 <script lang="ts" module>
   export type SearchHit =
     | { kind: 'engine'; label: string; sub: string; id: string }
-    | { kind: 'dso'; label: string; sub: string; ra: number; dec: number; sizeDeg: number };
+    | {
+        kind: 'dso';
+        label: string;
+        sub: string;
+        /** Catalogue designation the engine can select (e.g. "M 42", "NGC 7000"). */
+        id: string;
+        ra: number;
+        dec: number;
+        sizeDeg: number;
+      };
 
   const PLANETS = [
     'Sun',
@@ -109,15 +118,19 @@
   let activeI = $state(0);
   let message = $state('');
   let catalog = $state<Target[] | null>(null);
-  let loading = false;
 
-  function loadCatalog() {
-    if (catalog || loading) return;
-    loading = true;
-    fetch(`${import.meta.env.BASE_URL}skydata/targets.json`)
+  let catalogLoad: Promise<void> | null = null;
+  function loadCatalog(): Promise<void> {
+    if (catalogLoad) return catalogLoad;
+    catalogLoad = fetch(`${import.meta.env.BASE_URL}skydata/targets.json`)
       .then((r) => r.json())
-      .then((d: { rows: unknown[] }) => (catalog = parseTargets(d)))
-      .catch(() => (loading = false));
+      .then((d: { rows: unknown[] }) => {
+        catalog = parseTargets(d);
+      })
+      .catch(() => {
+        catalogLoad = null; // try again next time
+      });
+    return catalogLoad;
   }
 
   const hits = $derived.by((): SearchHit[] => {
@@ -138,6 +151,7 @@
         if (nm === n || nm.startsWith(n) || (n.length >= 3 && common.includes(n)))
           out.push({
             kind: 'dso',
+            id: t.name,
             label: t.common ? `${t.name} · ${t.common}` : t.name,
             sub: `${t.kind} in ${t.con}`,
             ra: t.ra,
@@ -157,7 +171,12 @@
     message = ok ? '' : `“${h.label}” was not found in the sky data.`;
     if (ok) q = '';
   }
-  function submit() {
+  async function submit() {
+    // Typed fast (e.g. "M45" + Enter): wait for the deep-sky list before deciding.
+    if (!hits.length && !catalog) {
+      await loadCatalog();
+      await Promise.resolve();
+    }
     if (hits.length) return void choose(hits[activeI] ?? hits[0]);
     const raw = q.trim();
     if (!raw) return;
@@ -178,7 +197,7 @@
     } else if (e.key === 'ArrowUp') {
       activeI = Math.max(0, activeI - 1);
     } else if (e.key === 'Enter') {
-      submit();
+      void submit();
     } else if (e.key === 'Escape') {
       open = false;
       return;
@@ -202,7 +221,7 @@
     bind:value={q}
     bind:this={input}
     onfocus={() => {
-      loadCatalog();
+      void loadCatalog();
       open = true;
     }}
     oninput={() => {

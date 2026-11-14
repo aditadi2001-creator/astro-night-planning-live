@@ -21,11 +21,14 @@
     tz: string | undefined;
     onclose: () => void;
     ongoto: () => void;
+    /** Start with the short form (Configuration: "Short"). */
+    short?: boolean;
   }
-  let { info, place, time, tz, onclose, ongoto }: Props = $props();
+  let { info, place, time, tz, onclose, ongoto, short = false }: Props = $props();
 
+  // svelte-ignore state_referenced_locally
   let more = $state(
-    typeof matchMedia === 'function' ? !matchMedia('(max-width: 600px)').matches : true,
+    !short && (typeof matchMedia === 'function' ? !matchMedia('(max-width: 600px)').matches : true),
   );
 
   // Rise/transit/set change slowly: recompute once a minute of shown time.

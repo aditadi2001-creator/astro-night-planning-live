@@ -581,4 +581,11 @@
   .num input {
     width: 54px;
   }
+  @media (max-width: 640px) {
+    .oc-info {
+      max-width: 220px;
+      font-size: 11px;
+      padding: 6px 8px;
+    }
+  }
 </style>

@@ -604,10 +604,16 @@
   // ---- selected object and "go to" requests ---------------------------------------
   let selectedInfo = $state<ObjectInfo | null>(null);
   let clearSignal = $state(0);
-  let gotoTarget = $state<{ ra: number; dec: number; fovDeg: number; n: number } | null>(null);
+  let gotoTarget = $state<{
+    ra: number;
+    dec: number;
+    fovDeg: number;
+    n: number;
+    id?: string;
+  } | null>(null);
   let gotoN = 0;
-  function gotoSky(ra: number, dec: number, fovDeg: number) {
-    gotoTarget = { ra, dec, fovDeg, n: ++gotoN };
+  function gotoSky(ra: number, dec: number, fovDeg: number, id?: string) {
+    gotoTarget = { ra, dec, fovDeg, n: ++gotoN, ...(id ? { id } : {}) };
     location.hash = '#/sky';
   }
 
@@ -651,7 +657,13 @@
     const st = setupStats(setups.deepsky);
     return Math.min(st.fovW, st.fovH);
   });
-  function showTarget(t: { ra: number; dec: number; sizeDeg: number; bestT?: number }) {
+  function showTarget(t: {
+    ra: number;
+    dec: number;
+    sizeDeg: number;
+    bestT?: number;
+    id?: string;
+  }) {
     // Below 20° at the shown time: jump to its best moment tonight.
     if (t.bestT != null) {
       Astronomy.DefineStar(Astronomy.Body.Star2, t.ra / 15, t.dec, 1000);
@@ -661,7 +673,7 @@
     const st = setupStats(setups.deepsky);
     const fov = Math.max(t.sizeDeg * 3, st.fovDiag * 1.6, 1);
     shownFrames = { ...shownFrames, deepsky: true };
-    gotoSky(t.ra, t.dec, Math.min(60, fov));
+    gotoSky(t.ra, t.dec, Math.min(60, fov), t.id);
   }
 
   // Turning the satellite map on from the sky's layer bar opens it in the Maps tab

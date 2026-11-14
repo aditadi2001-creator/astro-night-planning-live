@@ -19,7 +19,7 @@
     frameShortDeg: number;
     /** Recompute key (changes every ~10 minutes and when forecasts change). */
     stamp: number;
-    onshow: (t: { ra: number; dec: number; sizeDeg: number; bestT?: number }) => void;
+    onshow: (t: { ra: number; dec: number; sizeDeg: number; bestT?: number; id?: string }) => void;
   }
   let { place, tz, dark, clearAt, sqm, sqmKnown, frameShortDeg, stamp, onshow }: Props = $props();
 
@@ -147,6 +147,7 @@
             class="go"
             onclick={() =>
               onshow({
+                id: t.name,
                 ra: t.ra,
                 dec: t.dec,
                 sizeDeg: Math.max((t.maj ?? 10) / 60, 0.2),
