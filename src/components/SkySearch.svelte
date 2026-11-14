@@ -111,6 +111,27 @@
   import { DATA_BASE } from '../lib/config';
 
   type NebRow = [string, number, number, number, string];
+  /** dsonames.json: "M 31|NGC 224", common name, RA, Dec, size (′), type. */
+  type NameRow = [string, string, number, number, number, string];
+  const DSO_KIND: Record<string, string> = {
+    G: 'galaxy',
+    PaG: 'galaxy pair',
+    GrG: 'galaxy group',
+    OpC: 'open cluster',
+    GlC: 'globular cluster',
+    HII: 'H II region',
+    As: 'association',
+    PN: 'planetary nebula',
+    ISM: 'nebula',
+    RNe: 'reflection nebula',
+    DNe: 'dark nebula',
+    SNR: 'supernova remnant',
+  };
+  /**
+   * A catalogue name alone (or with the start of a number) lists that catalogue in
+   * number order: "NGC", "NGC 70", "M", "PGC 12", "Sh2", "LDN 16", "B 3"…
+   */
+  const BROWSE = /^(m|ngc|ic|pgc|leda|sh\s*2|sh|lbn|ldn|vdb|b)\s*-?\s*(\d{0,7})$/i;
   type PgcRow = [number, number, number, number, string];
   const NEB_KIND: Record<string, string> = {
     HII: 'H II region',
@@ -131,8 +152,12 @@
   let message = $state('');
   let catalog = $state<Target[] | null>(null);
   let nebulae = $state<NebRow[] | null>(null);
+  let names = $state<NameRow[] | null>(null);
+  /** How many browse results to show (Show more adds 60). */
+  let limit = $state(60);
   let pgcHits = $state<SearchHit[]>([]);
   let pgcNote = $state('');
+  let pgcTotal = $state(0);
 
   let catalogLoad: Promise<void> | null = null;
   function loadCatalog(): Promise<void> {
@@ -144,6 +169,12 @@
         .then((d: { rows: unknown[] }) => {
           catalog = parseTargets(d);
         }),
+      fetch(`${base}skydata/dsonames.json`)
+        .then((r) => r.json())
+        .then((d: { rows: NameRow[] }) => {
+          names = d.rows;
+        })
+        .catch(() => undefined),
       fetch(`${base}skydata/nebulae.json`)
         .then((r) => r.json())
         .then((d: { rows: NebRow[] }) => {
@@ -180,23 +211,40 @@
     return p;
   }
   $effect(() => {
-    const m = /^(?:pgc|leda)\s*(\d{1,7})$/i.exec(q.trim());
+    const m = /^(?:pgc|leda)\s*(\d{0,7})$/i.exec(q.trim());
+    const max = limit;
     pgcHits = [];
     pgcNote = '';
     if (!m || !DATA_BASE) return;
     const digits = m[1] ?? '';
-    const num = Number(digits);
+    const num = Number(digits || '0');
     let cancelled = false;
     pgcNote = 'Looking up PGC…';
-    void pgcChunk(Math.floor(num / 10000)).then((rows) => {
+    // Numbers starting with these digits live in a few chunk files (PGC // 10000).
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- local, not UI state
+    const chunks = new Set<number>();
+    for (let k = 0; k < 4 && digits; k++) {
+      const lo = num * 10 ** k;
+      if (lo > 9_999_999) break;
+      chunks.add(Math.floor(lo / 10000));
+    }
+    if (!digits) chunks.add(0);
+    void Promise.all([...chunks].map((c) => pgcChunk(c))).then((parts) => {
       if (cancelled) return;
+      const rows =
+        parts.some((r) => r === null) && parts.every((r) => !r?.length)
+          ? null
+          : parts.flatMap((r) => r ?? []);
       if (!rows) {
         pgcNote = 'The PGC lookup could not be reached right now.';
         return;
       }
       const exact = rows.filter((r) => r[0] === num);
-      const more = rows.filter((r) => r[0] !== num && String(r[0]).startsWith(digits));
-      pgcHits = [...exact, ...more].slice(0, 8).map((r) => ({
+      const more = rows
+        .filter((r) => r[0] !== num && String(r[0]).startsWith(digits))
+        .sort((a, b) => a[0] - b[0]);
+      pgcTotal = exact.length + more.length;
+      pgcHits = [...exact, ...more].slice(0, max).map((r) => ({
         kind: 'dso',
         id: `PGC ${r[0]}`,
         label: `PGC ${r[0]}${r[4] ? ` · ${r[4]}` : ''}`,
@@ -212,7 +260,74 @@
     };
   });
 
+  const browse = $derived(BROWSE.exec(q.trim()));
+  const browseHits = $derived.by((): SearchHit[] | null => {
+    const m = browse;
+    if (!m) return null;
+    const cat = (m[1] ?? '').toLowerCase().replace(/\s+/g, '');
+    const digits = m[2] ?? '';
+    if (cat === 'pgc' || cat === 'leda') return pgcHits;
+    const out: { n: number; hit: SearchHit }[] = [];
+    const prefix = cat === 'm' ? 'M' : cat === 'ngc' ? 'NGC' : cat === 'ic' ? 'IC' : '';
+    if (prefix && names) {
+      for (const r of names) {
+        for (const nm of r[0].split('|')) {
+          const [p, num] = nm.split(' ');
+          if (p !== prefix || !num || !num.startsWith(digits)) continue;
+          const others = r[0].split('|').filter((x) => x !== nm);
+          out.push({
+            n: parseInt(num, 10),
+            hit: {
+              kind: 'dso',
+              id: nm,
+              label: [nm, ...others].join(' · ') + (r[1] ? ` · ${r[1]}` : ''),
+              sub: `${DSO_KIND[r[5]] ?? 'deep-sky object'}${r[4] ? `, ${r[4]}′` : ''}`,
+              ra: r[2],
+              dec: r[3],
+              sizeDeg: Math.max(r[4] || 2, 0.5) / 60,
+            },
+          });
+        }
+      }
+    }
+    const nebPre: Record<string, string> = {
+      sh: 'Sh 2-',
+      sh2: 'Sh 2-',
+      lbn: 'LBN ',
+      ldn: 'LDN ',
+      vdb: 'vdB ',
+      b: 'B ',
+    };
+    const np = nebPre[cat];
+    if (np && nebulae) {
+      for (const r of nebulae) {
+        if (!r[0].startsWith(np)) continue;
+        const num = r[0].slice(np.length);
+        if (!num.startsWith(digits)) continue;
+        out.push({
+          n: parseInt(num, 10),
+          hit: {
+            kind: 'dso',
+            id: r[0],
+            label: r[0],
+            sub: `${NEB_KIND[r[4]] ?? 'nebula'}${r[3] ? `, ${r[3]}′` : ''}`,
+            ra: r[1],
+            dec: r[2],
+            sizeDeg: Math.max(r[3] || 5, 1) / 60,
+          },
+        });
+      }
+    }
+    out.sort((a, b) => a.n - b.n);
+    return out.map((o) => o.hit);
+  });
+  const pgcPlain = $derived(/^(pgc|leda)$/i.test(q.trim()));
+  const browseTotal = $derived(
+    browse && /^(pgc|leda)$/i.test(browse[1] ?? '') ? pgcTotal : (browseHits?.length ?? 0),
+  );
+
   const hits = $derived.by((): SearchHit[] => {
+    if (browseHits) return browseHits.slice(0, limit);
     const n = norm(q);
     if (n.length < 1) return [];
     const out: SearchHit[] = [];
@@ -264,7 +379,6 @@
           });
       }
     }
-    out.unshift(...pgcHits);
     return out.slice(0, 12);
   });
 
@@ -330,6 +444,7 @@
       open = true;
     }}
     oninput={() => {
+      limit = 60;
       open = true;
       activeI = 0;
       message = '';
@@ -354,6 +469,18 @@
       {/each}
     </ul>
   {/if}
+  {#if open && browse && browseTotal > hits.length}
+    <button
+      class="more"
+      onmousedown={(e) => {
+        e.preventDefault();
+        limit += 60;
+      }}
+      >Show more ({hits.length} of {browseTotal.toLocaleString()}{pgcPlain
+        ? ' with PGC 1–9999; type digits for the others'
+        : ''})</button
+    >
+  {/if}
   {#if open && !q.trim()}
     <div class="cats">
       <p>Search by name or catalogue number:</p>
@@ -363,6 +490,7 @@
         <li>Messier, NGC, IC (OpenNGC): M 31, NGC 7000</li>
         <li>Galaxies: PGC n (HyperLEDA, about 980,000)</li>
         <li>Nebulae: Sh 2-n (Sharpless), LBN n, LDN n, vdB n, B n (Barnard)</li>
+        <li>Type just a catalogue name (NGC, IC, M, PGC, Sh2, LBN, LDN, vdB, B) to list it</li>
         <li>Coordinates: 83.82 -5.39 or 5h35m17s -5d23m28s</li>
       </ul>
     </div>
@@ -442,6 +570,12 @@
   .cats ul {
     margin: 0;
     padding-left: 16px;
+  }
+  .more {
+    margin-top: 4px;
+    width: 100%;
+    font-size: 12px;
+    min-height: 30px;
   }
   .msg.info {
     color: var(--muted);
