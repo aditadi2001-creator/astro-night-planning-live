@@ -12,7 +12,7 @@
    * crosshair and Stellarium's keyboard shortcuts. Everything stays inside the
    * element that goes full screen, so full screen and normal view are the same.
    */
-  import { onMount, type Snippet } from 'svelte';
+  import { onMount, tick, type Snippet } from 'svelte';
   import type { Place } from '../lib/astro/sky';
   import type { Setup, SetupKind } from '../lib/equipment';
   import type { LayerState } from './LayerBar.svelte';
@@ -658,7 +658,8 @@
       if (k === 'o' || k === 'O') toggleOcular();
       else if (k === 'b' || k === 'B') {
         if (!ocularOn) toggleOcular();
-        oculars?.setMode('telrad');
+        // The overlay mounts on the next update when it was off.
+        void tick().then(() => oculars?.setMode('telrad'));
       } else if (k === 'm' || k === 'M') toggle('eqMount');
       else if (k === 'n' || k === 'N') night = !night;
       else if (k === 'f' || k === 'F') search?.focus();
@@ -1000,7 +1001,15 @@
         ? `${(d * 60).toFixed(1)}′`
         : `${(d * 3600).toFixed(0)}″`;
   const rateText = $derived(
-    live ? 'live' : rate === 0 ? 'paused' : rate === 1 ? 'real speed' : `×${rate.toLocaleString()}`,
+    live
+      ? 'live'
+      : rate === 0
+        ? 'paused'
+        : rate === 1
+          ? 'real speed'
+          : rate < 0
+            ? `reverse ×${(-rate).toLocaleString()}`
+            : `×${rate.toLocaleString()}`,
   );
   let barOpen = $state(!phone);
   // Full screen: the bars fade after 3 s without mouse or touch (Stellarium auto-hide).
