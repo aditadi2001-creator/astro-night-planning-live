@@ -23,6 +23,8 @@ export interface SweObserver extends SweObj {
   utc: number;
   yaw: number;
   pitch: number;
+  /** View roll about the line of sight, radians (used for the equatorial mount). */
+  roll: number;
 }
 
 interface SweModule extends SweObj {

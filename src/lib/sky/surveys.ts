@@ -29,6 +29,8 @@ export interface Survey {
   servers: string[];
   /** Matching entry in CREDITS (src/lib/credits.ts). */
   creditId: string;
+  /** Famous fields the survey covers (for small surveys): go-to buttons. */
+  fields?: { label: string; ra: number; dec: number; fovDeg: number }[];
 }
 
 export const SURVEYS: readonly Survey[] = [
@@ -117,6 +119,107 @@ export const SURVEYS: readonly Survey[] = [
       'https://alaskybis.cds.unistra.fr/ancillary/GaiaDR3/density-map',
     ],
     creditId: 'survey-gaia-density',
+  },
+  {
+    id: 'sdss',
+    hipsId: 'CDS/P/SDSS9/color',
+    label: 'SDSS DR9 colour (optical)',
+    shows: 'Sloan Digital Sky Survey CCD images in g, r, i: sharp and deep, galaxies in colour.',
+    frame: 'equatorial',
+    coverage: 0.36,
+    coverageNote:
+      'Covers about a third of the sky, mostly the northern sky away from the Milky Way.',
+    servers: [
+      'https://alasky.cds.unistra.fr/SDSS/DR9/color',
+      'https://skies.esac.esa.int/SDSS9Color',
+      'https://irsa.ipac.caltech.edu/data/hips/CDS/SDSS/DR9/color',
+    ],
+    creditId: 'survey-sdss',
+    fields: [
+      { label: 'Whirlpool Galaxy (M51)', ra: 202.47, dec: 47.195, fovDeg: 0.15 },
+      { label: 'Pinwheel Galaxy (M101)', ra: 210.8, dec: 54.35, fovDeg: 0.3 },
+    ],
+  },
+  {
+    id: 'hst-acs',
+    hipsId: 'ESAVO/P/HST/ACS-blue',
+    label: 'Hubble ACS (all bands)',
+    shows: 'Hubble Space Telescope Advanced Camera for Surveys images, including the deep fields.',
+    frame: 'equatorial',
+    coverage: 0.0000066,
+    coverageNote: 'Only the small patches Hubble observed: use a field below, then zoom in.',
+    servers: ['https://skies.esac.esa.int/HST/ACS'],
+    creditId: 'survey-hst',
+    fields: [
+      { label: 'Hubble Ultra Deep Field', ra: 53.1625, dec: -27.7914, fovDeg: 0.07 },
+      { label: 'Hubble Deep Field North', ra: 189.2058, dec: 62.2161, fovDeg: 0.06 },
+      { label: 'Pillars of Creation (M16)', ra: 274.7, dec: -13.81, fovDeg: 0.06 },
+      { label: 'Whirlpool Galaxy (M51)', ra: 202.47, dec: 47.195, fovDeg: 0.15 },
+      { label: 'Crab Nebula (M1)', ra: 83.633, dec: 22.0145, fovDeg: 0.12 },
+      { label: "Stephan's Quintet", ra: 339.01, dec: 33.96, fovDeg: 0.08 },
+      { label: 'Orion Bar', ra: 83.84, dec: -5.42, fovDeg: 0.06 },
+    ],
+  },
+  {
+    id: 'hst-wfc3',
+    hipsId: 'ESAVO/P/HST/WFC3',
+    label: 'Hubble WFC3 (all bands)',
+    shows: 'Hubble Wide Field Camera 3, visible and near-infrared, including the Ultra Deep Field.',
+    frame: 'equatorial',
+    coverage: 0.00014,
+    coverageNote: 'Only the small patches Hubble observed: use a field below, then zoom in.',
+    servers: ['https://skies.esac.esa.int/HST/WFC3'],
+    creditId: 'survey-hst',
+    fields: [
+      { label: 'Hubble Ultra Deep Field', ra: 53.1625, dec: -27.7914, fovDeg: 0.07 },
+      { label: 'Hubble Deep Field North', ra: 189.2058, dec: 62.2161, fovDeg: 0.06 },
+      { label: 'Pillars of Creation (M16)', ra: 274.7, dec: -13.81, fovDeg: 0.06 },
+      { label: "Stephan's Quintet", ra: 339.01, dec: 33.96, fovDeg: 0.08 },
+      { label: 'Whirlpool Galaxy (M51)', ra: 202.47, dec: 47.195, fovDeg: 0.15 },
+      { label: 'Pinwheel Galaxy (M101)', ra: 210.8, dec: 54.35, fovDeg: 0.3 },
+    ],
+  },
+  {
+    id: 'jwst-nircam',
+    hipsId: 'ESAVO/P/JWST/NIRCam_Imaging',
+    label: 'JWST NIRCam (near-infrared)',
+    shows: 'James Webb Space Telescope NIRCam images: deep fields, nebulae and galaxies.',
+    frame: 'equatorial',
+    coverage: 0.00001,
+    coverageNote: 'Only the small patches Webb observed: use a field below, then zoom in.',
+    servers: ['https://skies.esac.esa.int/JWST/NIRCam_Imaging'],
+    creditId: 'survey-jwst',
+    fields: [
+      { label: "Webb's First Deep Field (SMACS 0723)", ra: 110.83, dec: -73.4545, fovDeg: 0.06 },
+      { label: 'Cosmic Cliffs (Carina, NGC 3324)', ra: 159.23, dec: -58.62, fovDeg: 0.15 },
+      { label: 'Pillars of Creation (M16)', ra: 274.7, dec: -13.81, fovDeg: 0.06 },
+      { label: "Stephan's Quintet", ra: 339.01, dec: 33.96, fovDeg: 0.08 },
+      { label: 'Cartwheel Galaxy', ra: 9.42, dec: -33.72, fovDeg: 0.05 },
+      { label: 'Southern Ring Nebula', ra: 151.76, dec: -40.44, fovDeg: 0.04 },
+      { label: 'Hubble Ultra Deep Field', ra: 53.1625, dec: -27.7914, fovDeg: 0.07 },
+      { label: 'Crab Nebula (M1)', ra: 83.633, dec: 22.0145, fovDeg: 0.12 },
+      { label: 'Orion Bar', ra: 83.84, dec: -5.42, fovDeg: 0.06 },
+    ],
+  },
+  {
+    id: 'jwst-miri',
+    hipsId: 'ESAVO/P/JWST/P/MIRI_Imaging',
+    label: 'JWST MIRI (mid-infrared)',
+    shows: 'James Webb Space Telescope MIRI images: warm dust and gas in mid-infrared light.',
+    frame: 'equatorial',
+    coverage: 0.0000055,
+    coverageNote: 'Only the small patches Webb observed: use a field below, then zoom in.',
+    servers: ['https://skies.esac.esa.int/JWST/MIRI_Imaging'],
+    creditId: 'survey-jwst',
+    fields: [
+      { label: "Webb's First Deep Field (SMACS 0723)", ra: 110.83, dec: -73.4545, fovDeg: 0.06 },
+      { label: 'Cosmic Cliffs (Carina, NGC 3324)', ra: 159.23, dec: -58.62, fovDeg: 0.15 },
+      { label: 'Pillars of Creation (M16)', ra: 274.7, dec: -13.81, fovDeg: 0.06 },
+      { label: "Stephan's Quintet", ra: 339.01, dec: 33.96, fovDeg: 0.08 },
+      { label: 'Cartwheel Galaxy', ra: 9.42, dec: -33.72, fovDeg: 0.05 },
+      { label: 'Southern Ring Nebula', ra: 151.76, dec: -40.44, fovDeg: 0.04 },
+      { label: 'Hubble Ultra Deep Field', ra: 53.1625, dec: -27.7914, fovDeg: 0.07 },
+    ],
   },
 ];
 

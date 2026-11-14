@@ -15,6 +15,7 @@
   import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
   import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
   import type { Place } from '../lib/astro/sky';
+  import CoordGo from './CoordGo.svelte';
   import {
     BASE_TILES,
     COAST_TILES,
@@ -65,6 +66,15 @@
   });
   let map: MlMap | null = null;
   let marker: MlMarker | null = null;
+  let pick: MlMarker | null = null;
+  let makePick: (() => MlMarker) | null = null;
+  /** Centre the map on typed coordinates and mark them. */
+  function goTo(lat: number, lon: number) {
+    if (!map) return;
+    pick ??= makePick?.() ?? null;
+    pick?.setLngLat([lon, lat]).addTo(map);
+    map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), 5) });
+  }
   let frames = $state<Frame[]>([]);
   let index = $state(0);
   let playing = $state(false);
@@ -235,11 +245,22 @@
           ],
         },
       });
+      // Two maps on one page: give each canvas its own accessible name.
+      map
+        .getCanvas()
+        .setAttribute('aria-label', 'Satellite cloud map (drag to pan, scroll to zoom)');
       const dot = document.createElement('div');
       dot.className = 'site-dot';
       dot.setAttribute('role', 'img');
       dot.setAttribute('aria-label', 'Your location');
       marker = new ml.Marker({ element: dot }).setLngLat([place.lon, place.lat]).addTo(map);
+      makePick = () => {
+        const el = document.createElement('div');
+        el.className = 'pick-dot';
+        el.setAttribute('role', 'img');
+        el.setAttribute('aria-label', 'Chosen coordinates');
+        return new ml.Marker({ element: el });
+      };
       // Sources can be added once the style is in; do not wait for every first tile.
       const ready = () => {
         styleReady = true;
@@ -264,6 +285,7 @@
     stopWatch?.();
     if (timer) clearInterval(timer);
     marker?.remove();
+    pick?.remove();
     map?.remove();
   });
 
@@ -293,6 +315,7 @@
       >{full ? 'Exit full screen' : 'Full screen'}</button
     >
   </header>
+  <CoordGo id="sat" ongo={goTo} />
   <div class="stage">
     <div class="map" bind:this={container} role="region" aria-label="Satellite cloud map"></div>
     {#if tiles.pending}
@@ -475,6 +498,13 @@
     height: 1px;
     overflow: hidden;
     clip: rect(0 0 0 0);
+  }
+  :global(.pick-dot) {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 2px rgb(0 0 0 / 0.7);
   }
   :global(.site-dot) {
     width: 14px;

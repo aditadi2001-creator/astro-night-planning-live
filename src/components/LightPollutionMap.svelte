@@ -11,6 +11,7 @@
   import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
   import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
   import type { Place } from '../lib/astro/sky';
+  import CoordGo from './CoordGo.svelte';
   import { DATA_BASE } from '../lib/config';
   import { BASE_TILES } from '../lib/sat/gibs';
   import { decodeTile, pixelFor } from '../lib/data/tiles';
@@ -122,6 +123,16 @@
     }
   }
 
+  let makePick: (() => MlMarker) | null = null;
+  /** Mark a point and read its sky brightness (click, tap or typed coordinates). */
+  function pickAt(lat: number, lon: number, fly = false) {
+    if (!map) return;
+    pick ??= makePick?.() ?? null;
+    pick?.setLngLat([lon, lat]).addTo(map);
+    if (fly) map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), 8) });
+    void readPoint(lat, lon);
+  }
+
   function useHere() {
     if (!point) return;
     onplace({
@@ -229,20 +240,23 @@
         },
       });
       map.addControl(new ml.NavigationControl({ showCompass: false }), 'top-right');
+      // Two maps on one page: give each canvas its own accessible name.
+      map
+        .getCanvas()
+        .setAttribute('aria-label', 'Light-pollution map (drag to pan, scroll to zoom)');
       const dot = document.createElement('div');
       dot.className = 'site-dot';
       dot.setAttribute('role', 'img');
       dot.setAttribute('aria-label', 'Your location');
       marker = new ml.Marker({ element: dot }).setLngLat([place.lon, place.lat]).addTo(map);
+      makePick = () => {
+        const el = document.createElement('div');
+        el.className = 'pick-dot';
+        return new ml.Marker({ element: el });
+      };
       map.on('click', (e) => {
         const { lat, lng } = e.lngLat.wrap();
-        if (!pick) {
-          const el = document.createElement('div');
-          el.className = 'pick-dot';
-          pick = new ml.Marker({ element: el });
-        }
-        if (map) pick.setLngLat([lng, lat]).addTo(map);
-        void readPoint(lat, lng);
+        pickAt(lat, lng);
       });
       // Usable as soon as the style is in; tiles keep arriving (slow links show a notice).
       map.once('style.load', () => (status = 'ready'));
@@ -279,6 +293,7 @@
       >{full ? 'Exit full screen' : 'Full screen'}</button
     >
   </header>
+  <CoordGo id="lp" ongo={(lat, lon) => pickAt(lat, lon, true)} />
 
   {#if status === 'off'}
     <p class="muted">

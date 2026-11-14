@@ -313,6 +313,14 @@ _Organization_ in the profile.
 
 ## Optional sky surveys (HiPS)
 
+Surveys: DSS2 colour, H-alpha, 2MASS, AllWISE, Pan-STARRS, Gaia density, **SDSS DR9 colour**
+(ESA/IRSA mirrors), **Hubble ACS** and **Hubble WFC3** (ESA eHST HiPS) and **JWST NIRCam** and
+**JWST MIRI** (ESA HiPS). Hubble and Webb cover only the patches they observed, so each has go-to
+buttons (Hubble Ultra Deep Field, Hubble Deep Field North, Webb's First Deep Field SMACS 0723,
+Cosmic Cliffs, Pillars of Creation, Stephan's Quintet, Cartwheel, Southern Ring, M51, M101, Crab,
+Orion Bar), checked against the surveys' own tiles. A go-to by coordinates keeps tracking the sky
+until you drag, so tiny fields stay in view.
+
 Off by default. Turn on **Layers → Sky surveys**, pick a survey and an opacity. The survey is drawn
 by the sky engine itself (patch `0003`), under the stars and behind clouds, the terrain and the
 daytime sky, so it sits in the real sky at your site.
@@ -415,6 +423,10 @@ Laid out like the Stellarium desktop program, and the same in normal view and fu
   select it), Configuration (F2: stereographic or perspective projection, star brightness and
   size, amount of star and deep-sky labels, Milky Way, enlarged Moon, mirror/flip for diagonals,
   crosshair, full-screen auto-hide, object information all/short/none) and Help (F1).
+- **Equatorial mount** (Ctrl+M): drawn by rolling the view so celestial north stays up, and the
+  view follows the stars while time runs (a tracking mount): the horizon tilts away from the
+  meridian, as through a real equatorial mount. The engine's own mount setting does not change its
+  drawing, so this is done in the page.
 - **Bottom button bar** (Stellarium order and keys): constellation lines C, names V, boundaries
   B · equatorial grid E, azimuthal grid Z, meridian ;, ecliptic , · ground G, cardinal points Q,
   atmosphere A · deep-sky objects D, planet labels P, star labels · equatorial mount Ctrl+M,
@@ -483,6 +495,8 @@ Laid out like the Stellarium desktop program, and the same in normal view and fu
 - Search: Open-Meteo geocoding (15 results), plus OpenStreetMap Nominatim on request for villages,
   peaks and observatories (one request per second, cached, credited); coordinates in decimal or
   D M S with N/S/E/W, typed or pasted, with the ground height from the Open-Meteo elevation API.
+- Both maps have a **Coordinates** box (decimal or D M S with N/S/E/W): the map goes there, marks
+  the point and, on the light-pollution map, reads its SQM and Bortle class.
 - Maps tab: **light-pollution map** from our own yearly model (grey sky-brightness tiles from the
   data Worker, recoloured in the browser to a Bortle-style palette), with legend, the zenith SQM
   and Bortle class of any clicked point and "use this location"; and the satellite cloud map.

@@ -33,6 +33,7 @@
     surveyStatus = { state: 'off' },
     extra,
     compact = false,
+    ongoto,
   }: {
     layers: LayerState;
     surveyStatus?: SurveyStatus;
@@ -40,6 +41,8 @@
     extra?: Snippet;
     /** Inside the full-screen sky: transparent, own element ids. */
     compact?: boolean;
+    /** Go to a survey field (RA/Dec J2000 and field of view in degrees). */
+    ongoto?: (ra: number, dec: number, fovDeg: number) => void;
   } = $props();
   const pid = $derived(compact ? 'fs-' : '');
 
@@ -134,6 +137,15 @@
         />
         <output for={`${pid}survey-opacity`}>{Math.round(layers.surveyOpacity * 100)}%</output>
       </span>
+      {#if current?.fields?.length && ongoto}
+        <div class="fields" role="group" aria-label="Go to a field this survey covers">
+          {#each current.fields as f (f.label)}
+            <button class="field-btn" onclick={() => ongoto?.(f.ra, f.dec, f.fovDeg)}
+              >{f.label}</button
+            >
+          {/each}
+        </div>
+      {/if}
       <p class="about">
         {#if current}{current.shows}{current.coverageNote ? ` ${current.coverageNote}` : ''}{/if}
         An archival photograph laid over the sky, not tonight's conditions.
@@ -239,6 +251,18 @@
   output {
     font-size: 13px;
     font-variant-numeric: tabular-nums;
+  }
+  .fields {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .field-btn {
+    font-size: 12px;
+    min-height: 30px;
+    padding: 2px 10px;
+    border-radius: 999px;
   }
   .about {
     grid-column: 1 / -1;

@@ -460,6 +460,43 @@ export const CREDITS: Credit[] = [
     status: 'live',
   },
   {
+    id: 'survey-sdss',
+    name: 'Sloan Digital Sky Survey DR9, colour HiPS',
+    url: 'https://www.sdss.org/',
+    license: 'Public data; acknowledgement requested',
+    attribution:
+      'Funding for SDSS-III has been provided by the Alfred P. Sloan Foundation, the Participating Institutions, the National Science Foundation, and the U.S. Department of Energy Office of Science. HiPS by CDS; served by ESA ESDC and NASA/IPAC IRSA mirrors.',
+    shortCredit: 'SDSS DR9 (Sloan Foundation, NSF, DOE); HiPS by CDS',
+    usage: 'Optional deep optical survey layer (about a third of the sky).',
+    kind: 'survey',
+    status: 'live',
+  },
+  {
+    id: 'survey-hst',
+    name: 'Hubble Space Telescope ACS and WFC3 (eHST HiPS)',
+    url: 'https://www.cosmos.esa.int/web/hst',
+    license: 'Public archive data; acknowledgement requested',
+    attribution:
+      'Based on observations made with the NASA/ESA Hubble Space Telescope, obtained from the ESA Hubble Science Archive (eHST). HiPS by the ESA ESDC (ESASky).',
+    shortCredit: 'NASA/ESA Hubble Space Telescope; eHST, HiPS by ESA ESDC',
+    usage:
+      'Optional Hubble image layers with go-to buttons for the deep fields and famous targets.',
+    kind: 'survey',
+    status: 'live',
+  },
+  {
+    id: 'survey-jwst',
+    name: 'James Webb Space Telescope NIRCam and MIRI (ESA HiPS)',
+    url: 'https://www.cosmos.esa.int/web/jwst',
+    license: 'Public archive data; acknowledgement requested',
+    attribution:
+      'Based on observations made with the NASA/ESA/CSA James Webb Space Telescope, obtained from the ESA JWST Science Archive. HiPS by the ESA ESDC (ESASky).',
+    shortCredit: 'NASA/ESA/CSA James Webb Space Telescope; HiPS by ESA ESDC',
+    usage: 'Optional Webb image layers with go-to buttons for famous fields.',
+    kind: 'survey',
+    status: 'live',
+  },
+  {
     id: 'survey-gaia-density',
     name: 'Gaia DR3 star density map (HiPS)',
     url: 'https://www.cosmos.esa.int/web/gaia/dr3',

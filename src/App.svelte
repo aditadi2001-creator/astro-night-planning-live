@@ -799,7 +799,15 @@
                 onchange={setTime}
               />
             {:else if p === 'layers'}
-              <LayerBar bind:layers {surveyStatus} compact />
+              <LayerBar
+                bind:layers
+                {surveyStatus}
+                compact
+                ongoto={(ra, dec, fov) => {
+                  close();
+                  gotoSky(ra, dec, fov);
+                }}
+              />
               <p class="win-note">
                 Display switches (constellations, grids, ground, atmosphere…) are in the button bar
                 at the bottom of the sky; press F1 for the keyboard shortcuts.

@@ -43,6 +43,11 @@ describe('survey list', () => {
       'allwise',
       'panstarrs',
       'gaia',
+      'sdss',
+      'hst-acs',
+      'hst-wfc3',
+      'jwst-nircam',
+      'jwst-miri',
     ]);
     for (const s of SURVEYS) {
       expect(s.servers.length).toBeGreaterThan(0);

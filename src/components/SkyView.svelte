@@ -23,7 +23,7 @@
   import {
     altAzAt,
     describe,
-    screenToIcrf,
+    icrfToScreen,
     setAtmosphere,
     setObserver,
     setSkyLayer,
@@ -387,6 +387,7 @@
       dsos: Record<string, unknown>;
       planets: Record<string, unknown>;
     };
+    cx.mount_frame = 5;
     setMount(v.eqMount);
     // Only stereographic (2) and perspective (1) are compiled into the engine.
     cx.projection = v.projection === 1 ? 1 : 2;
@@ -400,30 +401,98 @@
   });
 
   /**
-   * Alt-azimuth (observed frame, 5) or equatorial mount (of date, 3). The engine
-   * keeps its pointing angles when the frame changes, which would jump to another
-   * part of the sky, so re-point at the same sky centre after switching. In the
-   * equatorial mount celestial north stays up and the stars do not rotate as time runs.
+   * Equatorial mount, done on our side: the engine's own mount setting does not
+   * change its drawing. Every frame, while it is on:
+   *  - the view is rolled so celestial north points straight up at the centre
+   *    (the horizon then tilts away from the meridian, as through a real
+   *    equatorial mount or in Stellarium);
+   *  - while time runs, the view follows the stars (a tracking mount), so the
+   *    sky stays still and the ground turns instead.
+   * Dragging, keys, zooms and go-to keep working: when the centre moves by more
+   * than the sky's own rotation, the new centre is adopted as the tracked one.
    */
-  let mountNow = 5;
+  let mountRaf = 0;
+  /** Follow the stars after a go-to by coordinates (no object to lock on), until a drag. */
+  let trackOnly = false;
+  let tracked: number[] | null = null;
+  let trackUtc = 0;
+  let dragging = false;
+  /** Where the view points, in ICRF, from the engine's own yaw/pitch (exactly invertible). */
+  function centreIcrf(s: Stel): number[] | null {
+    const o = s.core.observer;
+    return s.convertFrame(o, 'MOUNT', 'ICRF', s.s2c(o.yaw, o.pitch));
+  }
+  function angle(a: number[], b: number[]): number {
+    const d = (a[0] ?? 0) * (b[0] ?? 0) + (a[1] ?? 0) * (b[1] ?? 0) + (a[2] ?? 0) * (b[2] ?? 0);
+    return Math.acos(Math.max(-1, Math.min(1, d)));
+  }
+  function mountStep() {
+    const s = stel;
+    if (!s || (!view.eqMount && !trackOnly)) {
+      mountRaf = 0;
+      return;
+    }
+    // In the alt-azimuth view, dragging or panning ends the coordinate tracking.
+    if (!view.eqMount && (dragging || held.size)) {
+      trackOnly = false;
+      mountRaf = 0;
+      return;
+    }
+    const o = s.core.observer;
+    const now = centreIcrf(s);
+    if (now) {
+      const utc = o.utc;
+      const dtDays = Math.abs(utc - trackUtc);
+      // Largest motion the sky's rotation alone can cause since the last frame.
+      const skyTurn = Math.min(Math.PI, dtDays * 2 * Math.PI * 1.0028) * 1.5 + 2e-5;
+      const locked = !!s.core.selection && !!(s.core as unknown as { lock: unknown }).lock;
+      if (!tracked || dragging || held.size || locked || angle(now, tracked) > skyTurn) {
+        tracked = now; // the user (or a go-to) moved the view
+      } else if (dtDays > 0) {
+        // Follow the stars: point back at the tracked sky position.
+        const [yaw, pitch] = s.c2s(s.convertFrame(o, 'ICRF', 'MOUNT', tracked));
+        o.yaw = yaw;
+        o.pitch = pitch;
+      }
+      trackUtc = utc;
+      if (!view.eqMount) {
+        mountRaf = requestAnimationFrame(mountStep);
+        return;
+      }
+      // Roll so that celestial north is up at the centre.
+      const c = tracked;
+      const [ra, dec] = s.c2s(c);
+      const step = Math.min(0.5, (s.core.fov * s.R2D) / 40) * s.D2R;
+      const nDec = Math.min(Math.PI / 2 - 1e-6, dec + step);
+      const pn = icrfToScreen(s, s.s2c(ra, nDec));
+      if (pn) {
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        const a = Math.atan2(pn[1] - h / 2, pn[0] - w / 2);
+        // roll +x turns north's screen angle by −x; target angle −90° (up).
+        let err = a + Math.PI / 2;
+        err = Math.atan2(Math.sin(err), Math.cos(err));
+        if (Math.abs(err) > 1e-4) o.roll = (o.roll ?? 0) + err;
+      }
+    }
+    mountRaf = requestAnimationFrame(mountStep);
+  }
   function setMount(eq: boolean) {
     const s = stel;
     if (!s) return;
-    const want = eq ? 3 : 5;
-    if (want === mountNow) return;
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    const centre = w && h ? screenToIcrf(s, w / 2, h / 2) : null;
-    const sel = s.core.selection;
-    (s.core as unknown as { mount_frame: number }).mount_frame = want;
-    mountNow = want;
-    if (sel) {
-      s.pointAndLock(sel, 0);
-    } else if (centre) {
-      unlock();
-      s.lookAt(s.convertFrame(s.core.observer, 'ICRF', 'MOUNT', centre), 0);
+    if (eq) {
+      tracked = null;
+      trackUtc = s.core.observer.utc;
+      if (!mountRaf) mountRaf = requestAnimationFrame(mountStep);
+    } else {
+      if (!trackOnly) {
+        cancelAnimationFrame(mountRaf);
+        mountRaf = 0;
+      }
+      (s.core.observer as unknown as { roll: number }).roll = 0;
     }
   }
+  onMount(() => () => cancelAnimationFrame(mountRaf));
 
   // Field of view in degrees, polled (zoom animations run every frame).
   let fovDeg = $state(120);
@@ -496,6 +565,11 @@
     unlock();
     stel.lookAt(v, 0.8);
     zoomToDeg(fov);
+    // Keep the field in view as the sky turns (the go-to animation is adopted as it moves).
+    trackOnly = true;
+    tracked = null;
+    trackUtc = stel.core.observer.utc;
+    if (!mountRaf) mountRaf = requestAnimationFrame(mountStep);
   }
   /** Stop following a locked object (after "centre on selected"), so the view can move. */
   function unlock() {
@@ -606,6 +680,14 @@
    */
   function onCanvasPointerDown(e: PointerEvent) {
     canvas.focus();
+    dragging = true;
+    const up = () => {
+      dragging = false;
+      removeEventListener('pointerup', up);
+      removeEventListener('pointercancel', up);
+    };
+    addEventListener('pointerup', up);
+    addEventListener('pointercancel', up);
     if (e.button !== 1 || !stel) return;
     e.preventDefault(); // no auto-scroll
     const m = stel as unknown as {
