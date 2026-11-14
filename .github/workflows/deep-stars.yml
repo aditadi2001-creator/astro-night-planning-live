@@ -1,8 +1,8 @@
 name: Deep star layer to R2
 
-# Builds the Gaia DR3 V 10–14 layer as ONE PMTiles file and uploads it to R2
-# through pipelines/r2/r2.py (8 GB hard guard). Manual only: it runs once, or
-# when the catalog method changes. Raw downloads never leave the runner.
+# Gaia DR3 from GAVO, one magnitude band per job (each well under the 6-hour job
+# limit; GAVO answers a band in ~20-40 min), then one job builds the PMTiles
+# archive from all bands and uploads it as stars/gaia-deep-<version>.pmtiles.
 on:
   workflow_dispatch:
     inputs:
@@ -21,9 +21,53 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-upload:
+  plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    outputs:
+      bands: ${{ steps.p.outputs.bands }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+      - id: p
+        working-directory: pipelines/catalogs
+        env:
+          VMAX: ${{ inputs.vmax }}
+        run: echo "bands=$(python fetch.py --list-deep-bands --deep-gmax "$VMAX")" >> "$GITHUB_OUTPUT"
+
+  fetch:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 3 # gentle on GAVO
+      matrix:
+        band: ${{ fromJSON(needs.plan.outputs.bands) }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: pip install requests numpy astropy
+      - name: Fetch one band (GAVO async TAP)
+        working-directory: pipelines/catalogs
+        env:
+          VMAX: ${{ inputs.vmax }}
+        run: python fetch.py --only gaia-deep --deep-gmax "$VMAX" --deep-band ${{ matrix.band }}
+      - uses: actions/upload-artifact@v5
+        with:
+          name: gaia-band-${{ matrix.band }}
+          path: pipelines/catalogs/raw/gaia_deep_*.fits
+          retention-days: 3
+          compression-level: 0
+
+  build-upload:
+    needs: fetch
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -31,24 +75,28 @@ jobs:
           python-version: '3.12'
       - name: Install
         run: pip install numpy astropy astropy-healpix pmtiles requests boto3
-      - name: Fetch Gaia DR3 down to vmax (GAVO async TAP, stays on the runner)
-        working-directory: pipelines/catalogs
-        run: python fetch.py --only gaia-deep --deep-gmax "${{ inputs.vmax }}"
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: gaia-band-*
+          merge-multiple: true
+          path: pipelines/catalogs/raw
       - name: Build PMTiles
         working-directory: pipelines/catalogs
-        run: >-
-          python build_gaia_deep.py --vmax "${{ inputs.vmax }}"
-          --out "out/gaia-deep-${{ inputs.version }}.pmtiles"
+        env:
+          VMAX: ${{ inputs.vmax }}
+          VERSION: ${{ inputs.version }}
+        run: python build_gaia_deep.py --vmax "$VMAX" --out "out/gaia-deep-$VERSION.pmtiles"
       - name: Upload to R2 (guarded)
         working-directory: pipelines/r2
         env:
+          VERSION: ${{ inputs.version }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
           python r2.py usage
-          python r2.py upload ../catalogs/out/gaia-deep-${{ inputs.version }}.pmtiles stars/gaia-deep-${{ inputs.version }}.pmtiles \
+          python r2.py upload "../catalogs/out/gaia-deep-$VERSION.pmtiles" "stars/gaia-deep-$VERSION.pmtiles" \
             --type application/vnd.pmtiles --cache "public, max-age=31536000, immutable"
-          python r2.py upload ../catalogs/out/gaia-deep-${{ inputs.version }}.properties stars/gaia-deep-${{ inputs.version }}.properties \
+          python r2.py upload "../catalogs/out/gaia-deep-$VERSION.properties" "stars/gaia-deep-$VERSION.properties" \
             --type "text/plain; charset=utf-8" --cache "public, max-age=86400"
           python r2.py usage

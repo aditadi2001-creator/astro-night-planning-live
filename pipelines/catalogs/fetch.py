@@ -167,11 +167,15 @@ DEEP_BANDS = [
 ]
 
 
-def fetch_gaia_deep(gmax: float = 14.0) -> None:
+def deep_bands(gmax: float) -> list[tuple[float, float]]:
+    return [b for b in DEEP_BANDS if b[1] <= gmax + 1e-9]
+
+
+def fetch_gaia_deep(gmax: float = 14.0, only_band: int | None = None) -> None:
     """Gaia DR3 G < gmax as binary FITS, one file per magnitude band (G < 16: ~60 M rows)."""
-    for lo, hi in DEEP_BANDS:
-        if hi > gmax + 1e-9:
-            break
+    for i, (lo, hi) in enumerate(deep_bands(gmax)):
+        if only_band is not None and i != only_band:
+            continue
         name = f"gaia_deep_{lo:g}_{hi:g}.fits"
         if (RAW / name).exists():
             print(f"  {name} already present")
@@ -250,8 +254,15 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--gaia-gmax", type=float, default=10.6)
     ap.add_argument("--deep-gmax", type=float, default=14.0, help="faintest G of the deep layer (<= 16)")
+    ap.add_argument("--deep-band", type=int, default=None, help="fetch only this band (index)")
+    ap.add_argument("--list-deep-bands", action="store_true", help="print the band indexes as JSON")
     ap.add_argument("--only", default="", help="comma-separated subset: " + ",".join([*SOURCES, "gaia", "gaia-deep"]))
     args = ap.parse_args()
+    if args.list_deep_bands:
+        import json
+
+        print(json.dumps(list(range(len(deep_bands(args.deep_gmax))))))
+        return
     only = set(filter(None, args.only.split(",")))
     for name, fn in SOURCES.items():
         if not only or name in only:
@@ -260,7 +271,7 @@ def main() -> None:
         fetch_gaia(args.gaia_gmax)
     # The deep layer (~2 GB of downloads) is only fetched when asked for.
     if "gaia-deep" in only:
-        fetch_gaia_deep(args.deep_gmax)
+        fetch_gaia_deep(args.deep_gmax, args.deep_band)
 
 
 if __name__ == "__main__":
