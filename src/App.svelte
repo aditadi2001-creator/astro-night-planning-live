@@ -70,7 +70,18 @@
   import { GMGSI_INDEX_URL } from './lib/sat/gmgsi';
   import { loadSatellite, type SatelliteSample } from './lib/sat/satellite';
   import { SEVEN_TIMER_ENABLED, loadSevenTimer, type SevenTimer } from './lib/data/seventimer';
-  import { LP_INFO_URL, loadSiteLight, type SiteLight } from './lib/lp/lightpollution';
+  import {
+    LP_INFO_URL,
+    loadSiteLight,
+    withNaturalSky,
+    type SiteLight,
+  } from './lib/lp/lightpollution';
+  import {
+    loadSolarFlux,
+    naturalSkyMag,
+    TYPICAL_FLUX,
+    type SolarFlux,
+  } from './lib/physics/airglow';
   import {
     blendLayers,
     blendSamples,
@@ -237,6 +248,13 @@
     3 * 3600_000,
     12 * 3600_000,
   );
+  // 10.7 cm solar flux for the natural-sky brightness (daily readings; slow).
+  const solarSource = new LiveSource<SolarFlux>(
+    'f107',
+    (sig, f) => loadSolarFlux(sig, f),
+    12 * 3600_000,
+    60 * 24 * 3600_000,
+  );
   // Orbits come from our own R2 copy (refreshed every 6 h by the hourly job).
   const orbitSource = ORBITS_URL
     ? new LiveSource<Orbits>(
@@ -249,7 +267,7 @@
   // Started once (untracked): start() reads the sources' own state, and a tracked
   // read would restart them on every update.
   onMount(() => {
-    const stops = [kpSource.start()];
+    const stops = [kpSource.start(), solarSource.start()];
     if (orbitSource) stops.push(orbitSource.start());
     return () => stops.forEach((stop) => stop());
   });
@@ -260,9 +278,15 @@
   const ring = $derived(sources?.ring.data ?? null);
   const satellite = $derived(sources?.satellite?.data ?? null);
   const sevenTimer = $derived(sources?.sevenTimer?.data ?? null);
-  /** Light pollution at the site, or null (layer off, not published yet, or no Worker). */
-  const siteLight = $derived(layers.lightpollution ? (sources?.light?.data ?? null) : null);
-  const darkSkyMag = $derived(siteLight?.sqm);
+  /** Today's natural sky from the solar cycle (airglow), or the long-run mean while unknown. */
+  const solarFlux = $derived(solarSource.data?.flux ?? null);
+  const naturalSky = $derived(naturalSkyMag(solarFlux ?? TYPICAL_FLUX));
+  /** Light pollution at the site under today's natural sky, or null (layer off, not published yet, or no Worker). */
+  const siteLight = $derived.by(() => {
+    const l = layers.lightpollution ? (sources?.light?.data ?? null) : null;
+    return l ? withNaturalSky(l, naturalSky) : null;
+  });
+  const darkSkyMag = $derived(siteLight?.sqm ?? naturalSky);
 
   // ---- terrain horizon (Copernicus DEM, cached per site) ----------------------------
   let siteHorizon = $state<SiteHorizon | null>(null);
@@ -893,6 +917,8 @@
         satellite={satSummary}
         {sevenTimer}
         light={siteLight}
+        {naturalSky}
+        {solarFlux}
         lightStatus={layers.lightpollution ? (sources?.light?.status ?? 'off') : 'off'}
         loading={sources?.weather.status === 'loading'}
       />
@@ -906,6 +932,8 @@
           {pressure}
           {temperature}
           {horizonSource}
+          {naturalSky}
+          {solarFlux}
           onloadterrain={horizonState === 'saved' ? () => (forceTerrain = true) : undefined}
         />
       </div>
@@ -972,7 +1000,7 @@
         </div>
       </header>
       {#await import('./components/LightPollutionMap.svelte') then { default: LightPollutionMap }}
-        <LightPollutionMap {place} site={siteLight} onplace={setPlace} />
+        <LightPollutionMap {place} site={siteLight} {naturalSky} onplace={setPlace} />
       {:catch}
         <p class="note">The light-pollution map could not be loaded. Check the connection.</p>
       {/await}

@@ -4,9 +4,11 @@
  * Sky brightness at the zenith (nanoLamberts, then V mag/arcsec²) is the sum
  * of three published components:
  *
- *  natural   22.0 mag/arcsec² (airglow + zodiacal light + unresolved stars), the
- *            value used for the natural sky by Falchi et al. (2016) and
- *            Cinzano et al. (2001). Light pollution adds to this later.
+ *  natural   22.0 mag/arcsec² (airglow + zodiacal light + unresolved stars) at
+ *            solar minimum, the value used for the natural sky by Falchi et al.
+ *            (2016) and Cinzano et al. (2001). Callers pass today's value as
+ *            `baseMag`: airglow brightens by ~0.3 mag at solar maximum
+ *            (airglow.ts). Light pollution adds to this.
  *  twilight  Schaefer (1993), "Astronomy and the limits of vision", Vistas in
  *            Astronomy 36, 311: log₁₀ B = −6.724 + 22.918 h⊙ (h⊙ in rad),
  *            × (1.745 / ψ) × (1 − 10^(−0.4 k X)) in the units of that paper
@@ -30,6 +32,7 @@
  */
 import { magToNl, moonSkyBrightness, nlToMag } from './moonlight';
 
+/** Natural zenith sky at solar minimum, the reference of the light-pollution model. */
 export const NATURAL_SKY_MAG = 22.0;
 const DEG = Math.PI / 180;
 

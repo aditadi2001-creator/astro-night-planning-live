@@ -111,10 +111,14 @@ export function domeWeights(pixels: readonly LightPixel[], lat: number, lon: num
 
 export interface SiteLight {
   year: number;
-  /** Zenith sky brightness, mag/arcsec² (V, moonless, no twilight). */
+  /**
+   * Zenith sky brightness, mag/arcsec² (V, moonless, no twilight). As loaded it
+   * assumes the 22.0 solar-minimum natural sky; withNaturalSky() adds today's.
+   */
   sqm: number;
+  /** Bortle class from the light pollution alone (against the 22.0 reference sky). */
   bortle: number;
-  /** Magnitudes brighter than the natural sky. */
+  /** Magnitudes brighter than the 22.0 reference natural sky (light pollution only). */
   brightening: number;
   /** Artificial / natural zenith brightness. */
   ratio: number;
@@ -123,12 +127,33 @@ export interface SiteLight {
   /** Typical model error vs. measurements, mag (from the validation). */
   typicalErrorMag: number | null;
   validationN: number | null;
+  /** Natural sky used for `sqm` (mag/arcsec²). */
+  naturalSqm: number;
 }
 
 export function siteFromBrightening(mag: number, natural = 22.0) {
   const ratio = 10 ** (mag / 2.5) - 1;
   const sqm = natural - mag;
   return { sqm, ratio, bortle: bortle(sqm) };
+}
+
+/**
+ * The same site under today's natural sky (physics/airglow.ts): the artificial
+ * light is unchanged, the natural part brightens with solar activity, so the
+ * total brightens and the artificial/natural ratios (and domes) shrink. The
+ * Bortle class stays the light-pollution class.
+ */
+export function withNaturalSky(light: SiteLight, naturalMag: number): SiteLight {
+  // Copies cached before this field existed were all made against 22.0.
+  const ref = (light.naturalSqm as number | undefined) ?? 22.0;
+  const f = 10 ** (-0.4 * (naturalMag - ref));
+  return {
+    ...light,
+    sqm: ref - 2.5 * Math.log10(f + light.ratio),
+    ratio: light.ratio / f,
+    domes: light.domes.map((d) => d / f),
+    naturalSqm: naturalMag,
+  };
 }
 
 const tileUrl = (tpl: string, z: number, x: number, y: number) =>
@@ -219,6 +244,7 @@ export async function loadSiteLight(
       domes: w.map((x) => HORIZON_GAIN * q.ratio * x),
       typicalErrorMag: best?.median_abs_mag ?? null,
       validationN: best?.n ?? null,
+      naturalSqm: info.data.naturalSqm,
     },
     fetchedAt: info.fetchedAt,
     ...(info.stale ? { stale: true } : {}),

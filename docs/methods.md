@@ -94,7 +94,8 @@ relative SNR factors:
 | Darkness     | 0 above −12° Sun altitude, 1 below −18°, linear between                               |
 | Seeing       | 1.70″ / √(ε² + 1.5²): SNR ∝ 1/FWHM, star image = seeing ε ⊕ 1.5″ optics/guiding       |
 
-B_dark is the natural sky (22.0 mag/arcsec²) until the light-pollution layer exists. Hours follow
+B_dark is the site's moonless sky: light pollution plus today's natural sky (see "Natural sky and
+the solar cycle"), or the natural sky alone when the light-pollution layer is off. Hours follow
 the site's local clock (half-hour zones included) and are sampled at mid-hour.
 
 ## Seeing (forecast estimate) — Hufnagel–Valley profile, Fried (1966)
@@ -150,6 +151,30 @@ high mountain sites, Open-Meteo's low cloud (up to 3 km altitude) may actually l
 observer, but it is always drawn above (a cloud-base model is a possible later improvement).
 
 _Later phases add: the seeing estimate, satellite cloud placement and the light-pollution model._
+
+## Natural sky and the solar cycle — Krisciunas et al. (2007)
+
+`src/lib/physics/airglow.ts`. The natural zenith sky is not a constant 22.0: airglow (mostly the
+[O I] 557.7 nm line, inside V) follows solar activity. Krisciunas et al. (2007, PASP 119, 687) found
+the yearly V-band sky at Cerro Tololo best correlated with the 10.7 cm solar flux ~5 days earlier.
+We fitted their Table 5 yearly zenith V (1992–2006, in linear flux) against the yearly mean
+observed F10.7 for the same years (daily values from GFZ Potsdam):
+
+B / B(22.0) = 0.8069 + 0.003188 · F10.7 (r = 0.77, 14 years)
+
+That is 21.97 at solar minimum (F10.7 ≈ 70) and 21.63 at a strong maximum (≈ 190): a 0.34 mag swing,
+in line with the 0.3–0.5 mag usually quoted for V. The curve is anchored at 22.0 for F10.7 = 70, the
+sky the light-pollution model below was calibrated against. The site reads NOAA SWPC's daily F10.7
+(twice a day, ~22 kB) and averages the 27 days ending 5 days before the newest reading; without it,
+the long-run mean (110 sfu, 21.87) is used.
+
+- **Light pollution itself** (map colours, Bortle class, "mag brighter than a natural sky") stays
+  referenced to the 22.0 solar-minimum sky, so it describes artificial light only.
+- **The sky right now** (site SQM, map readouts, faintest star, imaging score, the engine's limit)
+  is artificial light + today's natural sky: SQM = 22.0 − 2.5 log10(f + R), f = natural / 22.0-sky.
+- Night-to-night airglow varies by a few tenths of a magnitude more than this (gravity waves,
+  season, storms); only the slow solar part is predictable. Ecliptic latitude (zodiacal light) is
+  not modelled.
 
 ## Light pollution (yearly) — Garstang / Cinzano–Falchi style kernel
 

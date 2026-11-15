@@ -34,6 +34,10 @@
     /** Light pollution at the site from the yearly map (null = none). */
     light?: SiteLight | null;
     lightStatus?: string;
+    /** Today's natural zenith sky from the solar cycle (mag/arcsec²). */
+    naturalSky?: number;
+    /** Recent 10.7 cm solar flux (sfu) behind it, or null while unknown. */
+    solarFlux?: number | null;
     loading: boolean;
   }
   let {
@@ -45,8 +49,15 @@
     sevenTimer = null,
     light = null,
     lightStatus = 'off',
+    naturalSky = 22.0,
+    solarFlux = null,
     loading,
   }: Props = $props();
+  const naturalNote = $derived(
+    solarFlux != null
+      ? `solar flux ${Math.round(solarFlux)} sfu`
+      : 'solar flux unknown: long-run average assumed',
+  );
 
   /** The two brightest light-dome directions, e.g. "NE, E". */
   const domeDirs = (domes: readonly number[]) => {
@@ -285,6 +296,10 @@
             ? 'none detectable'
             : `${light.brightening.toFixed(2)} mag brighter than a natural sky`}
         </dd>
+        <dt>Natural sky</dt>
+        <dd>
+          {naturalSky.toFixed(2)} mag/arcsec² now (airglow follows the solar cycle; {naturalNote})
+        </dd>
         <dt>Naked eye</dt>
         <dd>
           stars to about mag {limitingMagnitude(magToNl(light.sqm)).toFixed(1)} overhead on a clear, moonless
@@ -304,15 +319,16 @@
       </p>
     {:else if lightStatus === 'off'}
       <p class="muted">
-        Light-pollution layer is off: the natural sky (22.0 mag/arcsec²) is assumed.
+        Light-pollution layer is off: a natural sky ({naturalSky.toFixed(2)} mag/arcsec² at today's solar
+        activity) is assumed.
       </p>
     {:else if lightStatus === 'loading'}
       <p class="muted">Loading the light-pollution map…</p>
     {:else}
       <p class="muted">
-        The light-pollution map isn't available right now; the natural sky (22.0 mag/arcsec²) is
-        assumed. It is a yearly model from NASA Black Marble night lights; satellites under-count
-        blue and white LED light.
+        The light-pollution map isn't available right now; a natural sky ({naturalSky.toFixed(2)}
+        mag/arcsec² at today's solar activity) is assumed. It is a yearly model from NASA Black Marble
+        night lights; satellites under-count blue and white LED light.
       </p>
     {/if}
   </Card>

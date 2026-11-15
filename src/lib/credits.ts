@@ -184,13 +184,14 @@ export const CREDITS: Credit[] = [
   },
   {
     id: 'noaa-swpc',
-    name: 'NOAA SWPC OVATION aurora forecast and Kp index',
+    name: 'NOAA SWPC OVATION aurora forecast, Kp index and 10.7 cm solar flux',
     url: 'https://www.swpc.noaa.gov/products/aurora-30-minute-forecast',
     license: 'Public domain (U.S. Government work)',
-    attribution: 'Aurora forecast and planetary K-index: NOAA Space Weather Prediction Center.',
-    shortCredit: 'Aurora: NOAA SWPC',
+    attribution:
+      'Aurora forecast, planetary K-index and 10.7 cm solar radio flux: NOAA Space Weather Prediction Center.',
+    shortCredit: 'Aurora, solar flux: NOAA SWPC',
     usage:
-      'Kp index (observed and 3-day forecast) for everyone; the OVATION aurora map (about 0.9 MB) only for sites 40° or more from the equator, reduced to the chance overhead and in view.',
+      'Kp index (observed and 3-day forecast) for everyone; the OVATION aurora map (about 0.9 MB) only for sites 40° or more from the equator, reduced to the chance overhead and in view; the recent daily 10.7 cm solar flux (about 22 kB, twice a day) sets how bright the natural sky (airglow) is, after Krisciunas et al. (2007, PASP 119, 687).',
     kind: 'data',
     status: 'live',
   },
