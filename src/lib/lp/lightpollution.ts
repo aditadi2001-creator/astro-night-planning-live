@@ -16,6 +16,7 @@
 import { DATA_BASE } from '../config';
 import { fetchJson, type Cached } from '../data/cache';
 import { decodeTile, pixelCenter, pixelFor } from '../data/tiles';
+import { DIST_BINS, distBin, weightedHaze } from '../physics/hazeglow';
 
 export interface LpModel {
   p: number;
@@ -109,6 +110,48 @@ export function domeWeights(pixels: readonly LightPixel[], lat: number, lon: num
   return mean > 0 ? w.map((x) => x / mean) : w;
 }
 
+/**
+ * Where the site's light comes from, by distance (physics/hazeglow.ts bins):
+ * `zenith[k]` = the zenith kernel's share from lights in bin k (own pixel in
+ * bin 0); `domes[s * DIST_BINS + k]` = the dome kernel's share for sector s.
+ * Lets the haze correction weigh near lights (brighter in haze) against far
+ * ones (fainter) without reloading tiles.
+ */
+export function distanceWeights(
+  pixels: readonly LightPixel[],
+  lat: number,
+  lon: number,
+  m: LpModel,
+) {
+  const zenith = new Array<number>(DIST_BINS).fill(0);
+  const domes = new Array<number>(SECTORS * DIST_BINS).fill(0);
+  const kmLat = 111.195;
+  const kmLon = kmLat * Math.cos((lat * Math.PI) / 180);
+  for (const p of pixels) {
+    let dLon = p.lon - lon;
+    if (dLon > 180) dLon -= 360;
+    if (dLon < -180) dLon += 360;
+    const dx = dLon * kmLon;
+    const dy = (p.lat - lat) * kmLat;
+    const d = Math.hypot(dx, dy);
+    if (d > m.rMaxKm) continue;
+    const k = distBin(d);
+    const e = p.L * p.areaKm2;
+    zenith[k] = (zenith[k] ?? 0) + e * kernel(d, m);
+    if (d < 0.5) continue;
+    const az = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
+    const s = Math.floor(az / (360 / SECTORS)) % SECTORS;
+    const i = s * DIST_BINS + k;
+    domes[i] = (domes[i] ?? 0) + e * kernel(d, m, 1);
+  }
+  // Shares only; keep the cached copy small.
+  const norm = (a: number[]) => {
+    const t = a.reduce((x, y) => x + y, 0);
+    return t > 0 ? a.map((x) => +(x / t).toPrecision(3)) : a;
+  };
+  return { zenith: norm(zenith), domes: norm(domes) };
+}
+
 export interface SiteLight {
   year: number;
   /**
@@ -129,6 +172,14 @@ export interface SiteLight {
   validationN: number | null;
   /** Natural sky used for `sqm` (mag/arcsec²). */
   naturalSqm: number;
+  /** Shares of the zenith light by distance bin (absent in copies cached before haze). */
+  zenithBins?: number[];
+  /** Shares of the dome light by sector × distance bin. */
+  domeBins?: number[];
+  /** City-glow factor for tonight's haze applied to `sqm`, `ratio`, `domes` (1 = typical night). */
+  haze?: number;
+  /** AOD (550 nm) that `haze` was computed for. */
+  hazeAod?: number;
 }
 
 export function siteFromBrightening(mag: number, natural = 22.0) {
@@ -153,6 +204,31 @@ export function withNaturalSky(light: SiteLight, naturalMag: number): SiteLight 
     ratio: light.ratio / f,
     domes: light.domes.map((d) => d / f),
     naturalSqm: naturalMag,
+  };
+}
+
+/**
+ * The yearly (typical-night) light pollution adjusted for one night's haze
+ * (physics/hazeglow.ts): near lights brighten, far ones fade, each weighed by
+ * how much of the site's light it gives. Call on the light as loaded, before
+ * withNaturalSky(). Bortle and `brightening` stay the yearly values.
+ */
+export function withHaze(light: SiteLight, aod: number | null): SiteLight {
+  if (aod == null || !light.zenithBins) return light;
+  const zf = weightedHaze(light.zenithBins, aod);
+  const ref = (light.naturalSqm as number | undefined) ?? 22.0;
+  const ratio = light.ratio * zf;
+  const db = light.domeBins;
+  const domes = db
+    ? light.domes.map((d, s) => d * weightedHaze(db.slice(s * DIST_BINS, (s + 1) * DIST_BINS), aod))
+    : light.domes.map((d) => d * zf);
+  return {
+    ...light,
+    ratio,
+    sqm: ref - 2.5 * Math.log10(1 + ratio),
+    domes,
+    haze: zf,
+    hazeAod: aod,
   };
 }
 
@@ -235,6 +311,7 @@ export async function loadSiteLight(
   const q = siteFromBrightening(mag, info.data.naturalSqm);
   const pixels = await lightsAround(info.data, lat, lon, signal);
   const w = domeWeights(pixels, lat, lon, info.data.model);
+  const dist = distanceWeights(pixels, lat, lon, info.data.model);
   const best = info.data.validation?.best;
   return {
     data: {
@@ -245,6 +322,8 @@ export async function loadSiteLight(
       typicalErrorMag: best?.median_abs_mag ?? null,
       validationN: best?.n ?? null,
       naturalSqm: info.data.naturalSqm,
+      zenithBins: dist.zenith,
+      domeBins: dist.domes,
     },
     fetchedAt: info.fetchedAt,
     ...(info.stale ? { stale: true } : {}),

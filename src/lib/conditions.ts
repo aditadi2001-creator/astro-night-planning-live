@@ -62,14 +62,20 @@ function altitude(body: Astronomy.Body, obs: Astronomy.Observer, date: Date): nu
   return Astronomy.Horizon(date, obs, eq.ra, eq.dec, 'normal').altitude;
 }
 
+/** A site's moonless sky (SQM), fixed or as a function of the hour's AOD. */
+export type DarkSky = number | ((aod: number | null) => number);
+
 export function buildRow(
   t: number,
   place: Place,
   weather: Weather | null,
   models: ModelClouds | null,
   air: Air | null,
-  /** Moonless zenith brightness at the site (SQM) from the light-pollution map. */
-  darkSkyMag?: number,
+  /**
+   * Moonless zenith brightness at the site (SQM) from the light-pollution map,
+   * or a function of the hour's haze (AOD 550 nm) giving it.
+   */
+  darkSky?: DarkSky,
   /** Cloud estimate replacing the single-model cloud cover (clouds/estimate.ts). */
   cloud?: CloudEstimate | null,
 ): HourRow {
@@ -98,6 +104,7 @@ export function buildRow(
   const { agreement, spread } = modelAgreement(Object.values(modelClouds));
 
   const aod = a?.aod ?? null;
+  const darkSkyMag = typeof darkSky === 'function' ? darkSky(aod) : darkSky;
   // Station pressure from the forecast; fall back to the barometric formula for the site.
   const pressure = w?.pressure ?? 1013.25 * Math.exp(-place.elevation / 8434);
   const extinction = aod != null ? zenithExtinction(pressure, aod) : null;
@@ -174,7 +181,7 @@ export function buildTimeline(
   weather: Weather | null,
   models: ModelClouds | null,
   air: Air | null,
-  darkSkyMag?: number,
+  darkSkyMag?: DarkSky,
   /** Cloud estimate per hour start (clouds/estimate.ts); single-model cover without it. */
   cloudAt?: (hourStart: number) => CloudEstimate | null,
 ): HourRow[] {

@@ -296,6 +296,17 @@
             ? 'none detectable'
             : `${light.brightening.toFixed(2)} mag brighter than a natural sky`}
         </dd>
+        {#if light.haze != null && light.hazeAod != null && light.brightening >= 0.05}
+          <dt>Haze</dt>
+          <dd>
+            light pollution ×{light.haze.toFixed(light.haze < 0.95 || light.haze > 1.05 ? 1 : 2)} vs a
+            typical night (AOD {light.hazeAod.toFixed(2)}): {light.haze > 1.05
+              ? 'haze scatters nearby lights back down'
+              : light.haze < 0.95
+                ? 'haze dims the light from distant towns'
+                : 'about normal'}
+          </dd>
+        {/if}
         <dt>Natural sky</dt>
         <dd>
           {naturalSky.toFixed(2)} mag/arcsec² now (airglow follows the solar cycle; {naturalNote})
@@ -311,8 +322,9 @@
         {/if}
       </dl>
       <p class="muted small">
-        Yearly map ({light.year}), not live. Satellites under-count blue and white LED light, so the
-        real sky may be brighter.{#if light.typicalErrorMag != null}
+        Yearly map ({light.year}), adjusted for the hour's haze (CAMS forecast; clouds, which
+        brighten city skies far more, are not included). Satellites under-count blue and white LED
+        light, so the real sky may be brighter.{#if light.typicalErrorMag != null}
           Typical model error ±{light.typicalErrorMag.toFixed(1)} mag against {light.validationN?.toLocaleString(
             'en',
           )} real SQM readings.{/if}

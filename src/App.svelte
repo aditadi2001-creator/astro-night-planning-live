@@ -73,6 +73,7 @@
   import {
     LP_INFO_URL,
     loadSiteLight,
+    withHaze,
     withNaturalSky,
     type SiteLight,
   } from './lib/lp/lightpollution';
@@ -281,11 +282,18 @@
   /** Today's natural sky from the solar cycle (airglow), or the long-run mean while unknown. */
   const solarFlux = $derived(solarSource.data?.flux ?? null);
   const naturalSky = $derived(naturalSkyMag(solarFlux ?? TYPICAL_FLUX));
-  /** Light pollution at the site under today's natural sky, or null (layer off, not published yet, or no Worker). */
-  const siteLight = $derived.by(() => {
-    const l = layers.lightpollution ? (sources?.light?.data ?? null) : null;
-    return l ? withNaturalSky(l, naturalSky) : null;
-  });
+  /** Yearly light pollution at the site as loaded, or null (layer off, not published yet, or no Worker). */
+  const baseLight = $derived(layers.lightpollution ? (sources?.light?.data ?? null) : null);
+  /** The site's light pollution on a night with this haze (AOD), under today's natural sky. */
+  const lightFor = $derived((aod: number | null) =>
+    baseLight ? withNaturalSky(withHaze(baseLight, aod), naturalSky) : null,
+  );
+  /** Moonless zenith sky (SQM) for an hour's haze: drives each timeline hour's score. */
+  const darkSkyAt = $derived((aod: number | null) => lightFor(aod)?.sqm ?? naturalSky);
+  /** Haze (CAMS AOD at 550 nm) for the time shown. */
+  const aodShown = $derived.by(() => (air ? (hourAt(air.hours, minute)?.aod ?? null) : null));
+  /** Light pollution at the site for the time shown (haze and natural sky included), or null. */
+  const siteLight = $derived(lightFor(aodShown));
   const darkSkyMag = $derived(siteLight?.sqm ?? naturalSky);
 
   // ---- terrain horizon (Copernicus DEM, cached per site) ----------------------------
@@ -541,7 +549,7 @@
       weather,
       models,
       air,
-      darkSkyMag,
+      darkSkyAt,
       cloudAt,
     ),
   );

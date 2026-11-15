@@ -190,6 +190,30 @@ the kernel one power of distance flatter; horizon brightness = 2.5 × zenith R �
 the sky they are drawn by contrast with the local sky (src/lib/sky/horizon.ts, glowAlpha). Approximate,
 for the picture.
 
+### Haze and light pollution, hour by hour
+
+`src/lib/physics/hazeglow.ts`. The yearly map describes a typical night. On a hazy or smoggy night
+aerosol scatters more of a town's upward light back down near the town (brighter city sky) and
+absorbs and scatters away more of it on the way to distant places (fainter far domes); Kocifaj &
+Barentine (2021) report changes of tens of per cent within a few kilometres of a source. We compute
+the change with a single-scattering model in Garstang's (1986) geometry: zenith line of sight, light
+from a source at distance D reaching height h along a slant path, scattered down by molecules
+(Rayleigh) and aerosol (Henyey–Greenstein g = 0.7, single-scattering albedo 0.9), attenuated on both
+legs; exponential atmospheres (molecules τ 0.0973, 8 km; aerosol τ = CAMS AOD at 550 nm, 1.5 km);
+Garstang's city emission function with G = F = 0.15. Only the ratio to a reference night (AOD 0.15)
+is applied, so the empirical calibration of the yearly map is kept:
+
+| AOD 0.5 vs 0.15 | 0.5 km | 2 km | 5 km | 10 km | 20 km | 50 km |
+| --------------- | ------ | ---- | ---- | ----- | ----- | ----- |
+| zenith glow     | ×1.78  | 1.24 | 0.72 | 0.38  | 0.20  | 0.13  |
+
+The loader stores how much of the site's zenith light (and each dome's) comes from 16 distance bins
+(0.5–150 km); each hour's factor is the share-weighted mean, applied to the artificial part before
+today's natural sky is added. Bortle class and "mag brighter than a natural sky" stay yearly. Limits:
+single scattering (multiple scattering adds a few per cent below AOD 0.3, Aubé 2015, more in heavy
+haze), flat Earth, one aerosol type and layer height, the dome correction reuses the zenith factor,
+and clouds (which amplify city glow much more) are not modelled.
+
 The imaging score does not include light pollution as a penalty: it rates each hour for the site
 (the Moon factor uses the site's own dark-sky brightness). The Sky quality card shows the site's
 light pollution itself.
