@@ -141,13 +141,13 @@ each internal call is billed as a separate request, which would double usage.)
 
 **R2 free tier: 10 GB-month storage, 1 M Class A, 10 M Class B. Our rule: stay under half.**
 
-| Storage                             | Size                                         | Notes                                                         |
-| ----------------------------------- | -------------------------------------------- | ------------------------------------------------------------- |
-| Deep star layer (Gaia DR3, V ≤ 14)  | 0.198 GB (uploaded)                          | 12.4 M stars with 10 < V ≤ 14, 25,987 tiles, 15.9 bytes/star  |
-| Light pollution PMTiles (2025)      | 0.249 GB (uploaded)                          | sky brightness z0–8 220 MB + night-lights radiance z0–6 29 MB |
-| Hourly satellite clouds (GMGSI)     | ≈ 0.1 GB                                     | 24 h kept × ~4.3 MB per hour (zoom 0–5 WebP)                  |
-| Small JSON (incl. satellite orbits) | < 0.01 GB                                    | `data/orbits.json` ≈ 50 kB, replaced every 6 h                |
-| **Total**                           | **≈ 0.55 GB** (target 5 GB, hard limit 8 GB) | during the yearly switch-over, +0.25 GB for under an hour     |
+| Storage                             | Size                                                | Notes                                                         |
+| ----------------------------------- | --------------------------------------------------- | ------------------------------------------------------------- |
+| Deep star layer (Gaia DR3, V ≤ 14)  | 0.198 GB (uploaded)                                 | 12.4 M stars with 10 < V ≤ 14, 25,987 tiles, 15.9 bytes/star  |
+| Light pollution PMTiles (2025)      | 0.249 GB (uploaded)                                 | sky brightness z0–8 220 MB + night-lights radiance z0–6 29 MB |
+| Hourly satellite clouds (GMGSI)     | ≈ 0.1 GB                                            | 24 h kept × ~4.3 MB per hour (zoom 0–5 WebP)                  |
+| Small JSON (incl. satellite orbits) | < 0.01 GB                                           | `data/orbits.json` ≈ 50 kB, replaced every 6 h                |
+| **Total**                           | **≈ 0.55 GB** (our ceiling 3 GB, warning at 2.5 GB) | during the yearly switch-over, +0.25 GB for under an hour     |
 
 | Class A (writes, lists)                                       | Per month                            |
 | ------------------------------------------------------------- | ------------------------------------ |
@@ -184,7 +184,7 @@ show their "unavailable" state) — it never charges.
 ### Storage guard in every R2 write job
 
 [`pipelines/r2/r2.py`](pipelines/r2/r2.py) is the only code that writes to R2. Before every upload
-it totals the bucket. If the upload would take it above **8 GB** it first deletes the oldest hourly
+it totals the bucket. If the upload would take it above **3 GB** (the owner's ceiling) it first deletes the oldest hourly
 cloud files (deletes are free); if that is not enough the job **fails and uploads nothing**. It
 refuses any bucket whose name does not start with `astro-night-planning-live`. Unit-tested in
 `pipelines/r2/test_r2.py`. Raw downloads (Gaia, NASA `.h5`, GMGSI) never go to R2: jobs process
@@ -226,7 +226,7 @@ Two kinds of observed cloud, both thermal infrared (works day and night):
   ([`clouds-hourly.yml`](.github/workflows/clouds-hourly.yml), minute 47 of every hour) turns each
   new hour into one PMTiles file of WebP tiles (zoom 0–5, ~4.3 MB) with
   [`pipelines/clouds/gmgsi.py`](pipelines/clouds/gmgsi.py) and publishes it with
-  `r2.py publish-hourly`: one listing, the 8 GB guard, the upload, deletion of hours older than 24 h,
+  `r2.py publish-hourly`: one listing, the 3 GB guard, the upload, deletion of hours older than 24 h,
   and `data/clouds-latest.json` listing the hours that exist. The raw NetCDF never leaves the runner.
   - The file's grid is already Mercator (0.072° columns, rows uniform in Mercator y to ±72.7°), so
     tiling is a resample. Grey levels follow `T = (660 − grey) / 2` K; checked against model skin

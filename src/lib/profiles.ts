@@ -257,6 +257,7 @@ export function profileStats(p: Profile, seeingArcsec: number | null = null): Se
 // ---- storage (device only) ----------------------------------------------------------
 
 const KEY = 'anp.profiles.v1';
+const DEFAULT_ID = 'c925r';
 const ACTIVE_KEY = 'anp.profile.active.v1';
 
 export function isProfile(v: unknown): v is Profile {
@@ -297,9 +298,9 @@ export function saveProfiles(list: Profile[]): void {
 
 export function loadActiveProfileId(): string {
   try {
-    return localStorage.getItem(ACTIVE_KEY) ?? DEFAULT_PROFILES[0]!.id;
+    return localStorage.getItem(ACTIVE_KEY) ?? DEFAULT_ID;
   } catch {
-    return DEFAULT_PROFILES[0]!.id;
+    return DEFAULT_ID;
   }
 }
 

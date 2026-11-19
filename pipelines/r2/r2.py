@@ -8,10 +8,12 @@ Rules enforced here (see README "Cloudflare R2: cost rules"):
   * Only buckets whose name starts with "astro-night-planning-live".
   * Before every upload the bucket is totalled (one ListObjectsV2 call per
     1,000 objects; we keep the object count small on purpose).
-  * If the upload would take the bucket above HARD_LIMIT (8 GB), the oldest
+  * If the upload would take the bucket above HARD_LIMIT (3 GB), the oldest
     hourly cloud archives (clouds/hourly/) are deleted first (deletes are free);
     if that is still not enough the job FAILS and nothing is uploaded.
-  * Above TARGET (5 GB) a warning is printed.
+  * Above TARGET (2.5 GB) a warning is printed.
+  The 3 GB ceiling is the owner's rule (CLAUDE.md constraint 2), far below R2's free
+  10 GB-month: R2 has no spend cap, so the guard is what keeps storage free.
 
 Usage:
     python r2.py usage
@@ -40,8 +42,8 @@ from pathlib import Path
 PROJECT_PREFIX = "astro-night-planning-live"
 DEFAULT_BUCKET = "astro-night-planning-live-data"
 GB = 1_000_000_000
-HARD_LIMIT = 8 * GB
-TARGET = 5 * GB
+HARD_LIMIT = 3 * GB
+TARGET = int(2.5 * GB)
 HOURLY_PREFIX = "clouds/hourly/"
 HOURLY_RE = re.compile(r"^clouds/hourly/(\d{10})\.pmtiles$")
 
@@ -130,7 +132,7 @@ def cmd_usage(s3, bucket: str) -> None:
         p = o.key.split("/", 1)[0]
         by_prefix[p] = by_prefix.get(p, 0) + o.size
     print(f"bucket {bucket}: {len(objs)} objects, {total / GB:.3f} GB "
-          f"(target {TARGET / GB:.0f} GB, hard limit {HARD_LIMIT / GB:.0f} GB)")
+          f"(target {TARGET / GB:.1f} GB, hard limit {HARD_LIMIT / GB:.1f} GB)")
     for p, s in sorted(by_prefix.items()):
         print(f"  {p}/: {s / GB:.3f} GB")
 
@@ -142,7 +144,7 @@ def cmd_upload(s3, bucket: str, path: Path, key: str, ctype: str | None, cache: 
     if plan is None:
         total = sum(o.size for o in objs)
         sys.exit(f"REFUSED: uploading {key} ({size / GB:.3f} GB) would take the bucket from "
-                 f"{total / GB:.3f} GB above the {HARD_LIMIT / GB:.0f} GB hard limit, "
+                 f"{total / GB:.3f} GB above the {HARD_LIMIT / GB:.1f} GB hard limit, "
                  "even after deleting all hourly cloud files. Nothing was uploaded.")
     for k in plan:
         print(f"  freeing space: delete {k}")
@@ -158,7 +160,7 @@ def cmd_upload(s3, bucket: str, path: Path, key: str, ctype: str | None, cache: 
     after = sum(o.size for o in objs if o.key not in plan and o.key != key) + size
     print(f"uploaded {key} ({size / 1e6:.1f} MB); bucket now ~{after / GB:.3f} GB")
     if after > TARGET:
-        print(f"WARNING: bucket is above the {TARGET / GB:.0f} GB target.")
+        print(f"WARNING: bucket is above the {TARGET / GB:.1f} GB target.")
 
 
 def cmd_upload_dir(s3, bucket: str, folder: Path, prefix: str, ctype: str | None,
@@ -245,7 +247,7 @@ def cmd_publish_hourly(s3, bucket: str, folder: Path, keep_hours: int) -> None:
         print(f"wrote {LATEST_KEY}: {len(hours)} hours, newest {hours[0] if hours else '-'}")
     total = sum(o.size for o in objs if o.key not in prune and o.key not in guard
                 and o.key not in new) + sum(new.values())
-    print(f"bucket now ~{total / GB:.3f} GB (target {TARGET / GB:.0f} GB, hard limit {HARD_LIMIT / GB:.0f} GB)")
+    print(f"bucket now ~{total / GB:.3f} GB (target {TARGET / GB:.1f} GB, hard limit {HARD_LIMIT / GB:.1f} GB)")
 
 
 LP_RE = re.compile(r"^lightpollution/(lp|lprad)-(\d{4})\.pmtiles$")

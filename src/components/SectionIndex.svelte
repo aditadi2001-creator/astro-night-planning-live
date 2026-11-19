@@ -18,12 +18,12 @@
     const els = PLAN_SECTIONS.map((s) => document.getElementById(`sec-${s.id}`)).filter(
       (e): e is HTMLElement => !!e,
     );
-    const seen = new Map<string, number>();
+    const seen: Record<string, number> = {};
     const io = new IntersectionObserver(
       (entries) => {
-        for (const e of entries) seen.set(e.target.id, e.isIntersecting ? e.intersectionRatio : 0);
+        for (const e of entries) seen[e.target.id] = e.isIntersecting ? e.intersectionRatio : 0;
         // The topmost section that is meaningfully visible.
-        const first = els.find((el) => (seen.get(el.id) ?? 0) > 0.05);
+        const first = els.find((el) => (seen[el.id] ?? 0) > 0.05);
         if (first) onactive(first.id.slice(4) as SectionId);
       },
       { rootMargin: '-120px 0px -45% 0px', threshold: [0, 0.05, 0.25, 0.5] },

@@ -12,18 +12,23 @@ from r2 import GB, Obj, latest_json, plan_hourly, plan_keep_lp_year, plan_upload
 
 
 class Guard(unittest.TestCase):
+    def test_ceiling_is_three_gb(self) -> None:
+        # CLAUDE.md constraint 2: storage <= 3 GB (R2 free tier is 10 GB-month, no spend cap).
+        self.assertEqual(r2.HARD_LIMIT, 3 * GB)
+        self.assertLess(r2.TARGET, r2.HARD_LIMIT)
+
     def test_fits_without_deleting(self) -> None:
         objs = [Obj("lightpollution/lp-2025.pmtiles", int(1.5 * GB)), Obj("stars/x.pmtiles", int(0.4 * GB))]
         self.assertEqual(plan_upload(objs, "clouds/hourly/2026111214.pmtiles", 40_000_000), [])
 
     def test_replacing_a_key_does_not_double_count(self) -> None:
-        objs = [Obj("lightpollution/lp-2025.pmtiles", int(7.9 * GB))]
-        self.assertEqual(plan_upload(objs, "lightpollution/lp-2025.pmtiles", int(7.9 * GB)), [])
+        objs = [Obj("lightpollution/lp-2025.pmtiles", int(2.9 * GB))]
+        self.assertEqual(plan_upload(objs, "lightpollution/lp-2025.pmtiles", int(2.9 * GB)), [])
 
     def test_deletes_oldest_hourly_first_until_it_fits(self) -> None:
         objs = [
-            # 7.93 + 3 × 0.03 existing + 0.03 new = 8.05 GB → delete the 2 oldest → 7.99 GB.
-            Obj("lightpollution/lp-2025.pmtiles", int(7.93 * GB)),
+            # 2.93 + 3 x 0.03 existing + 0.03 new = 3.05 GB -> delete the 2 oldest -> 2.99 GB.
+            Obj("lightpollution/lp-2025.pmtiles", int(2.93 * GB)),
             Obj("clouds/hourly/2026111212.pmtiles", 30_000_000),
             Obj("clouds/hourly/2026111210.pmtiles", 30_000_000),
             Obj("clouds/hourly/2026111211.pmtiles", 30_000_000),
@@ -32,13 +37,18 @@ class Guard(unittest.TestCase):
         self.assertEqual(plan, ["clouds/hourly/2026111210.pmtiles", "clouds/hourly/2026111211.pmtiles"])
 
     def test_refuses_when_even_deleting_all_hourly_is_not_enough(self) -> None:
-        objs = [Obj("lightpollution/lp-2025.pmtiles", int(7 * GB)),
+        objs = [Obj("lightpollution/lp-2025.pmtiles", int(2 * GB)),
                 Obj("clouds/hourly/2026111210.pmtiles", 30_000_000)]
         self.assertIsNone(plan_upload(objs, "lightpollution/lp-2026.pmtiles", int(1.5 * GB)))
 
     def test_never_deletes_non_hourly_objects(self) -> None:
         objs = [Obj("stars/gaia-deep-v1.pmtiles", int(0.5 * GB)), Obj("data/latest.json", 1000)]
-        self.assertIsNone(plan_upload(objs, "big.pmtiles", int(7.9 * GB)))
+        self.assertIsNone(plan_upload(objs, "big.pmtiles", int(2.9 * GB)))
+
+    def test_todays_bucket_still_accepts_the_yearly_light_pollution_switch(self) -> None:
+        # 2026-11-19: ~1.84 GB in the bucket; the yearly update adds ~0.25 GB for under an hour.
+        objs = [Obj("everything-now.pmtiles", int(1.84 * GB))]
+        self.assertEqual(plan_upload(objs, "lightpollution/lp-2026.pmtiles", int(0.25 * GB)), [])
 
     def test_refuses_foreign_buckets(self) -> None:
         with mock.patch.dict(os.environ, {"R2_BUCKET": "my-main-site-assets"}):
@@ -64,7 +74,7 @@ class Hourly(unittest.TestCase):
         self.assertEqual(hours, ["2026111303", "2026111302", "2026111205"])
 
     def test_guard_deletes_oldest_remaining_hour_when_over_limit(self) -> None:
-        objs = [Obj("lightpollution/lp-2025.pmtiles", int(7.99 * GB)),
+        objs = [Obj("lightpollution/lp-2025.pmtiles", int(2.99 * GB)),
                 Obj("clouds/hourly/2026111301.pmtiles", 5_000_000),
                 Obj("clouds/hourly/2026111302.pmtiles", 5_000_000)]
         _, guard, hours = plan_hourly(objs, {"clouds/hourly/2026111303.pmtiles": 5_000_000}, 24, self.NOW)
@@ -72,7 +82,7 @@ class Hourly(unittest.TestCase):
         self.assertEqual(hours, ["2026111303", "2026111302"])
 
     def test_refuses_and_uploads_nothing_when_it_cannot_fit(self) -> None:
-        objs = [Obj("lightpollution/lp-2025.pmtiles", int(8 * GB))]
+        objs = [Obj("lightpollution/lp-2025.pmtiles", int(3 * GB))]
         _, guard, hours = plan_hourly(objs, {"clouds/hourly/2026111303.pmtiles": 5_000_000}, 24, self.NOW)
         self.assertIsNone(guard)
         self.assertEqual(hours, [])

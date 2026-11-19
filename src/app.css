@@ -70,3 +70,15 @@ button:hover {
   font-style: italic;
   font-weight: 500;
 }
+
+/*
+ * Night mode for third-party widgets we cannot restyle (MapLibre controls, map legends):
+ * the whole block goes through the luminance-to-red filter once; inner filters are dropped
+ * so nothing is filtered twice (which would dim it to a fifth).
+ */
+:root[data-night='true'] .night-filter {
+  filter: var(--media-filter);
+}
+:root[data-night='true'] .night-filter * {
+  filter: none !important;
+}

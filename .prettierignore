@@ -8,3 +8,4 @@ pipelines/**/raw/
 .impeccable/
 **/.wrangler/
 scripts/surveys/*.json
+tests/fixtures/*.json

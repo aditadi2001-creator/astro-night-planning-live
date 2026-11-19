@@ -2,7 +2,7 @@
   const methods = [
     'Airmass: Kasten & Young (1989).',
     'Refraction: Bennett (1982) and Saemundsson (1986), scaled for temperature and pressure (Meeus, ch. 16); the sky engine’s refraction is patched to match.',
-    'Positions: Stellarium Web Engine (ERFA) and Astronomy Engine, cross-checked against JPL Horizons.',
+    'Positions: Stellarium Web Engine (ERFA) and Astronomy Engine, cross-checked against JPL Horizons. Measured accuracy (automated tests, Bangalore, Nov 2026): Sun, Moon and planets within 16 arcseconds, rise/set/twilight within 13 seconds, deep-sky altitude/azimuth within 8 arcseconds of Astropy (docs/ACCURACY.md).',
     'Transparency: V-band extinction from Rayleigh scattering (Hansen & Travis 1974), CAMS aerosol optical depth and ozone.',
     'Moonlight: Krisciunas & Schaefer (1991).',
     'Dew risk: dew-point spread versus typical radiative cooling of optics (an estimate).',

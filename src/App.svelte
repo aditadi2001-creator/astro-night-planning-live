@@ -1190,7 +1190,7 @@
               </p>
             </div>
           </header>
-          <div use:nearView={() => (mapsNear = true)}>
+          <div class="night-filter" use:nearView={() => (mapsNear = true)}>
             {#if mapsNear}
               {#await import('./components/LightPollutionMap.svelte') then { default: LightPollutionMap }}
                 <LightPollutionMap {place} site={siteLight} onplace={setPlace} />
@@ -1352,9 +1352,8 @@
     max-width: 1440px;
     margin: 0 auto;
   }
+  /* Phones: the chips scroll away with the page (the header already takes a fifth of the screen). */
   .plan-index {
-    position: sticky;
-    top: var(--head-h, 110px);
     z-index: 5;
     margin: 0 calc(-1 * var(--gap));
     padding: var(--s2) var(--gap);
@@ -1413,6 +1412,12 @@
   }
   footer.hidden {
     display: none;
+  }
+  @media (min-width: 600px) {
+    .plan-index {
+      position: sticky;
+      top: var(--head-h, 110px);
+    }
   }
   @media (min-width: 1100px) {
     .plan {

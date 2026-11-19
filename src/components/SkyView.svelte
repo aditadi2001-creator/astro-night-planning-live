@@ -1558,7 +1558,8 @@
   .crosshair path,
   .crosshair circle {
     fill: none;
-    stroke: rgb(255 255 255 / 0.75);
+    stroke: var(--text);
+    stroke-opacity: 0.75;
     stroke-width: 1.2;
   }
   .topleft {

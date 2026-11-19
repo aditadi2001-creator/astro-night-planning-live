@@ -18,9 +18,10 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ci": "npm run check && npm run lint && npm run format:check && npm run test && npm run build && tsc -p worker",
+    "ci": "npm run check && npm run lint && npm run format:check && npm run test && npm run build && npm run check:budget && tsc -p worker",
     "worker:dev": "wrangler dev --local --config worker/wrangler.jsonc --port 8787",
-    "worker:check": "tsc -p worker"
+    "worker:check": "tsc -p worker",
+    "check:budget": "node scripts/check-budget.mjs"
   },
   "dependencies": {
     "@fontsource-variable/atkinson-hyperlegible-next": "5.3.0",

@@ -110,11 +110,10 @@ describe('server choice', () => {
   it('tries CDS Strasbourg last (degraded since 2026-11-09)', () => {
     for (const s of SURVEYS) {
       const i = s.servers.findIndex((u) => u.includes('cds.unistra.fr'));
-      const j =
-        s.servers.length -
-        1 -
-        [...s.servers].reverse().findIndex((u) => !u.includes('cds.unistra.fr'));
-      if (i >= 0 && j >= 0) expect(i).toBeGreaterThan(j);
+      const others = s.servers.filter((u) => !u.includes('cds.unistra.fr'));
+      // CDS-only surveys (e.g. the Gaia density map) have nothing to reorder.
+      if (i < 0 || !others.length) continue;
+      expect(i).toBeGreaterThan(s.servers.indexOf(others[others.length - 1] as string));
     }
   });
 

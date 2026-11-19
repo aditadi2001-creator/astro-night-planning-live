@@ -265,6 +265,8 @@
   }
   .scroll {
     overflow-x: auto;
+    /* Without paint containment Chrome still counts the wide table in the page width on phones. */
+    contain: paint;
     margin-top: 8px;
     -webkit-overflow-scrolling: touch;
   }
