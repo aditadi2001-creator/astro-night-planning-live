@@ -99,10 +99,18 @@
 
 <div class="time" role="group" aria-label="Time controls">
   <div class="row">
-    <button onclick={() => step(-DAY)} aria-label="One day earlier">−1 d</button>
-    <button onclick={() => step(-HOUR)} aria-label="One hour earlier">−1 h</button>
-    <button onclick={() => step(-10 * MIN)} aria-label="Ten minutes earlier">−10 m</button>
-    <button onclick={() => step(-MIN)} aria-label="One minute earlier">−1 m</button>
+    <button onclick={() => step(-DAY)} title="One day earlier"
+      >−1 d<span class="visually-hidden"> (one day earlier)</span></button
+    >
+    <button onclick={() => step(-HOUR)} title="One hour earlier"
+      >−1 h<span class="visually-hidden"> (one hour earlier)</span></button
+    >
+    <button onclick={() => step(-10 * MIN)} title="Ten minutes earlier"
+      >−10 m<span class="visually-hidden"> (ten minutes earlier)</span></button
+    >
+    <button onclick={() => step(-MIN)} title="One minute earlier"
+      >−1 m<span class="visually-hidden"> (one minute earlier)</span></button
+    >
     <button
       onclick={() => {
         stop();
@@ -111,10 +119,18 @@
       aria-pressed={live}
       class:on={live}>Now</button
     >
-    <button onclick={() => step(MIN)} aria-label="One minute later">+1 m</button>
-    <button onclick={() => step(10 * MIN)} aria-label="Ten minutes later">+10 m</button>
-    <button onclick={() => step(HOUR)} aria-label="One hour later">+1 h</button>
-    <button onclick={() => step(DAY)} aria-label="One day later">+1 d</button>
+    <button onclick={() => step(MIN)} title="One minute later"
+      >+1 m<span class="visually-hidden"> (one minute later)</span></button
+    >
+    <button onclick={() => step(10 * MIN)} title="Ten minutes later"
+      >+10 m<span class="visually-hidden"> (ten minutes later)</span></button
+    >
+    <button onclick={() => step(HOUR)} title="One hour later"
+      >+1 h<span class="visually-hidden"> (one hour later)</span></button
+    >
+    <button onclick={() => step(DAY)} title="One day later"
+      >+1 d<span class="visually-hidden"> (one day later)</span></button
+    >
   </div>
 
   <div class="row">

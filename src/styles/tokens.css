@@ -154,7 +154,8 @@
   --rule: #600000;
   --ui-line: #c00000;
   --text: #ff0000;
-  --text-2: #f00000;
+  /* Full red: #f00000 on the #200000 panels is 4.4:1, under WCAG AA for small text. */
+  --text-2: #ff0000;
   --brass: #ff0000;
   --brass-ink: #000000;
   --go: #f00000;

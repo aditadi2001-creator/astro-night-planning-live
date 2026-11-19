@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import AppHeader from './components/AppHeader.svelte';
   import NightRibbon from './components/NightRibbon.svelte';
   import SectionIndex from './components/SectionIndex.svelte';
@@ -14,10 +14,6 @@
   } from './lib/state/route';
   import type { RibbonHour } from './lib/ribbon';
   import SearchDialog from './components/SearchDialog.svelte';
-  import SkyDock from './components/SkyDock.svelte';
-  import LayersSheet from './components/LayersSheet.svelte';
-  import SkyMore from './components/SkyMore.svelte';
-  import HorizonPanel from './components/HorizonPanel.svelte';
   import { profileSummary } from './lib/profiles';
   import {
     foregroundProfile,
@@ -36,8 +32,8 @@
     type Profile,
   } from './lib/profiles';
   import { fmtDateTime, fmtTime } from './lib/time/format';
-  import SkyView, { type DockPanel, type TimeCmd } from './components/SkyView.svelte';
-  import TimeControls from './components/TimeControls.svelte';
+  import type SkyView from './components/SkyView.svelte';
+  import type { DockPanel, TimeCmd } from './components/SkyView.svelte';
   import ConditionCards from './components/ConditionCards.svelte';
   import Timeline from './components/Timeline.svelte';
   import DataStatus from './components/DataStatus.svelte';
@@ -45,9 +41,9 @@
   import Extras from './components/Extras.svelte';
   import WeekAhead from './components/WeekAhead.svelte';
   import Equipment from './components/Equipment.svelte';
-  import InfoDrawer from './components/InfoDrawer.svelte';
-  import TelescopePanel from './components/TelescopePanel.svelte';
   import { telescope } from './lib/telescope/session.svelte';
+  import HelpDialog from './components/HelpDialog.svelte';
+  import Tour, { markTourSeen, tourSeen, type TourStep } from './components/Tour.svelte';
   import TargetsPanel from './components/TargetsPanel.svelte';
   import { loadPlan, type PlanItem } from './lib/plan/plan';
   import { cloudFactor } from './lib/physics/score';
@@ -146,6 +142,56 @@
     if (p === 'sky') delete next.s;
     location.hash = buildHash(p, next);
   }
+  // ---- the Plan page renders in stages: Tonight first, then one section per idle moment, so
+  // the first paint is not one long task. A jump (or a link naming a section) renders all. ----
+  const PLAN_ORDER: (SectionId | 'tonight-detail')[] = [
+    'tonight',
+    'tonight-detail',
+    'targets',
+    'planets',
+    'week',
+    'telescope',
+    'space',
+    'maps',
+    'about',
+  ];
+  let planStage = $state(firstRoute.params.s ? PLAN_ORDER.length : 1);
+  const ready = (id: SectionId | 'tonight-detail') => planStage > PLAN_ORDER.indexOf(id);
+  $effect(() => {
+    if (page !== 'plan' || planStage >= PLAN_ORDER.length) return;
+    const next = () => (planStage += 1);
+    if (typeof requestIdleCallback === 'function') {
+      const h = requestIdleCallback(next, { timeout: 600 });
+      return () => cancelIdleCallback(h);
+    }
+    const t = setTimeout(next, 60);
+    return () => clearTimeout(t);
+  });
+  // A link that names a section (#/plan?s=week) opens there, not at the browser's old scroll.
+  onMount(() => {
+    const s = firstRoute.page === 'plan' ? firstRoute.params.s : undefined;
+    if (!s || s === 'tonight') return;
+    history.scrollRestoration = 'manual';
+    let userMoved = false;
+    const mark = () => (userMoved = true);
+    addEventListener('wheel', mark, { once: true, passive: true });
+    addEventListener('touchmove', mark, { once: true, passive: true });
+    const go = () => {
+      if (!userMoved) document.getElementById(`sec-${s}`)?.scrollIntoView({ block: 'start' });
+    };
+    void tick().then(go);
+    // Once more after the first data arrives and the sections above settle.
+    const t = setTimeout(go, 1500);
+    return () => {
+      clearTimeout(t);
+      removeEventListener('wheel', mark);
+      removeEventListener('touchmove', mark);
+    };
+  });
+  function renderAll(): Promise<void> {
+    planStage = PLAN_ORDER.length;
+    return tick();
+  }
   function jumpTo(id: SectionId) {
     activeSection = id;
     if (page !== 'plan') {
@@ -154,7 +200,9 @@
     }
     params = { ...params, s: id };
     history.replaceState(null, '', buildHash('plan', params));
-    document.getElementById(`sec-${id}`)?.scrollIntoView({ block: 'start' });
+    void renderAll().then(() =>
+      document.getElementById(`sec-${id}`)?.scrollIntoView({ block: 'start' }),
+    );
   }
   function sectionInView(id: SectionId) {
     if (id === activeSection) return;
@@ -212,6 +260,73 @@
   let foreground = $state<ForegroundState>(loadForeground());
   let customHorizon = $state<CustomHorizon | null>(untrack(() => loadCustomHorizon(place)));
 
+  // ---- help: glossary, keys and the guided tour (offered once to new visitors) ----
+  let helpOpen = $state(false);
+  let touring = $state(false);
+  let tourOffer = $state(false);
+  const TOUR: TourStep[] = [
+    {
+      sel: '.bar .loc',
+      title: 'Your site',
+      text: 'Pick where you observe from: Bangalore, Hanle, Coorg or anywhere. Places stay on this device. You can also save the star maps for offline use here.',
+    },
+    {
+      sel: '.ribbon',
+      title: 'Tonight in one strip',
+      text: 'Sunset to sunrise: blue bands are twilight and full darkness, shading is cloud, the gold bar is the best imaging window and the grey bar shows when the Moon is up. Drag it, or tap an hour, to see that moment everywhere.',
+    },
+    {
+      sel: '#sec-tonight .glance',
+      title: 'Go or no-go',
+      text: 'The verdict for tonight in one line, the key numbers and the reasons behind it.',
+    },
+    {
+      sel: '.bar .profile',
+      title: 'Your equipment',
+      text: 'Choose the telescope and camera you use tonight: targets, framing and the frame on the sky follow it.',
+    },
+    {
+      sel: '.bar .pages',
+      title: 'Plan and Sky',
+      text: 'Plan is this page. Sky is a live planetarium with your camera frame, survey images and your telescope.',
+    },
+    {
+      sel: '.bar .search',
+      title: 'Find anything',
+      text: 'Search 100,000 objects by name or catalog number (Ctrl K).',
+    },
+    {
+      sel: '.bar .night',
+      title: 'Red night mode',
+      text: 'Turns everything deep red so your eyes stay adapted to the dark at the telescope.',
+    },
+    {
+      sel: '.bar .help',
+      title: 'Help',
+      text: 'This tour again, the keys and a glossary of every term in plain words.',
+    },
+  ];
+  onMount(() => {
+    if (tourSeen() || firstRoute.page !== 'plan') return;
+    const t = setTimeout(() => (tourOffer = true), 2500);
+    return () => clearTimeout(t);
+  });
+  function startTour() {
+    helpOpen = false;
+    tourOffer = false;
+    if (page !== 'plan') goPage('plan');
+    // Wait until the Plan page has drawn its first card (after switching from Sky).
+    let tries = 0;
+    const go = () => {
+      if (!document.querySelector('#sec-tonight .glance') && tries++ < 20) {
+        setTimeout(go, 100);
+        return;
+      }
+      window.scrollTo({ top: 0 });
+      touring = true;
+    };
+    void tick().then(go);
+  }
   let searchOpen = $state(false);
   function openSearch() {
     searchOpen = true;
@@ -791,7 +906,9 @@
         if (r.params.s || pageChanged) {
           requestAnimationFrame(() => {
             if (r.params.s)
-              document.getElementById(`sec-${id}`)?.scrollIntoView({ block: 'start' });
+              void renderAll().then(() =>
+                document.getElementById(`sec-${id}`)?.scrollIntoView({ block: 'start' }),
+              );
             else window.scrollTo({ top: 0 });
           });
         }
@@ -1033,6 +1150,24 @@
   {/await}
 {/if}
 
+{#if helpOpen}
+  <HelpDialog onclose={() => (helpOpen = false)} ontour={startTour} />
+{/if}
+{#if touring}
+  <Tour steps={TOUR} onclose={() => (touring = false)} />
+{/if}
+{#if tourOffer && !touring}
+  <div class="tour-offer" role="status">
+    <span>New here? A one-minute tour shows the main controls.</span>
+    <button class="primary" onclick={startTour}>Show me</button>
+    <button
+      onclick={() => {
+        tourOffer = false;
+        markTourSeen();
+      }}>No thanks</button
+    >
+  </div>
+{/if}
 {#if searchOpen}
   <SearchDialog onclose={() => (searchOpen = false)} onpick={pickResult} onsurvey={pickSurvey} />
 {/if}
@@ -1053,6 +1188,7 @@
     onnight={(v) => (night = v)}
     onpage={(p) => goPage(p)}
     onsearch={openSearch}
+    onhelp={() => (helpOpen = true)}
   />
   <NightRibbon
     {tw}
@@ -1069,175 +1205,180 @@
   <!-- The sky loads on the first visit to the Sky page, then stays mounted (the WebGL
        engine is never torn down); on the Plan page it waits off-screen at a small size. -->
   {#if skyMounted}
-    <section
-      class="sky-panel"
-      class:offscreen={page !== 'sky'}
-      inert={page !== 'sky'}
-      aria-label="Live sky"
-    >
-      <h1 class="visually-hidden">Live sky</h1>
-      <div class="sky-row">
-        <div class="sky-box">
-          <SkyView
-            {place}
-            time={shown}
-            {live}
-            {rate}
-            {tz}
-            atmosphere={engineAtmosphere}
-            clouds={cloudInput}
-            horizon={skyHorizon}
-            groundColor={tintGround(groundRgb, foreground)}
-            glow={domeGlow}
-            survey={engineSurvey}
-            bind:setups
-            bind:shownFrames
-            bind:layers
-            bind:night
-            onframecenter={(c) => (frameCenter = c)}
-            scope={scopeMark}
-            onselect={(i) => {
-              // The info is refreshed every second while selected; only a newly picked
-              // object opens the Info panel, so other panels stay usable.
-              const picked = i != null && i.name !== selectedInfo?.name;
-              selectedInfo = i;
-              if (picked) dock = 'info';
-            }}
-            goto={gotoTarget}
-            {clearSignal}
-            deepSky={layers.deepSky && !layers.surveys ? deepSkyUrl : null}
-            longExposure={layers.longExposure}
-            oncursor={(p) => (cursor = p)}
-            ontime={timeCmd}
-            onrate={(r) => {
-              if (r === 0) setTime(new Date(), true);
-              else {
-                live = false;
-                rate = r;
-              }
-            }}
-            bind:this={skyRef}
-            onopen={(p) => (dock = dock === p ? null : p)}
-            onsearch={openSearch}
-          >
-            {#snippet overlay()}
-              <SkyDock bind:active={dock} onsearch={openSearch} infoAvailable={!!selectedInfo}>
-                {#snippet content(p: DockPanel)}
-                  {#if p === 'targets'}
-                    <TargetsPanel
-                      compact
-                      {place}
-                      {tz}
-                      {tw}
-                      dark={tonightVerdict.dark}
-                      clear={clearByHour}
-                      sqm={sqmUsed.value ?? 21}
-                      profile={activeProfile}
-                      horizon={horizonProfile}
-                      shown={shown.getTime()}
-                      {expert}
-                      bind:plan
-                      onshow={(r) =>
-                        showTarget({
-                          ra: r.o.ra,
-                          dec: r.o.dec,
-                          sizeDeg: (r.o.maj ?? 6) / 60,
-                          ...(r.best ? { bestT: r.best.t } : {}),
-                          id: r.o.name,
-                        })}
-                    />
-                  {:else if p === 'info'}
-                    {#if selectedInfo}
-                      <InfoDrawer
-                        info={selectedInfo}
+    {#await import('./sky-parts') then P}
+      <section
+        class="sky-panel"
+        class:offscreen={page !== 'sky'}
+        inert={page !== 'sky'}
+        aria-label="Live sky"
+      >
+        <h1 class="visually-hidden">Live sky</h1>
+        <div class="sky-row">
+          <div class="sky-box">
+            <P.SkyView
+              {place}
+              time={shown}
+              {live}
+              {rate}
+              {tz}
+              atmosphere={engineAtmosphere}
+              clouds={cloudInput}
+              horizon={skyHorizon}
+              groundColor={tintGround(groundRgb, foreground)}
+              glow={domeGlow}
+              survey={engineSurvey}
+              bind:setups
+              bind:shownFrames
+              bind:layers
+              bind:night
+              onframecenter={(c) => (frameCenter = c)}
+              scope={scopeMark}
+              onselect={(i) => {
+                // The info is refreshed every second while selected; only a newly picked
+                // object opens the Info panel, so other panels stay usable.
+                const picked = i != null && i.name !== selectedInfo?.name;
+                selectedInfo = i;
+                if (picked) dock = 'info';
+              }}
+              goto={gotoTarget}
+              {clearSignal}
+              deepSky={layers.deepSky && !layers.surveys ? deepSkyUrl : null}
+              longExposure={layers.longExposure}
+              oncursor={(p) => (cursor = p)}
+              ontime={timeCmd}
+              onrate={(r) => {
+                if (r === 0) setTime(new Date(), true);
+                else {
+                  live = false;
+                  rate = r;
+                }
+              }}
+              bind:this={skyRef}
+              onopen={(p) => (dock = dock === p ? null : p)}
+              onsearch={openSearch}
+            >
+              {#snippet overlay()}
+                <P.SkyDock bind:active={dock} onsearch={openSearch} infoAvailable={!!selectedInfo}>
+                  {#snippet content(p: DockPanel)}
+                    {#if p === 'targets'}
+                      <TargetsPanel
+                        compact
                         {place}
-                        time={shown}
+                        {tz}
                         {tw}
-                        {tz}
-                        {profiles}
-                        {expert}
+                        dark={tonightVerdict.dark}
+                        clear={clearByHour}
+                        sqm={sqmUsed.value ?? 21}
+                        profile={activeProfile}
                         horizon={horizonProfile}
+                        shown={shown.getTime()}
+                        {expert}
                         bind:plan
-                        onclose={() => {
-                          clearSignal++;
-                          selectedInfo = null;
-                          dock = null;
-                        }}
-                        ongoto={() => skyRef?.centreSelected()}
-                        onframe={() => {
-                          if (!Object.values(shownFrames).some(Boolean)) skyRef?.frame();
-                        }}
+                        onshow={(r) =>
+                          showTarget({
+                            ra: r.o.ra,
+                            dec: r.o.dec,
+                            sizeDeg: (r.o.maj ?? 6) / 60,
+                            ...(r.best ? { bestT: r.best.t } : {}),
+                            id: r.o.name,
+                          })}
                       />
+                    {:else if p === 'info'}
+                      {#if selectedInfo}
+                        <P.InfoDrawer
+                          info={selectedInfo}
+                          {place}
+                          time={shown}
+                          {tw}
+                          {tz}
+                          {profiles}
+                          {expert}
+                          horizon={horizonProfile}
+                          bind:plan
+                          onclose={() => {
+                            clearSignal++;
+                            selectedInfo = null;
+                            dock = null;
+                          }}
+                          ongoto={() => skyRef?.centreSelected()}
+                          onframe={() => {
+                            if (!Object.values(shownFrames).some(Boolean)) skyRef?.frame();
+                          }}
+                        />
+                      {:else}
+                        <p class="dock-empty">
+                          Tap any star, planet, galaxy or nebula in the sky to see what it is, where
+                          it is, when it is best and how it fits your camera.
+                        </p>
+                      {/if}
+                    {:else if p === 'layers'}
+                      <P.LayersSheet bind:layers {surveyStatus} {expert} />
+                    {:else if p === 'telescope'}
+                      <P.TelescopePanel
+                        {place}
+                        selected={selectedInfo}
+                        bind:setups
+                        frameOn={Object.values(shownFrames).some(Boolean)}
+                        {frameCenter}
+                        profileName={activeProfile?.name ?? 'No profile'}
+                        profileText={activeProfile ? profileSummary(activeProfile) : ''}
+                        horizon={horizonProfile}
+                        ontoggleframe={() => skyRef?.frame()}
+                        oncentre={() => skyRef?.centreSelected()}
+                      />
+                    {:else if p === 'horizon'}
+                      <P.HorizonPanel
+                        {place}
+                        bind:foreground
+                        bind:customHorizon
+                        terrainOn={layers.terrain}
+                        ontoggleterrain={(v) => (layers = { ...layers, terrain: v })}
+                        shown={shown.getTime()}
+                        terrain={siteHorizon?.profile ?? null}
+                      />
+                    {:else if p === 'time'}
+                      <div class="dock-stack">
+                        <P.TimeControls
+                          {place}
+                          time={shown}
+                          {live}
+                          {tz}
+                          events={timeEvents}
+                          onchange={setTime}
+                        />
+                        <div class="dock-row" role="group" aria-label="Time speed">
+                          <button onclick={() => timeCmd('slower')} aria-label="Slower (J)"
+                            >◀◀</button
+                          >
+                          <button onclick={() => timeCmd(live || rate !== 0 ? 'pause' : 'real')}
+                            >{live || rate !== 0 ? 'Pause' : 'Play'}</button
+                          >
+                          <button onclick={() => timeCmd('faster')} aria-label="Faster (L)"
+                            >▶▶</button
+                          >
+                          <button onclick={() => timeCmd('now')} aria-pressed={live}>Now</button>
+                        </div>
+                      </div>
                     {:else}
-                      <p class="dock-empty">
-                        Tap any star, planet, galaxy or nebula in the sky to see what it is, where
-                        it is, when it is best and how it fits your camera.
-                      </p>
-                    {/if}
-                  {:else if p === 'layers'}
-                    <LayersSheet bind:layers {surveyStatus} {expert} />
-                  {:else if p === 'telescope'}
-                    <TelescopePanel
-                      {place}
-                      selected={selectedInfo}
-                      bind:setups
-                      frameOn={Object.values(shownFrames).some(Boolean)}
-                      {frameCenter}
-                      profileName={activeProfile?.name ?? 'No profile'}
-                      profileText={activeProfile ? profileSummary(activeProfile) : ''}
-                      horizon={horizonProfile}
-                      ontoggleframe={() => skyRef?.frame()}
-                      oncentre={() => skyRef?.centreSelected()}
-                    />
-                  {:else if p === 'horizon'}
-                    <HorizonPanel
-                      {place}
-                      bind:foreground
-                      bind:customHorizon
-                      terrainOn={layers.terrain}
-                      ontoggleterrain={(v) => (layers = { ...layers, terrain: v })}
-                      shown={shown.getTime()}
-                      terrain={siteHorizon?.profile ?? null}
-                    />
-                  {:else if p === 'time'}
-                    <div class="dock-stack">
-                      <TimeControls
+                      <P.SkyMore
                         {place}
                         time={shown}
-                        {live}
                         {tz}
-                        events={timeEvents}
-                        onchange={setTime}
+                        onplace={setPlace}
+                        onpick={(n) =>
+                          pickResult({ kind: 'planet', label: n, sub: '', badges: [] })}
+                        onfull={() => skyRef?.fullScreen()}
+                        oncamera={() => (cameraOpen = true)}
                       />
-                      <div class="dock-row" role="group" aria-label="Time speed">
-                        <button onclick={() => timeCmd('slower')} aria-label="Slower (J)">◀◀</button
-                        >
-                        <button onclick={() => timeCmd(live || rate !== 0 ? 'pause' : 'real')}
-                          >{live || rate !== 0 ? 'Pause' : 'Play'}</button
-                        >
-                        <button onclick={() => timeCmd('faster')} aria-label="Faster (L)">▶▶</button
-                        >
-                        <button onclick={() => timeCmd('now')} aria-pressed={live}>Now</button>
-                      </div>
-                    </div>
-                  {:else}
-                    <SkyMore
-                      {place}
-                      time={shown}
-                      {tz}
-                      onplace={setPlace}
-                      onpick={(n) => pickResult({ kind: 'planet', label: n, sub: '', badges: [] })}
-                      onfull={() => skyRef?.fullScreen()}
-                      oncamera={() => (cameraOpen = true)}
-                    />
-                  {/if}
-                {/snippet}
-              </SkyDock>
-            {/snippet}
-          </SkyView>
+                    {/if}
+                  {/snippet}
+                </P.SkyDock>
+              {/snippet}
+            </P.SkyView>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    {/await}
   {/if}
 
   {#if page === 'plan'}
@@ -1277,38 +1418,42 @@
               ]}
             />
           {/if}
-          <Timeline
-            rows={timeline}
-            {tz}
-            shown={shown.getTime()}
-            {sevenTimer}
-            now={nowMin}
-            onpick={(t) => setTime(new Date(t), false)}
-          />
-          <ConditionCards
-            {row}
-            {moon}
-            {tw}
-            {tz}
-            satellite={satSummary}
-            {sevenTimer}
-            light={siteLight}
-            lightStatus={layers.lightpollution ? (sources?.light?.status ?? 'off') : 'off'}
-            loading={sources?.weather.status === 'loading'}
-          />
-          <div class="pair">
-            <PhysicsPanel
-              extinction={ext}
-              {dbv}
-              {sky}
-              {limitMag}
-              {cursor}
-              {pressure}
-              {temperature}
-              {horizonSource}
-              onloadterrain={horizonState === 'saved' ? () => (forceTerrain = true) : undefined}
+          {#if ready('tonight-detail')}
+            <Timeline
+              rows={timeline}
+              {tz}
+              shown={shown.getTime()}
+              {sevenTimer}
+              now={nowMin}
+              onpick={(t) => setTime(new Date(t), false)}
             />
-          </div>
+            <ConditionCards
+              {row}
+              {moon}
+              {tw}
+              {tz}
+              satellite={satSummary}
+              {sevenTimer}
+              light={siteLight}
+              lightStatus={layers.lightpollution ? (sources?.light?.status ?? 'off') : 'off'}
+              loading={sources?.weather.status === 'loading'}
+            />
+            <div class="pair">
+              <PhysicsPanel
+                extinction={ext}
+                {dbv}
+                {sky}
+                {limitMag}
+                {cursor}
+                {pressure}
+                {temperature}
+                {horizonSource}
+                onloadterrain={horizonState === 'saved' ? () => (forceTerrain = true) : undefined}
+              />
+            </div>
+          {:else}
+            <p class="sec-wait" aria-hidden="true"></p>
+          {/if}
         </section>
         <section id="sec-targets" class="sec" aria-labelledby="h-targets">
           <header class="sec-head">
@@ -1319,28 +1464,31 @@
               </p>
             </div>
           </header>
-
-          <TargetsPanel
-            {place}
-            {tz}
-            {tw}
-            dark={tonightVerdict.dark}
-            clear={clearByHour}
-            sqm={sqmUsed.value ?? 21}
-            profile={activeProfile}
-            horizon={horizonProfile}
-            shown={shown.getTime()}
-            {expert}
-            bind:plan
-            onshow={(r) =>
-              showTarget({
-                ra: r.o.ra,
-                dec: r.o.dec,
-                sizeDeg: (r.o.maj ?? 6) / 60,
-                ...(r.best ? { bestT: r.best.t } : {}),
-                id: r.o.name,
-              })}
-          />
+          {#if ready('targets')}
+            <TargetsPanel
+              {place}
+              {tz}
+              {tw}
+              dark={tonightVerdict.dark}
+              clear={clearByHour}
+              sqm={sqmUsed.value ?? 21}
+              profile={activeProfile}
+              horizon={horizonProfile}
+              shown={shown.getTime()}
+              {expert}
+              bind:plan
+              onshow={(r) =>
+                showTarget({
+                  ra: r.o.ra,
+                  dec: r.o.dec,
+                  sizeDeg: (r.o.maj ?? 6) / 60,
+                  ...(r.best ? { bestT: r.best.t } : {}),
+                  id: r.o.name,
+                })}
+            />
+          {:else}
+            <p class="sec-wait" aria-hidden="true"></p>
+          {/if}
         </section>
         <section id="sec-planets" class="sec" aria-labelledby="h-planets">
           <header class="sec-head">
@@ -1351,16 +1499,20 @@
               </p>
             </div>
           </header>
-          <PlanetsPanel
-            {place}
-            {tz}
-            {tw}
-            shown={shown.getTime()}
-            {expert}
-            profile={profiles.find((p) => p.profileKind === 'planetary') ?? activeProfile}
-            seeing={tonightVerdict.seeing}
-            onshow={(name) => pickResult({ kind: 'planet', label: name, sub: '', badges: [] })}
-          />
+          {#if ready('planets')}
+            <PlanetsPanel
+              {place}
+              {tz}
+              {tw}
+              shown={shown.getTime()}
+              {expert}
+              profile={profiles.find((p) => p.profileKind === 'planetary') ?? activeProfile}
+              seeing={tonightVerdict.seeing}
+              onshow={(name) => pickResult({ kind: 'planet', label: name, sub: '', badges: [] })}
+            />
+          {:else}
+            <p class="sec-wait" aria-hidden="true"></p>
+          {/if}
         </section>
         <section id="sec-week" class="sec" aria-labelledby="h-week">
           <header class="sec-head">
@@ -1369,8 +1521,11 @@
               <p class="lede">Cloud outlook for the next seven nights from the forecast models.</p>
             </div>
           </header>
-
-          <WeekAhead nights={week} {tz} />
+          {#if ready('week')}
+            <WeekAhead nights={week} {tz} />
+          {:else}
+            <p class="sec-wait" aria-hidden="true"></p>
+          {/if}
         </section>
         <section id="sec-telescope" class="sec" aria-labelledby="h-telescope">
           <header class="sec-head">
@@ -1381,13 +1536,16 @@
               </p>
             </div>
           </header>
-
-          <Equipment
-            bind:setups
-            bind:shown={shownFrames}
-            seeing={row.seeing?.arcsec ?? null}
-            center={frameCenter}
-          />
+          {#if ready('telescope')}
+            <Equipment
+              bind:setups
+              bind:shown={shownFrames}
+              seeing={row.seeing?.arcsec ?? null}
+              center={frameCenter}
+            />
+          {:else}
+            <p class="sec-wait" aria-hidden="true"></p>
+          {/if}
         </section>
         <section id="sec-space" class="sec" aria-labelledby="h-space">
           <header class="sec-head">
@@ -1396,17 +1554,20 @@
               <p class="lede">Aurora chances and bright passes of the ISS and other satellites.</p>
             </div>
           </header>
-
-          <div use:nearView={startOrbits}></div>
-          <Extras
-            {place}
-            {tz}
-            {now}
-            aurora={sources?.aurora?.data ?? null}
-            kp={kpSource.data}
-            orbits={orbitSource?.data ?? null}
-            orbitsMissing={!orbitSource || orbitSource.status === 'error'}
-          />
+          {#if ready('space')}
+            <div use:nearView={startOrbits}></div>
+            <Extras
+              {place}
+              {tz}
+              {now}
+              aurora={sources?.aurora?.data ?? null}
+              kp={kpSource.data}
+              orbits={orbitSource?.data ?? null}
+              orbitsMissing={!orbitSource || orbitSource.status === 'error'}
+            />
+          {:else}
+            <p class="sec-wait" aria-hidden="true"></p>
+          {/if}
         </section>
         <section id="sec-maps" class="sec" aria-labelledby="h-maps">
           <header class="sec-head">
@@ -1418,41 +1579,45 @@
               </p>
             </div>
           </header>
-          <div class="night-filter" use:nearView={() => (mapsNear = true)}>
-            {#if mapsNear}
-              {#await import('./components/LightPollutionMap.svelte') then { default: LightPollutionMap }}
-                <LightPollutionMap {place} site={siteLight} onplace={setPlace} />
-              {:catch}
-                <p class="note">
-                  The light-pollution map could not be loaded. Check the connection.
-                </p>
-              {/await}
-              {#if layers.satmap}
-                {#await import('./components/SatelliteMap.svelte') then { default: SatelliteMap }}
-                  <div id="satmap">
-                    <SatelliteMap {place} {tz} />
-                  </div>
+          {#if ready('maps')}
+            <div class="night-filter" use:nearView={() => (mapsNear = true)}>
+              {#if mapsNear}
+                {#await import('./components/LightPollutionMap.svelte') then { default: LightPollutionMap }}
+                  <LightPollutionMap {place} site={siteLight} onplace={setPlace} />
                 {:catch}
                   <p class="note">
-                    The satellite map could not be loaded. Check the connection and try again.
+                    The light-pollution map could not be loaded. Check the connection.
                   </p>
                 {/await}
-              {:else}
-                <div class="placeholder">
-                  <div>
-                    <h2>Satellite cloud map</h2>
-                    <p>
-                      Infrared images of the last 2.5 hours around your site (about 1–3 MB). Off
-                      until you open it, to save data.
+                {#if layers.satmap}
+                  {#await import('./components/SatelliteMap.svelte') then { default: SatelliteMap }}
+                    <div id="satmap">
+                      <SatelliteMap {place} {tz} />
+                    </div>
+                  {:catch}
+                    <p class="note">
+                      The satellite map could not be loaded. Check the connection and try again.
                     </p>
+                  {/await}
+                {:else}
+                  <div class="placeholder">
+                    <div>
+                      <h2>Satellite cloud map</h2>
+                      <p>
+                        Infrared images of the last 2.5 hours around your site (about 1–3 MB). Off
+                        until you open it, to save data.
+                      </p>
+                    </div>
+                    <button onclick={() => (layers.satmap = true)}>Show the satellite map</button>
                   </div>
-                  <button onclick={() => (layers.satmap = true)}>Show the satellite map</button>
-                </div>
+                {/if}
+              {:else}
+                <p class="note">The maps load when you scroll here (they need about 1–3 MB).</p>
               {/if}
-            {:else}
-              <p class="note">The maps load when you scroll here (they need about 1–3 MB).</p>
-            {/if}
-          </div>
+            </div>
+          {:else}
+            <p class="sec-wait" aria-hidden="true"></p>
+          {/if}
         </section>
         <section id="sec-about" class="sec" aria-labelledby="h-about">
           <header class="sec-head">
@@ -1461,13 +1626,17 @@
               <p class="lede">How every number is computed, its limits, and who made the data.</p>
             </div>
           </header>
-          <details class="about" open={activeSection === 'about' && params.s === 'about'}>
-            <summary>Methods, honest limits, data sources and credits</summary>
-            <div class="prose">
-              <About />
-              <div id="credits"><Credits /></div>
-            </div>
-          </details>
+          {#if ready('about')}
+            <details class="about" open={activeSection === 'about' && params.s === 'about'}>
+              <summary>Methods, honest limits, data sources and credits</summary>
+              <div class="prose">
+                <About />
+                <div id="credits"><Credits /></div>
+              </div>
+            </details>
+          {:else}
+            <p class="sec-wait" aria-hidden="true"></p>
+          {/if}
         </section>
       </div>
     </div>
@@ -1581,6 +1750,32 @@
     border-color: var(--brass);
     color: var(--brass);
   }
+  /* ---- first-visit tour offer ---- */
+  .tour-offer {
+    position: fixed;
+    z-index: 55;
+    left: 50%;
+    bottom: var(--s4);
+    transform: translateX(-50%);
+    width: min(520px, calc(100% - 24px));
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s2) var(--s3);
+    padding: var(--s3) var(--s4);
+    background: var(--ink-1);
+    border: 1px solid var(--brass);
+    border-radius: 12px;
+    box-shadow: var(--shadow-float);
+    font-size: var(--fs-14);
+  }
+  .tour-offer span {
+    flex: 1 1 220px;
+  }
+  .tour-offer .primary {
+    border-color: var(--brass);
+    color: var(--brass);
+  }
   /* ---- Plan page ---- */
   .plan {
     display: grid;
@@ -1601,6 +1796,11 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     min-width: 0;
+  }
+  /* Space held for a section that has not rendered yet (keeps the page from jumping). */
+  .sec-wait {
+    min-height: 40vh;
+    margin: 0;
   }
   .sec {
     display: grid;

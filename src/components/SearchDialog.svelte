@@ -157,6 +157,14 @@
       e.preventDefault();
       active = Math.max(0, active - 1);
       scrollActive();
+    } else if (e.altKey && e.key.toLowerCase() === 'f') {
+      // Keyboard favorite for the highlighted result (the ★ buttons are for the mouse).
+      e.preventDefault();
+      const pick = (q.trim() ? flat : [...favs, ...recent])[active];
+      if (pick && pick.kind !== 'catalog') {
+        toggleFavorite(pick);
+        favs = favorites();
+      }
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const list = q.trim() ? flat : [...favs, ...recent];
@@ -201,7 +209,7 @@
       aria-controls="search-results"
       aria-activedescendant={shown.length ? `sr-${active}` : undefined}
     />
-    <button class="close" onclick={onclose} aria-label="Close search">Esc</button>
+    <button class="close" onclick={onclose} aria-label="Esc: close search">Esc</button>
   </div>
 
   {#if browsing}
@@ -251,7 +259,7 @@
     {:else if online === 'error'}
       <span role="status">SIMBAD could not be reached right now. Try again later.</span>
     {:else}
-      <span class="hint">↑ ↓ to move · Enter to open · ★ to keep as favorite</span>
+      <span class="hint">↑ ↓ to move · Enter to open · Alt+F or ★ to keep as favorite</span>
     {/if}
   </footer>
 </div>
@@ -267,20 +275,25 @@
     onmousemove={() => (active = i)}
   >
     <span class="main">
-      <span class="label" class:obj-name={r.kind === 'dso' || r.kind === 'notable'}>{r.label}</span>
+      <span class="label" class:obj-name={r.kind === 'dso' || r.kind === 'notable'}
+        >{r.label}{#if favs.some((f) => f.kind === r.kind && f.label === r.label)}<span
+            class="visually-hidden">, favorite</span
+          >{/if}</span
+      >
       <span class="sub">{r.sub}</span>
     </span>
     <span class="badges">
       {#each r.badges.slice(0, 4) as b (b)}<span class="badge">{b}</span>{/each}
     </span>
     {#if r.kind !== 'catalog'}
-      <button
+      <!-- Mouse only: a listbox option cannot contain a button; Alt+F does it by keyboard,
+           and the option's name already says whether it is a favorite. -->
+      <span
         class="star"
-        aria-label={isFavorite(r)
-          ? `Remove ${r.label} from favorites`
-          : `Add ${r.label} to favorites`}
-        aria-pressed={favs.some((f) => f.kind === r.kind && f.label === r.label)}
-        onclick={(ev) => fav(r, ev)}>★</button
+        class:on={favs.some((f) => f.kind === r.kind && f.label === r.label)}
+        aria-hidden="true"
+        title={isFavorite(r) ? 'Remove from favorites (Alt+F)' : 'Keep as favorite (Alt+F)'}
+        onclick={(ev) => fav(r, ev)}>★</span
       >
     {/if}
   </li>
@@ -415,13 +428,14 @@
     white-space: nowrap;
   }
   .star {
-    border: 0;
-    background: none;
+    display: inline-flex;
+    align-items: center;
     color: var(--text-2);
     min-height: 32px;
     padding: 0 6px;
+    cursor: pointer;
   }
-  .star[aria-pressed='true'] {
+  .star.on {
     color: var(--brass);
   }
   .foot {

@@ -135,3 +135,12 @@ Not available: Gum (no machine-readable catalogue found). Curated: 15 quasars/AG
 25 variables, 19 exoplanet hosts (GJ 1214 was left out: Sesame did not answer reliably).
 
 Static data now 27.4 MiB in 870 files (budget 40 MiB); initial JS 164.8 KiB gzipped.
+
+## 7. Phase 6: offline cache and its effect on the Worker (2026-11-20)
+
+- The service worker answers repeat requests for Worker tiles from its data cache while their
+  Cache-Control allows (tiles: a year; LP info: a day; 7Timer!: 3 h), so returning visitors
+  make fewer Worker requests and R2 reads than the first-visit numbers in §3.
+- "Save for offline" downloads 872 Pages files (28.7 MB): **0 Worker requests, 0 R2 reads**.
+- The device keeps at most 150 MB of cached data (least recently used dropped first).
+- Initial JS: 173.1 KiB gz (Sky page code split off; was 203.9 KiB after Phase 5).

@@ -1,0 +1,31 @@
+{
+  "url": "http://localhost:4173/#/plan (vite preview, production build)",
+  "tool": "lighthouse 12, mobile",
+  "date": "2026-11-20",
+  "runs": [
+    {
+      "run": 1,
+      "scores": {
+        "performance": 91,
+        "accessibility": 100,
+        "best-practices": 100
+      },
+      "first-contentful-paint": "2.3 s",
+      "largest-contentful-paint": "2.6 s",
+      "total-blocking-time": "190 ms",
+      "cumulative-layout-shift": "0.043"
+    },
+    {
+      "run": 2,
+      "scores": {
+        "performance": 90,
+        "accessibility": 100,
+        "best-practices": 100
+      },
+      "first-contentful-paint": "2.3 s",
+      "largest-contentful-paint": "2.6 s",
+      "total-blocking-time": "240 ms",
+      "cumulative-layout-shift": "0.043"
+    }
+  ]
+}

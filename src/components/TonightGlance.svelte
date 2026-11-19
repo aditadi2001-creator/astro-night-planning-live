@@ -39,10 +39,6 @@
     <span class="tag"><span aria-hidden="true">{GLYPH[v.level]}</span> {WORD[v.level]}</span>
     <span class="head">{v.headline}</span>
   </p>
-  <ul class="why">
-    {#each v.reasons.slice(0, expert ? 8 : 4) as r (r)}<li>{r}</li>{/each}
-  </ul>
-
   <dl class="facts">
     <div>
       <dt>Darkness</dt>
@@ -105,6 +101,11 @@
       </dd>
     </div>
   </dl>
+
+  <!-- The reasons come last: they arrive with the forecast and must not push the figures. -->
+  <ul class="why">
+    {#each v.reasons.slice(0, expert ? 8 : 4) as r (r)}<li>{r}</li>{/each}
+  </ul>
 </div>
 
 <style>
@@ -118,6 +119,8 @@
   }
   .verdict {
     margin: 0;
+    /* The headline grows when the forecast arrives: hold room for two lines of it. */
+    min-height: calc(var(--fs-18) * 1.4 + var(--s2) + 2 * var(--fs-21) * var(--lh-head));
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;

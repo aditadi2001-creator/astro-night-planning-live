@@ -8,7 +8,8 @@
 :root[data-night='true'] video,
 :root[data-night='true'] input[type='range'],
 :root[data-night='true'] input[type='checkbox'],
-:root[data-night='true'] input[type='radio'] {
+:root[data-night='true'] input[type='radio'],
+:root[data-night='true'] progress {
   filter: var(--media-filter);
 }
 /* Scrollbars are drawn grey by the browser: red ones at night (scrollbar-color is inherited). */

@@ -126,5 +126,33 @@ console.log(
     '(account limit 100,000/day, shared with the main site)',
 );
 
+// ---- night mode: every colour token is red-only, and the red filter drops green and blue ----
+console.log('Night mode is red-only (G = B = 0)');
+{
+  const css = readFileSync(join(ROOT, 'src/styles/tokens.css'), 'utf8');
+  const start = css.indexOf(":root[data-night='true'] {");
+  const block = start < 0 ? '' : css.slice(start, css.indexOf('\n}', start));
+  const bad = [];
+  let n = 0;
+  for (const m of block.matchAll(/#([0-9a-f]{6}|[0-9a-f]{3})\b/gi)) {
+    n++;
+    const h = m[1].length === 3 ? m[1].replace(/./g, (c) => c + c) : m[1];
+    if (h.slice(2) !== '0000') bad.push(m[0]);
+  }
+  for (const m of block.matchAll(/rgba?\(\s*(\d+)[ ,]+(\d+)[ ,]+(\d+)/gi)) {
+    n++;
+    if (m[2] !== '0' || m[3] !== '0') bad.push(m[0]);
+  }
+  if (n < 20) fail(`night token block not found or too small (${n} colours)`);
+  else if (bad.length) fail(`night colours with green or blue: ${bad.join(', ')}`);
+  else ok(`${n} night colours, all red-only`);
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const f = /id="night-red"[\s\S]*?values="([^"]+)"/.exec(html)?.[1];
+  const v = f ? f.trim().split(/\s+/).map(Number) : [];
+  if (v.length === 20 && v.slice(5, 15).every((x) => x === 0))
+    ok('#night-red filter outputs no green or blue');
+  else fail('#night-red filter missing or lets green/blue through');
+}
+
 console.log(failed ? '\ncheck:budget FAILED' : '\ncheck:budget passed');
 process.exit(failed ? 1 : 0);

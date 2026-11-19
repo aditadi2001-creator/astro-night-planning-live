@@ -3,19 +3,40 @@
  * Open-Meteo or the geocoder), falling back to the browser's zone.
  */
 
+const zoneOk = new Map<string, boolean>();
 function safeZone(tz: string | undefined): string | undefined {
   if (!tz) return undefined;
-  try {
-    new Intl.DateTimeFormat(undefined, { timeZone: tz });
-    return tz;
-  } catch {
-    return undefined;
+  let ok = zoneOk.get(tz);
+  if (ok === undefined) {
+    try {
+      new Intl.DateTimeFormat(undefined, { timeZone: tz });
+      ok = true;
+    } catch {
+      ok = false;
+    }
+    zoneOk.set(tz, ok);
   }
+  return ok ? tz : undefined;
+}
+
+/**
+ * Formatters are slow to create (tens of microseconds each, thousands per page in tables), so
+ * each distinct set of options is built once and reused.
+ */
+const formatters = new Map<string, Intl.DateTimeFormat>();
+function dtf(opts: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const key = JSON.stringify(opts);
+  let f = formatters.get(key);
+  if (!f) {
+    f = new Intl.DateTimeFormat(undefined, opts);
+    formatters.set(key, f);
+  }
+  return f;
 }
 
 export function fmtTime(d: Date | number | null | undefined, tz?: string, seconds = false): string {
   if (d == null) return '—';
-  return new Intl.DateTimeFormat(undefined, {
+  return dtf({
     hour: '2-digit',
     minute: '2-digit',
     ...(seconds ? { second: '2-digit' } : {}),
@@ -24,7 +45,7 @@ export function fmtTime(d: Date | number | null | undefined, tz?: string, second
 }
 
 export function fmtDateTime(d: Date | number, tz?: string): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return dtf({
     weekday: 'short',
     day: 'numeric',
     month: 'short',
@@ -35,12 +56,12 @@ export function fmtDateTime(d: Date | number, tz?: string): string {
 }
 
 export function fmtHour(d: Date | number, tz?: string): string {
-  return new Intl.DateTimeFormat(undefined, { hour: 'numeric', timeZone: safeZone(tz) }).format(d);
+  return dtf({ hour: 'numeric', timeZone: safeZone(tz) }).format(d);
 }
 
 /** Short zone label, e.g. "GMT", "GMT+5:30", "CET". */
 export function zoneLabel(d: Date | number, tz?: string): string {
-  const parts = new Intl.DateTimeFormat(undefined, {
+  const parts = dtf({
     timeZoneName: 'short',
     timeZone: safeZone(tz),
   }).formatToParts(d);

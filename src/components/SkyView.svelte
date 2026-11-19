@@ -140,6 +140,10 @@
   const fovMax = () => (view.projection === 1 ? 150 : FOV_MAX);
   let fovTarget = 0; // degrees; 0 = no zoom animation running
   let zoomRaf = 0;
+  /** "Reduce motion" in the system settings: the sky jumps instead of gliding. */
+  const calm =
+    typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const glide = (sec: number) => (calm ? 0 : sec);
   function zoomStep() {
     const s = stel;
     if (!s || !fovTarget) {
@@ -148,7 +152,9 @@
     }
     const cur = s.core.fov * s.R2D;
     // Ease in log space: 22 % of the remaining ratio per frame (~150 ms to settle).
-    const next = Math.exp(Math.log(cur) + (Math.log(fovTarget) - Math.log(cur)) * 0.22);
+    const next = calm
+      ? fovTarget
+      : Math.exp(Math.log(cur) + (Math.log(fovTarget) - Math.log(cur)) * 0.22);
     if (Math.abs(Math.log(next / fovTarget)) < 0.002) {
       s.core.fov = fovTarget * s.D2R;
       fovTarget = 0;
@@ -213,12 +219,12 @@
 
   /** Centre the view on the selected object and keep it there (Stellarium "centre on selected"). */
   function gotoSelected() {
-    if (stel?.core.selection) stel.pointAndLock(stel.core.selection, 1);
+    if (stel?.core.selection) stel.pointAndLock(stel.core.selection, glide(1));
   }
   /** Stellarium "/": centre and zoom in on the selected object. */
   function autoZoomSelected() {
     if (!stel?.core.selection || !selected) return;
-    stel.pointAndLock(stel.core.selection, 1);
+    stel.pointAndLock(stel.core.selection, glide(1));
     const size = selected.sizeMajor != null ? selected.sizeMajor / 60 : 0;
     zoomToDeg(size > 0 ? Math.max(size * 4, 0.05) : 10);
   }
@@ -506,7 +512,7 @@
       stel.s2c(raDeg * stel.D2R, decDeg * stel.D2R),
     );
     unlock();
-    stel.lookAt(v, 0.8);
+    stel.lookAt(v, glide(0.8));
     zoomToDeg(fov);
     // Keep the field in view as the sky turns (the go-to animation is adopted as it moves).
     trackOnly = true;
@@ -545,7 +551,7 @@
     }
     if (!obj) return;
     s.core.selection = obj;
-    s.pointAndLock(obj, 0.6);
+    s.pointAndLock(obj, glide(0.6));
   }
   // ---- cloud texture (Web Worker) --------------------------------------------------
   const CW = 512;
@@ -904,7 +910,7 @@
       stel.s2c(raDeg * stel.D2R, decDeg * stel.D2R),
     );
     unlock();
-    stel.lookAt(v, 0.5);
+    stel.lookAt(v, glide(0.5));
   }
   export const isFull = () => full;
   // Full screen: the bars fade after 3 s without mouse or touch (Stellarium auto-hide).

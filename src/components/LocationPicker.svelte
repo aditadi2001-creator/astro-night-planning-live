@@ -1,4 +1,5 @@
 <script lang="ts">
+  import OfflinePanel from './OfflinePanel.svelte';
   import type { Place } from '../lib/astro/sky';
   import { loadSavedPlaces, locateMe, PRESETS, saveSavedPlaces } from '../lib/location';
   import { searchPlaces, type GeoResult } from '../lib/data/openmeteo';
@@ -308,6 +309,7 @@
     </ul>
   {/if}
   <p class="privacy">Locations are stored only on this device.</p>
+  <OfflinePanel placeName={place.name} />
 </div>
 
 <style>

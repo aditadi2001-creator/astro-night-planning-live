@@ -41,20 +41,8 @@ export async function loadCloudField(
   const world = 256 * 2 ** z;
   const bt = new Float32Array(n * n).fill(Number.NaN);
   const cosLat = Math.max(0.05, Math.cos((lat * Math.PI) / 180));
-  const tiles = new Map<string, Promise<ImageData | null>>();
-  const tile = (tx: number, ty: number) => {
-    const k = `${tx},${ty}`;
-    let p = tiles.get(k);
-    if (!p) {
-      p = decodeTile(
-        tpl.replace('{z}', String(z)).replace('{x}', String(tx)).replace('{y}', String(ty)),
-        signal,
-      ).catch(() => null);
-      tiles.set(k, p);
-    }
-    return p;
-  };
-  const jobs: Promise<void>[] = [];
+  // Group the 121 × 121 cells by the tile they fall in: one wait per tile, not per cell.
+  const byTile = new Map<string, { tx: number; ty: number; cells: number[] }>();
   for (let iy = 0; iy < n; iy++) {
     const la = lat + ((iy - c) * FIELD_STEP_KM) / KM_PER_DEG;
     if (la <= -85 || la >= 85) continue;
@@ -63,17 +51,31 @@ export async function loadCloudField(
       const p = pixelFor(la, ((((lo + 180) % 360) + 360) % 360) - 180, z);
       const gx = (p.tx * 256 + p.px) % world;
       const tx = Math.floor(gx / 256);
-      const k = iy * n + ix;
-      jobs.push(
-        tile(tx, p.ty).then((img) => {
-          if (!img) return;
-          const i = (p.py * 256 + (gx % 256)) * 4;
-          if ((img.data[i + 3] ?? 0) === 0) return;
-          bt[k] = kelvinFromGrey(img.data[i] ?? 0);
-        }),
-      );
+      const key = `${tx},${p.ty}`;
+      let g = byTile.get(key);
+      if (!g) {
+        g = { tx, ty: p.ty, cells: [] };
+        byTile.set(key, g);
+      }
+      // Cell index and the pixel offset inside the tile.
+      g.cells.push(iy * n + ix, (p.py * 256 + (gx % 256)) * 4);
     }
   }
-  await Promise.all(jobs);
+  await Promise.all(
+    [...byTile.values()].map(async (g) => {
+      const url = tpl
+        .replace('{z}', String(z))
+        .replace('{x}', String(g.tx))
+        .replace('{y}', String(g.ty));
+      const img = await decodeTile(url, signal).catch(() => null);
+      if (!img) return;
+      const d = img.data;
+      for (let j = 0; j < g.cells.length; j += 2) {
+        const i = g.cells[j + 1] as number;
+        if ((d[i + 3] ?? 0) === 0) continue;
+        bt[g.cells[j] as number] = kelvinFromGrey(d[i] ?? 0);
+      }
+    }),
+  );
   return { hour, time, n, stepKm: FIELD_STEP_KM, bt };
 }

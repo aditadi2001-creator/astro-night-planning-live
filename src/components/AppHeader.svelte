@@ -25,6 +25,7 @@
     onnight: (v: boolean) => void;
     onpage: (p: Page) => void;
     onsearch: () => void;
+    onhelp: () => void;
   }
   let {
     page,
@@ -41,6 +42,7 @@
     onnight,
     onpage,
     onsearch,
+    onhelp,
   }: Props = $props();
 
   let picking = $state(false);
@@ -95,6 +97,20 @@
     <button aria-pressed={!expert} onclick={() => onexpert(false)}>Beginner</button>
     <button aria-pressed={expert} onclick={() => onexpert(true)}>Expert</button>
   </div>
+  <!-- Phones: one toggle instead of the pair, so the header fits in two rows. -->
+  <button
+    class="expert1"
+    aria-pressed={expert}
+    onclick={() => onexpert(!expert)}
+    title="Expert: every column and unit. Off: the essentials in plain words.">Expert</button
+  >
+
+  <button
+    class="help"
+    onclick={onhelp}
+    aria-label="Help, tour and glossary"
+    title="Help, tour and glossary">?</button
+  >
 
   <button
     class="night"
@@ -263,6 +279,18 @@
     background: var(--ink-2);
     box-shadow: inset 0 -2px 0 var(--brass);
   }
+  .help {
+    min-width: 40px;
+    min-height: 40px;
+    font-weight: 700;
+  }
+  .expert1 {
+    display: none;
+  }
+  .expert1[aria-pressed='true'] {
+    border-color: var(--brass);
+    color: var(--brass);
+  }
   @media (max-width: 899px) {
     .name,
     .search .label,
@@ -281,18 +309,23 @@
     }
     .profile {
       order: 10;
-      flex: 1 1 100%;
+      /* Too wide for the first row, so it starts the second one. */
+      flex: 1 1 130px;
+      min-width: 0;
     }
     .profile select {
       width: 100%;
       max-width: none;
     }
     .seg {
+      display: none;
+    }
+    .expert1 {
+      display: inline-flex;
       order: 11;
     }
     .pages {
       order: 12;
-      margin-left: auto;
     }
   }
 </style>

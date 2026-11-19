@@ -13,7 +13,8 @@
 
 <article class="card">
   <h2>
-    {title}{#if tag}<span class="tag">{tag}</span>{/if}
+    {title}{#if tag}
+      <span class="tag">{tag}</span>{/if}
   </h2>
   {@render children()}
   {#if credit}<p class="credit-line">{credit}</p>{/if}

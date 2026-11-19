@@ -289,4 +289,53 @@ docs/RESEARCH.md, this file.
 - No drag-to-move or rotate handle on the frame itself (rotation is the slider, `[`/`]` keys and
   "Align"); frame offsets from the screen centre are not supported.
 
-## Phase 6 — polish ⏳
+## Phase 6 — polish ✅ (2026-11-20, except the preview deploy)
+
+**Done (evidence)**
+
+- **Accessibility (WCAG 2.2 AA):** axe-core 4.14 (dev dependency, MPL-2.0, not shipped) run in
+  the browser on the Plan page, every Sky dock tab, the Info drawer with an object, search,
+  the location picker, Help, the tour and night mode. Fixed: time-step buttons whose spoken name
+  did not contain the visible text (2.5.3); a tab list containing a link; favorite buttons
+  nested in listbox options (now Alt+F, announced as ", favorite"; the star stays for the
+  mouse); "Esc" button name; night-mode secondary text at 4.4:1 (now full red, 5:1); card
+  headings read as "Cloudsforecast". Result: 0 violations in all of those states.
+  Lighthouse accessibility 100.
+- **Reduced motion:** the sky's go-to, centre, follow and zoom jump instead of gliding when the
+  system asks for less motion (CSS transitions already did).
+- **Performance:** the Sky page's code (dock, panels, telescope) is a separate chunk loaded on
+  the first visit to Sky: initial JS 203.9 → 173.1 KiB gz (budget 250). The Plan page renders
+  in stages (Tonight first, then one section per idle moment; a jump or a link to a section
+  renders everything). Date formatters are cached; the satellite cloud field decodes per tile
+  instead of 14,641 promises. Tonight's key figures sit above the reasons, so the arriving
+  forecast no longer pushes them. Lighthouse mobile on `#/plan` (production build, local):
+  **performance 90–92** (was 77), CLS 0.139 → 0.04, TBT 450 → 170–240 ms, accessibility 100,
+  best practices 100.
+- **Offline (PWA):** the service worker keeps a data cache across versions, capped at
+  **150 MB** (least recently used dropped first), for star tiles, catalogs and horizons, the
+  data Worker's tiles and public HiPS survey tiles. It follows each response's Cache-Control
+  and uses any copy when the network fails. The Sky chunk is precached too. "Save for offline"
+  (location picker) downloads the 872 static data files (28.7 MB, Pages only: no Worker or R2
+  requests) with progress, asks for persistent storage and shows the space used. Tested with
+  the server stopped: the Plan page with the last forecast, the Sky engine, stars and catalog
+  search all worked (`docs/screenshots/phase6/offline-sky-search.jpg`).
+- **Beginners:** a "?" Help button (tour, keys, a 34-term plain-language glossary with search)
+  and an 8-step guided tour, offered once to new visitors (dismissible, remembered).
+- **Phone header:** two rows instead of three (197 → 153 px): the profile, a single "Expert"
+  toggle and Plan/Sky share the second row.
+- **Linked sections:** `#/plan?s=week` now opens at that section (the browser used to restore
+  its old scroll position).
+- **Night-mode check in the gate:** `npm run check:budget` now fails if any night token has
+  green or blue, or if the `#night-red` filter lets them through (35 colours checked).
+- **Load streaks (Phase 4 note):** not seen again on a plain load or a go-to link; they were
+  most likely the engine's meteor simulation, switched off in Phase 4.
+- Gate: svelte-check 0/0, ESLint clean, Prettier clean, **345 tests pass**, build OK,
+  `check:budget` OK. Screenshots: `docs/screenshots/phase6/`.
+
+**Not done / waiting**
+
+- **Preview deploy to Cloudflare Pages:** needs the owner's OK (CLAUDE.md, outward-facing).
+- The forecast offline is the app's last good copy (3 days in localStorage); there is no
+  "prepare a forecast for a date" beyond loading the site before leaving.
+- Lighthouse was run locally against `vite preview`; the deployed site (CDN, HTTP/2) should do
+  at least as well but is not measured.

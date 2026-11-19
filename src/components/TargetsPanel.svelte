@@ -354,20 +354,16 @@
 
 <div class="targets" class:compact>
   {#if compact}
-    <div class="tabs" role="tablist" aria-label="Object type">
+    <div class="tabs" role="group" aria-label="Object type">
       {#each TABS as t (t.id)}
-        <button role="tab" aria-selected={tab === t.id} onclick={() => (tab = t.id)}
-          >{t.label}</button
-        >
+        <button aria-pressed={tab === t.id} onclick={() => (tab = t.id)}>{t.label}</button>
       {/each}
     </div>
   {:else}
     <div class="bar">
-      <div class="tabs" role="tablist" aria-label="Object type">
+      <div class="tabs" role="group" aria-label="Object type">
         {#each TABS as t (t.id)}
-          <button role="tab" aria-selected={tab === t.id} onclick={() => (tab = t.id)}
-            >{t.label}</button
-          >
+          <button aria-pressed={tab === t.id} onclick={() => (tab = t.id)}>{t.label}</button>
         {/each}
         <a class="planets-link" href="#/plan?s=planets">Planets →</a>
       </div>
@@ -696,7 +692,7 @@
     background: transparent;
     border-color: transparent;
   }
-  .tabs button[aria-selected='true'] {
+  .tabs button[aria-pressed='true'] {
     border-color: var(--rule);
     background: var(--ink-2);
     box-shadow: inset 0 -2px 0 var(--brass);

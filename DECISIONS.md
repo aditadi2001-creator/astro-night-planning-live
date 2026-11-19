@@ -195,3 +195,28 @@ where north is not up; "zoom to frame" measures what is drawn.
 **D39. Browser-drawn form controls get the red filter at night** (sliders, checkboxes, radio
 buttons) and scrollbars get theme colours; select boxes use the theme colours instead of the
 filter, because the filter maps red text to near-black.
+
+## Phase 6 (2026-11-20)
+
+**D40. The Sky page is one lazily loaded chunk (`src/sky-parts.ts`),** precached by the service
+worker so it still works offline. The Plan page (the default) no longer downloads it.
+
+**D41. The Plan page renders in stages** on idle callbacks instead of virtualising or
+removing content: every section still exists, and anything that jumps or links to a section
+renders the rest first so positions are right.
+
+**D42. One capped data cache in the service worker (150 MB, least recently used first)**
+instead of per-source caches. Responses are reused while their Cache-Control allows (so repeat
+views do not reach the Worker or R2) and any copy is used offline. Opaque (no-CORS) responses
+are never stored: their size is unknown and padded in the storage quota.
+
+**D43. "Save for offline" fetches only Pages static files** (star tiles, catalogs, horizons:
+28.7 MB). Deep-sky Worker tiles and survey imagery are cached as you look at them, never bulk
+downloaded, so preparing for a trip costs no Worker or R2 requests.
+
+**D44. Search favorites by keyboard are Alt+F** because a listbox option may not contain a
+button (WCAG / ARIA); the star stays as a mouse shortcut and the option's name says
+"favorite".
+
+**D45. Night-mode secondary text is full red (#ff0000):** #f00000 on the #200000 panels is 4.4:1,
+under AA. Hierarchy at night comes from size and weight, as DESIGN.md already says.
