@@ -34,7 +34,7 @@ docs/RESEARCH.md, this file.
 - Telescopius changed its CSV headers in late 2024; NINA 3.2 expects `Right Ascension (J2000)`
   etc. (D9).
 - The R2 write guard still allows 8 GB → lowered to 3 GB in Phase 1 (D11).
-- Two superseded R2 layers (~0.25 GB) can be deleted with the owner's OK (D12).
+- All R2 star/DSO layers stay (D12); new catalogs are added on top, as Pages static shards.
 
 ## Phase 1 — foundations ⏳
 

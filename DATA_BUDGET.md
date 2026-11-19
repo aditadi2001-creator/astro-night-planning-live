@@ -42,9 +42,7 @@ R2 contents (from the pipeline logs and project notes):
 | `clouds/hourly/*`                                                                       | ≈ 0.1–0.2 GB (24–48 h × 4.4 MB, lifecycle 2 days)                     | rolling                                                                                |
 | `data/*.json` (orbits, clouds-latest, lightpollution, lphistory, pgc-NNN search chunks) | < 0.02 GB                                                             | in use                                                                                 |
 
-**Recommendation (needs the owner's OK, deletion is permanent):** delete the two superseded v1
-layers (≈ 0.25 GB) after the app stops referencing `/hips/gaia` and `/hips/dso`. Not done in
-Phase 0.
+**Decision (D12): all layers stay.** The v1 files are kept as fallbacks; nothing is deleted.
 
 ## 3. Worker requests per page load (measured, Phase 0 baseline)
 
@@ -80,7 +78,7 @@ and keeps working on Open-Meteo, NOAA and static data.
 
 ## 4. R2 projections
 
-**Storage:** 1.84 GB now → 1.59 GB after deleting the v1 layers. New assets in this redesign go to
+**Storage:** 1.84 GB now (all layers kept, D12). New assets in this redesign go to
 Pages, not R2 (catalog shards, foregrounds, icons, fonts, survey thumbnails). Budget check fails a
 pipeline upload that would pass 3 GB.
 

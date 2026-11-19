@@ -72,9 +72,10 @@ bounded by the free plan's 100 k requests/day cap (≤ 3.0 M/month, 30 % of the 
 **D11. R2 storage guard lowered to the new 3 GB ceiling** (`pipelines/r2/r2.py` HARD_LIMIT
 8 → 3 GB, warning at 2.5 GB) in Phase 1. Bucket is at 1.84 GB, so no job breaks.
 
-**D12. Superseded R2 layers stay until the owner approves deletion.** `stars/gaia-deep-v1` and
-`dso/deep-v1` (~0.25 GB) are unreachable once the app drops their fallbacks, but deleting is
-permanent and outward-facing, so it is listed as a next step, not done.
+**D12. Every star and deep-sky layer stays; nothing in R2 is deleted.** The owner wants more
+catalogs, not fewer. The older `stars/gaia-deep-v1` and `dso/deep-v1` files (~0.25 GB) remain as
+fallbacks; the bucket (1.84 GB) is well under the 3 GB ceiling with them. (Superseded an earlier
+proposal to delete them, which the owner rejected on 2026-11-19.)
 
 **D13. Request measurement.** `npm run check:budget` does the static checks (bytes, file count,
 25 MiB, R2 write/list patterns in client code, fetch-URL inventory) and prints the last recorded
@@ -96,3 +97,8 @@ SIMBAD/Sesame fallback instead (licenses in docs/RESEARCH.md §licenses).
 
 **D17. Mellinger Milky Way survey stays out** ("All rights reserved"), as decided in Phase 9 of
 the original build; listed but disabled with that reason.
+
+**D18. `npm run dev` uses the same data Worker as production** (`.env.development`, public
+URL only). Without it the dev server hid the 7Timer! seeing row, light pollution/Bortle,
+satellite clouds and the deep star/DSO layers, which looked like those features had been
+removed. Dev traffic is small next to the 100 k/day limit.
