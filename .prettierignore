@@ -7,3 +7,4 @@ public/skydata/
 pipelines/**/raw/
 .impeccable/
 **/.wrangler/
+scripts/surveys/*.json
