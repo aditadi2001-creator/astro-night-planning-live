@@ -9,3 +9,6 @@ pipelines/**/raw/
 **/.wrangler/
 scripts/surveys/*.json
 tests/fixtures/*.json
+public/catalog/
+public/horizons/
+public/data/

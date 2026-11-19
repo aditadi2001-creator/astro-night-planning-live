@@ -134,13 +134,15 @@ export async function fetchJson<T, R = T>(
     signal?: AbortSignal;
     /** Reduce the response before it is cached (large feeds keep only what we use). */
     transform?: (raw: R) => T;
+    /** Read the body as text (XML services) instead of JSON; `transform` receives the string. */
+    text?: boolean;
   },
 ): Promise<Cached<T>> {
   const hit = peek<T>(key);
   if (hit && Date.now() - hit.fetchedAt < opts.maxAgeMs) return hit;
   let p = inflight.get(key) as Promise<Cached<T>> | undefined;
   if (!p) {
-    p = download<T, R>(key, url, hit, opts.retries ?? 3, opts.transform);
+    p = download<T, R>(key, url, hit, opts.retries ?? 3, opts.transform, opts.text);
     inflight.set(key, p as Promise<Cached<unknown>>);
     const done = () => inflight.delete(key);
     p.then(done, done);
@@ -154,6 +156,7 @@ async function download<T, R>(
   hit: Cached<T> | null,
   retries: number,
   transform?: (raw: R) => T,
+  text = false,
 ): Promise<Cached<T>> {
   let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -167,7 +170,7 @@ async function download<T, R>(
         lastErr = err;
         continue;
       }
-      const raw = (await res.json()) as R;
+      const raw = (text ? await res.text() : await res.json()) as R;
       const data = transform ? transform(raw) : (raw as unknown as T);
       const v: Cached<T> = { data, fetchedAt: Date.now() };
       memory.set(key, v);

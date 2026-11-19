@@ -128,16 +128,9 @@ export async function startEngine(canvas: HTMLCanvasElement): Promise<Stel> {
  * until then (or if it cannot be reached) the V < 14 layer.
  */
 async function addDeepStars(stel: Stel): Promise<void> {
-  let url = GAIA_DEEP_URL;
-  if (GAIA_DEEPER_URL) {
-    try {
-      const text = await fetchTextOnce(`${GAIA_DEEPER_URL}/properties`);
-      if (text && /max_vmag\s*=\s*1[5-9]/.test(text)) url = GAIA_DEEPER_URL;
-    } catch {
-      /* keep the V < 14 layer */
-    }
-  }
-  stel.core.stars.addDataSource({ url, key: 'gaia' });
+  // The V < 16 layer is published (2026-11-14): use it directly. Probing its properties first
+  // cost one extra data-Worker request per visit (the engine reads them itself anyway).
+  stel.core.stars.addDataSource({ url: GAIA_DEEPER_URL || GAIA_DEEP_URL, key: 'gaia' });
 }
 
 /**
@@ -146,8 +139,13 @@ async function addDeepStars(stel: Stel): Promise<void> {
  * otherwise the OpenNGC set bundled with the site. The engine takes one source.
  */
 async function addDsos(stel: Stel): Promise<void> {
+  // The SDSS layer is published (2026-11-14): use it without probing (one request less).
+  if (DSO_SDSS_URL) {
+    stel.core.dsos.addDataSource({ url: DSO_SDSS_URL });
+    return;
+  }
   let url = `${SKYDATA}dso`;
-  for (const u of [DSO_SDSS_URL, DSO_DEEP_URL]) {
+  for (const u of [DSO_DEEP_URL]) {
     if (!u) continue;
     try {
       const text = await fetchTextOnce(`${u}/properties`);

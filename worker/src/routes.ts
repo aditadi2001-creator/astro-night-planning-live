@@ -177,5 +177,7 @@ export function corsHeaders(): Record<string, string> {
     'Access-Control-Allow-Headers': 'Range, If-None-Match',
     'Access-Control-Expose-Headers':
       'Content-Range, Accept-Ranges, Content-Length, ETag, X-File-Size',
+    // Lets the site's budget probe see transfer sizes and cache hits (no data is exposed).
+    'Timing-Allow-Origin': '*',
   };
 }

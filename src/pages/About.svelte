@@ -1,4 +1,13 @@
 <script lang="ts">
+  import manifest from '../../public/catalog/manifest-v1.json';
+  import { CATALOG_INFO } from '../lib/search/index';
+  import { SURVEYS } from '../lib/sky/surveys';
+
+  const counts = manifest.catalogs as Record<string, number>;
+  const catalogRows = CATALOG_INFO.filter((c) => counts[c.badge]).map((c) => ({
+    name: c.name,
+    n: counts[c.badge] ?? 0,
+  }));
   const methods = [
     'Airmass: Kasten & Young (1989).',
     'Refraction: Bennett (1982) and Saemundsson (1986), scaled for temperature and pressure (Meeus, ch. 16); the sky engine’s refraction is patched to match.',
@@ -49,6 +58,22 @@
     </li>
   </ul>
 
+  <h2>Catalogs in search</h2>
+  <p>
+    Objects per catalog in the bundled files (built {manifest.built}; an object in several catalogs
+    is counted in each). Bright stars: {manifest.rows.stars.toLocaleString('en')} to magnitude 6.5; curated
+    notable objects: {manifest.rows.notable}. Sky surveys: {SURVEYS.length}, streamed from their
+    providers. Not available: Gum nebulae (no machine-readable catalogue found).
+  </p>
+  <table class="counts">
+    <thead><tr><th scope="col">Catalog</th><th scope="col">Objects</th></tr></thead>
+    <tbody>
+      {#each catalogRows as r (r.name)}
+        <tr><td>{r.name}</td><td>{r.n.toLocaleString('en')}</td></tr>
+      {/each}
+    </tbody>
+  </table>
+
   <h2>Methods implemented so far</h2>
   <ul>
     {#each methods as m (m)}<li>{m}</li>{/each}
@@ -66,5 +91,18 @@
   }
   li {
     margin: 6px 0;
+  }
+  .counts {
+    border-collapse: collapse;
+    font-size: var(--fs-14);
+  }
+  .counts th,
+  .counts td {
+    text-align: left;
+    padding: 2px 16px 2px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .counts td:last-child {
+    text-align: right;
   }
 </style>

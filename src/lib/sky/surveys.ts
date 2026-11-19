@@ -10,9 +10,28 @@
  * November 2026.
  */
 
+/** Wavelength groups for the survey picker, in order. */
+import { REGISTRY_SURVEYS } from './survey-registry';
+
+export const BANDS = [
+  { id: 'gamma', label: 'Gamma rays' },
+  { id: 'xray', label: 'X-rays' },
+  { id: 'uv', label: 'Ultraviolet' },
+  { id: 'optical', label: 'Visible light' },
+  { id: 'halpha', label: 'Hydrogen-alpha' },
+  { id: 'infrared', label: 'Infrared' },
+  { id: 'submm', label: 'Sub-millimetre' },
+  { id: 'radio', label: 'Radio' },
+] as const;
+export type Band = (typeof BANDS)[number]['id'];
+
 export interface Survey {
   /** Our short key. */
   id: string;
+  /** Wavelength group in the picker. */
+  band?: Band;
+  /** Only CDS Strasbourg serves it (degraded since 2026-11-09): shown as possibly down. */
+  cdsOnly?: boolean;
   /** CDS HiPS identifier (creator_did without "ivo://"). */
   hipsId: string;
   /** Menu label. */
@@ -36,9 +55,10 @@ export interface Survey {
   fields?: { label: string; ra: number; dec: number; fovDeg: number }[];
 }
 
-export const SURVEYS: readonly Survey[] = [
+const CORE_SURVEYS: readonly Survey[] = [
   {
     id: 'dss',
+    band: 'optical',
     hipsId: 'CDS/P/DSS2/color',
     label: 'DSS2 colour (optical)',
     shows: 'Photographic sky survey from Palomar and UK Schmidt plates, coloured by CDS.',
@@ -55,6 +75,7 @@ export const SURVEYS: readonly Survey[] = [
   },
   {
     id: 'halpha',
+    band: 'halpha',
     hipsId: 'CDS/P/Finkbeiner',
     label: 'H-alpha (Finkbeiner)',
     shows: 'Glowing hydrogen gas (emission nebulae) across the whole sky, low resolution.',
@@ -68,6 +89,7 @@ export const SURVEYS: readonly Survey[] = [
   },
   {
     id: '2mass',
+    band: 'infrared',
     hipsId: 'CDS/P/2MASS/color',
     label: '2MASS colour (near-infrared)',
     shows: 'Near-infrared J, H and Ks light: sees through much of the Milky Way dust.',
@@ -83,6 +105,7 @@ export const SURVEYS: readonly Survey[] = [
   },
   {
     id: 'allwise',
+    band: 'infrared',
     hipsId: 'CDS/P/allWISE/color',
     label: 'AllWISE colour (mid-infrared)',
     shows: 'Mid-infrared W1, W2 and W4 light: warm dust and star-forming regions.',
@@ -98,6 +121,7 @@ export const SURVEYS: readonly Survey[] = [
   },
   {
     id: 'panstarrs',
+    band: 'optical',
     hipsId: 'CDS/P/PanSTARRS/DR1/color-i-r-g',
     label: 'Pan-STARRS DR1 colour (optical)',
     shows: 'Deep modern CCD survey in i, r and g bands; the sharpest optical layer here.',
@@ -112,6 +136,8 @@ export const SURVEYS: readonly Survey[] = [
   },
   {
     id: 'gaia',
+    band: 'optical',
+    cdsOnly: true,
     hipsId: 'CDS/P/DM/I/355/gaiadr3',
     label: 'Gaia DR3 star density',
     shows: 'How many Gaia stars fall in each patch of sky: the Milky Way structure in stars.',
@@ -125,6 +151,7 @@ export const SURVEYS: readonly Survey[] = [
   },
   {
     id: 'sdss',
+    band: 'optical',
     hipsId: 'CDS/P/SDSS9/color',
     label: 'SDSS DR9 colour (optical)',
     shows: 'Sloan Digital Sky Survey CCD images in g, r, i: sharp and deep, galaxies in colour.',
@@ -145,6 +172,7 @@ export const SURVEYS: readonly Survey[] = [
   },
   {
     id: 'hst-acs',
+    band: 'optical',
     hipsId: 'ESAVO/P/HST/ACS-blue',
     label: 'Hubble ACS (all bands)',
     shows: 'Hubble Space Telescope Advanced Camera for Surveys images, including the deep fields.',
@@ -165,6 +193,7 @@ export const SURVEYS: readonly Survey[] = [
   },
   {
     id: 'hst-wfc3',
+    band: 'optical',
     hipsId: 'ESAVO/P/HST/WFC3',
     label: 'Hubble WFC3 (all bands)',
     shows: 'Hubble Wide Field Camera 3, visible and near-infrared, including the Ultra Deep Field.',
@@ -184,6 +213,7 @@ export const SURVEYS: readonly Survey[] = [
   },
   {
     id: 'jwst-nircam',
+    band: 'infrared',
     hipsId: 'ESAVO/P/JWST/NIRCam_Imaging',
     label: 'JWST NIRCam (near-infrared)',
     shows: 'James Webb Space Telescope NIRCam images: deep fields, nebulae and galaxies.',
@@ -206,6 +236,7 @@ export const SURVEYS: readonly Survey[] = [
   },
   {
     id: 'jwst-miri',
+    band: 'infrared',
     hipsId: 'ESAVO/P/JWST/P/MIRI_Imaging',
     label: 'JWST MIRI (mid-infrared)',
     shows: 'James Webb Space Telescope MIRI images: warm dust and gas in mid-infrared light.',
@@ -225,6 +256,17 @@ export const SURVEYS: readonly Survey[] = [
     ],
   },
 ];
+
+/** Every survey in the picker: the hand-curated ones first, then the generated registry. */
+export const SURVEYS: readonly Survey[] = [...CORE_SURVEYS, ...REGISTRY_SURVEYS];
+
+/** Surveys grouped by wavelength, in BANDS order (for the picker). */
+export function surveysByBand(): { band: (typeof BANDS)[number]; surveys: Survey[] }[] {
+  return BANDS.map((band) => ({
+    band,
+    surveys: SURVEYS.filter((s) => (s.band ?? 'optical') === band.id),
+  })).filter((g) => g.surveys.length > 0);
+}
 
 export function surveyById(id: string): Survey | undefined {
   return SURVEYS.find((s) => s.id === id);

@@ -19,3 +19,4 @@ pipelines/**/.venv/
 __pycache__/
 *.pyc
 .impeccable/
+scripts/catalogs/raw/

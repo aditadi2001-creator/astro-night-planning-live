@@ -5,6 +5,8 @@
  *
  * `status` lets the page be honest about what is live today versus planned.
  */
+import { REGISTRY_CREDITS } from './sky/survey-registry';
+
 export interface Credit {
   id: string;
   name: string;
@@ -20,7 +22,7 @@ export interface Credit {
   notes?: string;
 }
 
-export const CREDITS: Credit[] = [
+const CORE_CREDITS: Credit[] = [
   {
     id: 'stellarium-web-engine',
     name: 'Stellarium Web Engine',
@@ -395,6 +397,45 @@ export const CREDITS: Credit[] = [
     kind: 'data',
     status: 'live',
   },
+  {
+    id: 'stellarium-dso',
+    name: 'Stellarium deep-sky catalog v3.23',
+    url: 'https://github.com/Stellarium/stellarium/tree/master/nebulae/default',
+    license: 'GPL-2.0-or-later',
+    attribution:
+      'Deep-sky catalog and cross-identifications: Stellarium DSO catalog v3.23 (nebulae/default/catalog.txt and names.dat), the Stellarium developers, GPL-2.0-or-later; compiled from NGC/IC, Messier, Caldwell, Barnard, Sharpless, van den Bergh, RCW, Lynds, Collinder, Melotte, PGC, UGC, Cederblad, Arp, VV, PK, PN G, SNR G, Abell, HCG, ESO, vdBH, DWB, Trumpler, Stock, Ruprecht and vdB-Ha.',
+    shortCredit: 'Catalogs: Stellarium DSO catalog (GPL-2.0+)',
+    usage:
+      'Search and object identity: 94,880 deep-sky objects with cross-IDs for 29 catalogs, as static files (public/catalog/, built by scripts/catalogs/build_catalogs.py).',
+    kind: 'data',
+    status: 'live',
+  },
+  {
+    id: 'herschel-400',
+    name: 'Herschel 400 list',
+    url: 'https://en.wikipedia.org/wiki/Herschel_400_Catalogue',
+    license: 'List of object numbers (facts)',
+    attribution:
+      'Herschel 400: selected c. 1980 by the Ancient City Astronomy Club (St. Augustine, Florida); object numbers taken from the Wikipedia list.',
+    shortCredit: 'Herschel 400 list',
+    usage:
+      'Marks Herschel 400 objects in search (399 list rows; two rows cover two NGC numbers each).',
+    kind: 'data',
+    status: 'live',
+  },
+  {
+    id: 'sesame-simbad',
+    name: 'CDS Sesame name resolver and SIMBAD (CfA and IDIA mirrors)',
+    url: 'https://vizier.cfa.harvard.edu/viz-bin/nph-sesame',
+    license: 'Free service; acknowledgement requested',
+    attribution:
+      'This research has made use of the SIMBAD database and the Sesame name resolver, operated at CDS, Strasbourg, France (Wenger et al. 2000), via the CfA and IDIA mirrors.',
+    shortCredit: 'Online lookup: SIMBAD via Sesame (CDS)',
+    usage:
+      'Positions of the curated notable objects (resolved once at build time) and the on-request online search for names not in the local catalogs (cached on the device for 30 days).',
+    kind: 'data',
+    status: 'live',
+  },
   // Optional sky surveys (off by default). Streamed, never hosted by us.
   {
     id: 'survey-cds-hips',
@@ -527,3 +568,6 @@ export const CREDITS: Credit[] = [
 export function creditLine(id: string): string {
   return CREDITS.find((c) => c.id === id)?.shortCredit ?? '';
 }
+
+/** Every credit: hand-written ones plus the generated survey registry. */
+export const CREDITS: Credit[] = [...CORE_CREDITS, ...REGISTRY_CREDITS];

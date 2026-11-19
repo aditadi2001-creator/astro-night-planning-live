@@ -1,9 +1,18 @@
 {
   "about": "Worker requests per page load, measured in a browser with performance.getEntriesByType('resource') (host *.workers.dev). Update after every phase. check:budget fails above 'fail' and warns above 'target'.",
   "limits": {
-    "plan": { "target": 6, "fail": 73 },
-    "sky": { "target": 12, "fail": 73 },
-    "repeat": { "target": 2, "fail": 20 }
+    "plan": {
+      "target": 6,
+      "fail": 73
+    },
+    "sky": {
+      "target": 12,
+      "fail": 73
+    },
+    "repeat": {
+      "target": 2,
+      "fail": 20
+    }
   },
   "measurements": [
     {
@@ -26,6 +35,20 @@
       "page": "sky",
       "requests": 40,
       "note": "3 JSON + 1 7Timer (each once), 12 DEM slices (6 tiles x header/data), 10 DSO + 2 Gaia (properties + order-0 tiles), 9 cloud tiles, 3 light-pollution tiles"
+    },
+    {
+      "date": "2026-11-19",
+      "build": "Phase 2, vite preview, storage + service worker cleared, Bangalore",
+      "page": "plan",
+      "requests": 14,
+      "note": "clouds-latest.json + 7Timer (each once), 9 GMGSI cloud tiles, 1 light-pollution + 2 night-lights tiles; light-pollution info, Bangalore horizon and catalogs are static; orbits wait for the Space section"
+    },
+    {
+      "date": "2026-11-19",
+      "build": "Phase 2, vite preview, storage + service worker cleared, Bangalore",
+      "page": "sky",
+      "requests": 24,
+      "note": "as Plan minus orbits, plus the engine's deep layers: gaia16 properties, dso2 properties + 8 order-0 tiles; no DEM requests (preset horizon is static)"
     }
   ]
 }

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   parseHipsProperties,
   pickServer,
+  surveysByBand,
   propertiesMatch,
   resetServerChoice,
   SURVEYS,
@@ -36,7 +37,7 @@ function fakeFetch(table: Record<string, () => Response | Promise<Response>>): {
 
 describe('survey list', () => {
   it('has the surveys from the spec, each with servers and a survey credit', () => {
-    expect(SURVEYS.map((s) => s.id)).toEqual([
+    expect(SURVEYS.map((s) => s.id).slice(0, 11)).toEqual([
       'dss',
       'halpha',
       '2mass',
@@ -55,6 +56,24 @@ describe('survey list', () => {
       const credit = CREDITS.find((c) => c.id === s.creditId);
       expect(credit?.kind).toBe('survey');
     }
+  });
+
+  it('offers 30–40 surveys across every wavelength band, ids unique, Mellinger excluded', () => {
+    expect(SURVEYS.length).toBeGreaterThanOrEqual(30);
+    expect(SURVEYS.length).toBeLessThanOrEqual(40);
+    expect(new Set(SURVEYS.map((s) => s.id)).size).toBe(SURVEYS.length);
+    const bands = surveysByBand().map((g) => g.band.id);
+    expect(bands).toEqual([
+      'gamma',
+      'xray',
+      'uv',
+      'optical',
+      'halpha',
+      'infrared',
+      'submm',
+      'radio',
+    ]);
+    expect(SURVEYS.some((s) => /mellinger/i.test(s.hipsId))).toBe(false);
   });
 
   it('marks DSS as non-commercial in its credit', () => {

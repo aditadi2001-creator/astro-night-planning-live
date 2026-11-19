@@ -13,6 +13,8 @@
     type SectionId,
   } from './lib/state/route';
   import type { RibbonHour } from './lib/ribbon';
+  import SearchDialog from './components/SearchDialog.svelte';
+  import type { ResultEntry } from './lib/search/client';
   import {
     loadActiveProfileId,
     loadProfiles,
@@ -186,16 +188,34 @@
   }
 
   // ---- search: Ctrl/Cmd-K anywhere opens the sky search ----
+  let searchOpen = $state(false);
   function openSearch() {
-    if (page !== 'sky') goPage('sky');
-    // The sky (and its search box) may still be mounting.
-    let tries = 0;
-    const focus = () => {
-      const el = document.getElementById('sky-search') as HTMLInputElement | null;
-      if (el && el.offsetParent !== null) el.focus();
-      else if (tries++ < 40) setTimeout(focus, 100);
-    };
-    focus();
+    searchOpen = true;
+  }
+  /** A search result was chosen: centre it in the sky (planets at the shown time). */
+  function pickResult(e: ResultEntry) {
+    if (e.kind === 'planet') {
+      const body = Astronomy.Body[e.label as keyof typeof Astronomy.Body] as Astronomy.Body;
+      const obs = new Astronomy.Observer(place.lat, place.lon, place.elevation);
+      const eq = Astronomy.Equator(body, shown, obs, false, true);
+      gotoSky(
+        eq.ra * 15,
+        eq.dec,
+        e.label === 'Sun' || e.label === 'Moon' ? 3 : 1,
+        `NAME ${e.label}`,
+      );
+      return;
+    }
+    if (e.ra == null || e.dec == null) return;
+    const fov =
+      e.kind === 'constellation'
+        ? 50
+        : Math.min(60, Math.max(e.kind === 'star' ? 5 : 0.5, (e.sizeDeg ?? 0.2) * 4));
+    gotoSky(e.ra, e.dec, fov, e.engineId);
+  }
+  function pickSurvey(id: string) {
+    layers = { ...layers, surveys: true, survey: id };
+    goPage('sky');
   }
   $effect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -367,10 +387,18 @@
     : null;
   // Started once (untracked): start() reads the sources' own state, and a tracked
   // read would restart them on every update.
+  // Orbits (~50 kB, one data-Worker request) are needed only by the Space section: they start
+  // when it scrolls near the viewport.
+  let orbitStop: (() => void) | null = null;
+  function startOrbits() {
+    if (orbitSource && !orbitStop) orbitStop = orbitSource.start();
+  }
   onMount(() => {
     const stops = [kpSource.start()];
-    if (orbitSource) stops.push(orbitSource.start());
-    return () => stops.forEach((stop) => stop());
+    return () => {
+      stops.forEach((stop) => stop());
+      orbitStop?.();
+    };
   });
 
   const weather = $derived(sources?.weather.data ?? null);
@@ -903,6 +931,10 @@
   {/await}
 {/if}
 
+{#if searchOpen}
+  <SearchDialog onclose={() => (searchOpen = false)} onpick={pickResult} onsurvey={pickSurvey} />
+{/if}
+
 <div class="head" class:on-sky={page === 'sky'} bind:clientHeight={headH}>
   <AppHeader
     {page}
@@ -1170,6 +1202,7 @@
             </div>
           </header>
 
+          <div use:nearView={startOrbits}></div>
           <Extras
             {place}
             {tz}

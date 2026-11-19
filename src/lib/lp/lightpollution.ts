@@ -36,7 +36,13 @@ export interface LpInfo {
   };
 }
 
+/**
+ * Yearly model description. A copy for the current model year ships with the site
+ * (public/data/, no data-Worker request); the Worker's copy is the fallback, e.g. right
+ * after a new yearly model is published and before the site is rebuilt.
+ */
 export const LP_INFO_URL = DATA_BASE ? `${DATA_BASE}/data/lightpollution.json` : '';
+const LP_INFO_STATIC = `${import.meta.env.BASE_URL}data/lightpollution-2025.json`;
 
 // Commonly quoted SQM boundaries of the (visual) Bortle scale; approximate.
 const BORTLE_LIMITS: [number, number][] = [
@@ -135,10 +141,19 @@ const tileUrl = (tpl: string, z: number, x: number, y: number) =>
   DATA_BASE + tpl.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
 
 export async function loadLpInfo(signal: AbortSignal, force = false): Promise<Cached<LpInfo>> {
-  return fetchJson<LpInfo>('lp.info', LP_INFO_URL, {
-    maxAgeMs: force ? 0 : 24 * 3600_000,
-    signal,
-  });
+  try {
+    return await fetchJson<LpInfo>('lp.info', LP_INFO_STATIC, {
+      maxAgeMs: force ? 0 : 24 * 3600_000,
+      retries: 0,
+      signal,
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') throw e;
+    return fetchJson<LpInfo>('lp.info.worker', LP_INFO_URL, {
+      maxAgeMs: force ? 0 : 24 * 3600_000,
+      signal,
+    });
+  }
 }
 
 async function siteBrightening(info: LpInfo, lat: number, lon: number, signal: AbortSignal) {

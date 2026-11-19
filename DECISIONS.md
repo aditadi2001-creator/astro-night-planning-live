@@ -102,3 +102,35 @@ the original build; listed but disabled with that reason.
 URL only). Without it the dev server hid the 7Timer! seeing row, light pollution/Bortle,
 satellite clouds and the deep star/DSO layers, which looked like those features had been
 removed. Dev traffic is small next to the 100 k/day limit.
+
+## Phase 2 (2026-11-19)
+
+**D19. Stellarium's DSO catalog is the backbone of every catalog.** It is GPL-2.0-or-later (usable
+in AGPL via GPLv3), already cross-identifies 29 catalogs for 94,880 objects, and carries common
+names with sources. That replaces 15 separate VizieR downloads with unclear terms. OpenNGC stays
+for the existing target ranking until Phase 3 moves ranking onto the new shards.
+
+**D20. Two DSO shards.** "Core" = anything with a name, in a classic catalog, or brighter than mag
+13 (25,555 rows, 651 KB gzipped); "galaxies" = the rest (69,325 PGC/UGC/ESO rows, 1.6 MB gzipped),
+fetched only when a query asks for them. Both are Pages assets, so search costs no Worker requests.
+
+**D21. Curated objects list names only.** Quasars/AGN, doubles, variables and exoplanet hosts are
+resolved with Sesame at build time; nothing is typed in by hand (constraint 7). Names Sesame
+cannot resolve are left out and listed.
+
+**D22. Survey registry is generated, not hand-typed.** `scripts/surveys/build-registry.mjs` reads
+the MocServer record for each chosen survey (mirrors, frame, coverage, copyright), adds mirrors
+tested for CORS, and puts CDS last. CDS-only surveys are kept but marked "host often down".
+
+**D23. Online fallback is opt-in per query.** SIMBAD/Sesame is called only when the user presses
+"Search SIMBAD online", answers are cached on the device for 30 days, and the CfA mirror is tried
+before IDIA. This respects Sesame's rate limits and keeps automatic third-party requests at zero.
+
+**D24. Static copies instead of Worker reads where data changes yearly or never:** the yearly
+light-pollution description and the preset horizons. The Worker copy remains the fallback.
+The Coorg horizon was left computed on demand (its copied profile failed the checksum against the
+live computation, so it was not shipped).
+
+**D25. `Timing-Allow-Origin: *` added to the Worker's responses** (code only; the Worker is not
+redeployed until the owner agrees) so future request measurements can tell cache hits from
+downloads.

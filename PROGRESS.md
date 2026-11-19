@@ -86,7 +86,46 @@ docs/RESEARCH.md, this file.
 - Initial JS is unchanged at 156 KiB because the Plan page still imports every section
   statically; code-splitting is Phase 6.
 
-## Phase 2 — data and search ⏳
+## Phase 2 — data and search ✅ (2026-11-19)
+
+**Done (evidence)**
+
+- Catalog pipeline `scripts/catalogs/build_catalogs.py` → `public/catalog/` (Pages, zero R2):
+  **94,880 deep-sky objects** with cross-IDs for **29 catalogs** (Stellarium DSO catalog v3.23,
+  GPL-2.0+), **Herschel 400** flags (399 list rows → 402 objects), **8,924 bright stars** with
+  Bayer/Flamsteed/HD/HIP and IAU names, **84 curated** quasars/AGN, doubles, variables and
+  exoplanet hosts (positions from Sesame, none typed by hand). Per-catalog counts in About and
+  DATA_BUDGET.md §6 (e.g. M 110, C 110, NGC 7,269, IC 3,776, Sh2 316, B 343, LDN 1,786, LBN
+  1,118, vdB 161, Arp 391, HCG 247, Cr 468, PGC 79,314). Gum: not available (reported).
+- Survey registry generated from the MocServer (`scripts/surveys/build-registry.mjs`): **36
+  surveys** across gamma, X-ray, UV, optical, Hα, infrared, sub-mm and radio; CDS mirrors last;
+  CDS-only ones marked "host often down"; Mellinger excluded; credits generated per survey.
+  The existing survey menu now groups them by wavelength.
+- Unified search: index in a **Web Worker** (`src/lib/search/`), Ctrl/Cmd-K dialog
+  (`SearchDialog.svelte`) with grouped results, catalog badges, keyboard navigation, recents and
+  favorites (device only), catalog browsing ("Messier" → the 110 objects in order), surveys as
+  results (choosing one turns it on), coordinates, and an opt-in **SIMBAD/Sesame** fallback
+  (verified: "HD 84937" found online). Cross-IDs: M 31 = NGC 224 = UGC 454 = PGC 2557 =
+  Andromeda Galaxy in one entry. **18 search tests**; a query over 34,000+ entries takes
+  **< 100 ms** (test) and the dialog showed results ~100 ms after typing (40 ms of it debounce).
+- Worker requests (cold, Bangalore): **Plan 73 → 14, Sky 73 → 24**. Static light-pollution
+  info, static preset horizons (Bangalore, Hanle; verified identical to the live computation),
+  no properties probes, orbits only near the Space section. `Timing-Allow-Origin` added to the
+  Worker code (not deployed).
+- Gate: svelte-check 0/0, ESLint clean, Prettier clean, **295 tests pass**, Worker type-check
+  OK, R2 guard tests OK, build OK, budget OK (static data 27.4 MiB / 40, initial JS 164.8 KiB
+  gz), 0 console errors. Screenshots: `docs/screenshots/phase2/` (390, 768, 1440, go-to M 31).
+
+**Carried to later phases**
+
+- The old in-sky search box still exists next to the new dialog (removed with the Phase 4 sky
+  redesign). The survey picker with thumbnails and opacity per layer is Phase 4.
+- Target ranking still uses the OpenNGC list; Phase 3 moves it onto the new catalog shards
+  (needed for the catalog/type filters).
+- Remaining Worker requests are the 9 cloud tiles behind the Tonight table and the deep-sky
+  layer's order-0 tiles; the targets (Plan ≤ 6, Sky ≤ 12) are not met yet.
+- The Worker change (`Timing-Allow-Origin`) needs a deploy, which waits for the owner's OK.
+- Coorg ships without a static horizon (copy failed its checksum); it is computed on first visit.
 
 ## Phase 3 — Plan page ⏳
 

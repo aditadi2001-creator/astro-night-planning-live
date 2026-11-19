@@ -44,7 +44,7 @@ R2 contents (from the pipeline logs and project notes):
 
 **Decision (D12): all layers stay.** The v1 files are kept as fallbacks; nothing is deleted.
 
-## 3. Worker requests per page load (measured, Phase 0 baseline)
+## 3. Worker requests per page load (Phase 0 baseline; Phase 2 results below the table)
 
 Production build (`vite preview`, real Worker), fresh browser profile, default location
 (Greenwich), 2026-11-19. Counted with `performance.getEntriesByType('resource')`.
@@ -58,6 +58,11 @@ Production build (`vite preview`, real Worker), fresh browser profile, default l
 | Repeat visit (reload)                                                   | 22 entries, all `transferSize = 0` | served from the browser HTTP cache (immutable tiles, device cache for JSON/DEM). Cross-origin timing hides sizes without `Timing-Allow-Origin`, so this is an _estimate_ of ≈ 0–3 real requests; Phase 2 adds `Timing-Allow-Origin: *` to measure exactly.             |
 
 **Avoidable today:** 19 duplicates (JSON ×9, properties ×2, cloud z5 ×8).
+
+**After Phase 2 (measured, cold, Bangalore):** Plan **14**, Sky **24** (from 73). Done: shared
+in-flight fetches, static light-pollution info, static preset horizons, no properties probes,
+orbits only when the Space section is near. Still open: the 9 recorded/now-cast cloud tiles (needed
+by the Tonight table) and the DSO layer's order-0 tiles (served from R2 by the engine).
 
 ### Reduction plan (Phase 1–2) and targets
 
@@ -105,8 +110,28 @@ the free tier is guaranteed by the request cap itself. Projected realistic use: 
 | Largest single file                                                    |     — |       `maplibre-gl` chunk 1.10 MB (lazy) |
 | Initial JS (main chunk, gzipped)                                       |     — | **156 KB** (target ≤ 250 KB on `#/plan`) |
 
-## 6. Catalog shards (filled in Phase 2)
+## 6. Catalog shards and other static data (Phase 2)
 
-| Catalog   | Source | License | Rows | Bytes (gz) | File |
-| --------- | ------ | ------- | ---: | ---------: | ---- |
-| _Phase 2_ |        |         |      |            |      |
+All on Cloudflare Pages (zero R2), versioned file names, built by
+`python scripts/catalogs/build_catalogs.py` (inputs downloaded to `scripts/catalogs/raw/`,
+git-ignored, never uploaded).
+
+| File                             | Source                                                           | License                        |            Rows |     Bytes |      gzip | Loaded                                               |
+| -------------------------------- | ---------------------------------------------------------------- | ------------------------------ | --------------: | --------: | --------: | ---------------------------------------------------- |
+| `catalog/dso-core-v1.json`       | Stellarium DSO catalog v3.23 + Herschel 400 list                 | GPL-2.0-or-later (list: facts) |          25,555 | 2,466,850 |   650,842 | when search first opens                              |
+| `catalog/dso-galaxies-v1.json`   | same (objects only in PGC/UGC/ESO, no name, fainter than mag 13) | GPL-2.0-or-later               |          69,325 | 6,331,596 | 1,641,466 | only when a query needs it                           |
+| `catalog/stars-v1.json`          | bundled Hipparcos/Gaia star tiles + BSC5 + IAU WGSN names        | ESA open data / public domain  | 8,924 (V ≤ 6.5) |   588,652 |   235,939 | when search first opens                              |
+| `catalog/notable-v1.json`        | curated names, positions from CDS Sesame                         | acknowledgement (SIMBAD)       |              84 |     5,859 |     2,328 | when search first opens                              |
+| `catalog/manifest-v1.json`       | counts, sources                                                  | —                              |               — |     1,060 |       662 | About page (bundled)                                 |
+| `data/lightpollution-2025.json`  | copy of the Worker's yearly model description                    | ours                           |               — |     ~2 KB |         — | Tonight (instead of a Worker request)                |
+| `horizons/presets-v1.json`       | Copernicus GLO-30 horizon profiles (Bangalore, Hanle)            | Copernicus DEM licence (free)  |         2 × 720 |     ~8 KB |         — | first visit at a preset (instead of 12 DEM requests) |
+| `src/lib/sky/survey-registry.ts` | CDS MocServer records + CORS-tested mirrors                      | per survey (Credits)           |      25 surveys |     in JS |         — | survey picker                                        |
+
+Objects per catalog (an object can be in several): PGC 79,314 · ESO 17,396 · UGC 13,371 ·
+NGC 7,269 · Abell 5,249 · IC 3,776 · PN G 2,929 · PK 1,897 · LDN 1,786 · VV 1,126 · LBN 1,118 ·
+SNR G 730 · Cr 468 · H400 402 · Arp 391 · B 343 · Sh2 316 · Ced 301 · vdB-Ha 262 · HCG 247 ·
+Mel 245 · DWB 193 · RCW 186 · Ru 174 · vdB 161 · vdBH 135 · M 110 · C 110 · Tr 37 · St 22.
+Not available: Gum (no machine-readable catalogue found). Curated: 15 quasars/AGN, 25 doubles,
+25 variables, 19 exoplanet hosts (GJ 1214 was left out: Sesame did not answer reliably).
+
+Static data now 27.4 MiB in 870 files (budget 40 MiB); initial JS 164.8 KiB gzipped.

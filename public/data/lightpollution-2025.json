@@ -1,0 +1,62 @@
+{
+ "year": 2025,
+ "naturalSqm": 22.0,
+ "model": {
+  "p": 2.0,
+  "d0Km": 0.5,
+  "DKm": 300.0,
+  "A": 0.05623413251903491,
+  "rMaxKm": 150.0
+ },
+ "lp": {
+  "tiles": "/tiles/lightpollution-2025/{z}/{x}/{y}.webp",
+  "maxzoom": 8,
+  "magPerStep": 0.025
+ },
+ "rad": {
+  "tiles": "/tiles/lprad-2025/{z}/{x}/{y}.webp",
+  "maxzoom": 6,
+  "scale": 64,
+  "ref": 0.5
+ },
+ "validation": {
+  "best": {
+   "p": 2.0,
+   "d0": 0.5,
+   "D": 300.0,
+   "A": 0.05623413251903491,
+   "n": 5345,
+   "median_abs_mag": 0.354,
+   "rms_mag": 1.087,
+   "rms_mag_without_outliers": 0.506,
+   "outliers_over_1_5_mag": 705,
+   "bias_mag": -0.061
+  },
+  "by_brightness": {
+   "SQM < 19": {
+    "n": 1807,
+    "median_abs_mag": 0.531,
+    "rms_mag": 1.52,
+    "rms_mag_without_outliers": 0.585,
+    "outliers_over_1_5_mag": 473,
+    "bias_mag": -0.323
+   },
+   "19\u201321": {
+    "n": 2276,
+    "median_abs_mag": 0.313,
+    "rms_mag": 0.754,
+    "rms_mag_without_outliers": 0.496,
+    "outliers_over_1_5_mag": 164,
+    "bias_mag": 0.1
+   },
+   "> 21": {
+    "n": 1262,
+    "median_abs_mag": 0.284,
+    "rms_mag": 0.821,
+    "rms_mag_without_outliers": 0.424,
+    "outliers_over_1_5_mag": 68,
+    "bias_mag": -0.125
+   }
+  }
+ }
+}

@@ -201,6 +201,26 @@ export function shouldSaveData(): boolean {
   return !!c && (c.saveData === true || /(^|-)(2g|3g)$/.test(c.effectiveType ?? ''));
 }
 
+let presets: Promise<Record<string, { p: number[]; e: number; n: number }>> | null = null;
+
+/** Precomputed horizon for a location preset (same key as the device cache), or null. */
+async function presetHorizon(
+  lat: number,
+  lon: number,
+  eye: number | null,
+): Promise<SiteHorizon | null> {
+  presets ??= fetch(`${import.meta.env.BASE_URL}horizons/presets-v1.json`)
+    .then((r) => (r.ok ? r.json() : { presets: {} }))
+    .then(
+      (j: { presets?: Record<string, { p: number[]; e: number; n: number }> }) => j.presets ?? {},
+    )
+    .catch(() => ({}));
+  const v = (await presets)[cacheKey(lat, lon, eye).slice(CACHE_PREFIX.length)];
+  return v
+    ? { profile: Float32Array.from(v.p, (x) => x / 100), siteElevation: v.e, tiles: v.n }
+    : null;
+}
+
 export function hasCachedHorizon(lat: number, lon: number, siteElevation: number | null): boolean {
   return readCache(lat, lon, siteElevation) !== null;
 }
@@ -222,6 +242,12 @@ export async function loadHorizon(
   if (!DEM_BASE) return null;
   const cached = readCache(lat, lon, siteElevation);
   if (cached) return cached;
+  // Location presets ship a precomputed profile (public/horizons/): no DEM requests at all.
+  const preset = await presetHorizon(lat, lon, siteElevation);
+  if (preset) {
+    writeCache(lat, lon, siteElevation, preset);
+    return preset;
+  }
 
   const cosLat = Math.cos((lat * Math.PI) / 180);
   const dLat = FAR_M / M_PER_DEG;

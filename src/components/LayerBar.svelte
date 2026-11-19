@@ -26,7 +26,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { creditLine } from '../lib/credits';
-  import { hostLabel, SURVEYS, surveyById } from '../lib/sky/surveys';
+  import { hostLabel, SURVEYS, surveyById, surveysByBand } from '../lib/sky/surveys';
 
   let {
     layers = $bindable(),
@@ -121,8 +121,12 @@
     <div class="survey" role="group" aria-label="Sky survey options">
       <label class="field" for={`${pid}survey-pick`}>Survey</label>
       <select id={`${pid}survey-pick`} bind:value={layers.survey}>
-        {#each SURVEYS as s (s.id)}
-          <option value={s.id}>{s.label}</option>
+        {#each surveysByBand() as g (g.band.id)}
+          <optgroup label={g.band.label}>
+            {#each g.surveys as s (s.id)}
+              <option value={s.id}>{s.label}{s.cdsOnly ? ' (host often down)' : ''}</option>
+            {/each}
+          </optgroup>
         {/each}
       </select>
       <label class="field" for={`${pid}survey-opacity`}>Opacity</label>
