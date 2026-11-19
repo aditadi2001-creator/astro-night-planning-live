@@ -65,3 +65,36 @@ describe('fetchJson', () => {
     expect(roundCoord(-0.0005)).toBe(-0);
   });
 });
+
+describe('fetchJson request sharing', () => {
+  it('makes one request for concurrent callers of the same key', async () => {
+    let release: (r: Response) => void = () => {};
+    const f = vi.fn(() => new Promise<Response>((r) => (release = r)));
+    vi.stubGlobal('fetch', f);
+    const a = fetchJson<{ v: number }>('share1', 'https://example.test/s', { maxAgeMs: 60_000 });
+    const b = fetchJson<{ v: number }>('share1', 'https://example.test/s', { maxAgeMs: 60_000 });
+    release(new Response(JSON.stringify({ v: 7 }), { status: 200 }));
+    expect((await a).data.v).toBe(7);
+    expect((await b).data.v).toBe(7);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('one caller aborting does not cancel the request for the others', async () => {
+    let release: (r: Response) => void = () => {};
+    const f = vi.fn(() => new Promise<Response>((r) => (release = r)));
+    vi.stubGlobal('fetch', f);
+    const ctrl = new AbortController();
+    const a = fetchJson('share2', 'https://example.test/t', {
+      maxAgeMs: 60_000,
+      signal: ctrl.signal,
+    });
+    const b = fetchJson<{ v: number }>('share2', 'https://example.test/t', { maxAgeMs: 60_000 });
+    ctrl.abort();
+    await expect(a).rejects.toThrow(/Abort/);
+    release(new Response(JSON.stringify({ v: 9 }), { status: 200 }));
+    expect((await b).data.v).toBe(9);
+    // A third caller after completion is served from cache: still one request.
+    await fetchJson('share2', 'https://example.test/t', { maxAgeMs: 60_000 });
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+});

@@ -1,4 +1,9 @@
 import { mount } from 'svelte';
+// Self-hosted fonts (OFL 1.1): no third-party font request, works offline at dark sites.
+import '@fontsource-variable/atkinson-hyperlegible-next/wght.css';
+import '@fontsource/spectral/latin-500-italic.css';
+import '@fontsource/spectral/latin-600-italic.css';
+import './styles/tokens.css';
 import './app.css';
 import App from './App.svelte';
 

@@ -1,53 +1,11 @@
-:root {
-  color-scheme: dark;
-  --bg: #05070d;
-  --panel: #0d1220;
-  --panel-2: #141b2d;
-  --line: #222b40;
-  --text: #e6e9f2;
-  --muted: #9aa3b8;
-  --accent: #8fb4ff;
-  --good: #6fd39b;
-  --warn: #f2c46d;
-  --bad: #f07878;
-  --radius: 12px;
-  --gap: 12px;
-  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
-  --sky-horizon: #1a2440;
-  --sky-mid: #070a14;
-  --sky-top: #03040a;
-  /* Applied to the WebGL sky canvas in night mode (the engine draws real colours). */
-  --sky-filter: none;
-}
-
-/* Night-vision mode: everything in deep red, no blue/green light. */
-:root[data-night='true'] {
-  --bg: #000000;
-  --panel: #120000;
-  --panel-2: #1c0202;
-  --line: #3a0808;
-  --text: #ff4a3a;
-  /* 4.7:1 on the panels (WCAG AA for small text) while staying pure red. */
-  --muted: #e5382a;
-  --accent: #ff5a48;
-  --good: #ff5a48;
-  --warn: #ff5a48;
-  --bad: #ff2a1a;
-  --sky-horizon: #1a0000;
-  --sky-mid: #070000;
-  --sky-top: #000000;
-  /* Luminance only, then mapped to red: removes all blue/green light. */
-  --sky-filter: grayscale(1) sepia(1) saturate(8) hue-rotate(-35deg) brightness(0.7);
-}
-
 * {
   box-sizing: border-box;
 }
 
 /* Night mode: pictures (logo, survey thumbnails) lose their blue and green too. */
-:root[data-night='true'] img {
-  filter: var(--sky-filter);
+:root[data-night='true'] img,
+:root[data-night='true'] video {
+  filter: var(--media-filter);
 }
 
 html,
@@ -56,9 +14,10 @@ body {
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font);
-  font-size: 15px;
-  line-height: 1.45;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: var(--lh-body);
+  font-variant-numeric: tabular-nums;
   -webkit-text-size-adjust: 100%;
 }
 
@@ -75,10 +34,11 @@ button {
   color: inherit;
   background: var(--panel-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--r-input);
   padding: 6px 12px;
   cursor: pointer;
   min-height: 36px;
+  transition: border-color var(--t-fast) var(--ease);
 }
 
 button:hover {
@@ -86,7 +46,7 @@ button:hover {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--brass);
   outline-offset: 2px;
 }
 
@@ -102,4 +62,11 @@ button:hover {
 .credit-line {
   font-size: 12px;
   color: var(--muted);
+}
+
+/* Object names are set like atlas labels. */
+.obj-name {
+  font-family: var(--font-name);
+  font-style: italic;
+  font-weight: 500;
 }

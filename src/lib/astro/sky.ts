@@ -13,6 +13,8 @@ export interface Place {
   detail?: string;
   /** True when elevation is unknown (e.g. GPS without altitude); filled from the forecast's terrain model. */
   needsElevation?: boolean;
+  /** Preset id (e.g. "bangalore"), used in shareable links instead of coordinates. */
+  id?: string;
 }
 
 export interface BodyPosition {

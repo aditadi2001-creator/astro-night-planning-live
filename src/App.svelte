@@ -1,7 +1,25 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import TopBar from './components/TopBar.svelte';
-  import TabNav, { tabFromHash, type TabId } from './components/TabNav.svelte';
+  import AppHeader from './components/AppHeader.svelte';
+  import NightRibbon from './components/NightRibbon.svelte';
+  import SectionIndex from './components/SectionIndex.svelte';
+  import SkyEphem from './components/SkyEphem.svelte';
+  import {
+    buildHash,
+    parseHash,
+    PLAN_SECTIONS,
+    type Page,
+    type RouteParams,
+    type SectionId,
+  } from './lib/state/route';
+  import type { RibbonHour } from './lib/ribbon';
+  import {
+    loadActiveProfileId,
+    loadProfiles,
+    profileSetup,
+    saveActiveProfileId,
+    type Profile,
+  } from './lib/profiles';
   import { fmtDateTime } from './lib/time/format';
   import SkyView, { type SkyPanel, type TimeCmd } from './components/SkyView.svelte';
   import LocationPicker from './components/LocationPicker.svelte';
@@ -87,7 +105,108 @@
   /** The moment the sky and cards show; follows `now` while live. */
   let shown = $state(new Date());
   let live = $state(true);
-  let tab = $state<TabId>(tabFromHash(location.hash));
+  // ---- two pages and the shareable URL state (src/lib/state/route.ts) ----
+  const firstRoute = parseHash(location.hash) ?? { page: 'plan', params: {}, redirected: false };
+  if (firstRoute.redirected) {
+    history.replaceState(null, '', buildHash(firstRoute.page, firstRoute.params));
+  }
+  let page = $state<Page>(firstRoute.page);
+  let params = $state<RouteParams>(firstRoute.params);
+  const sectionOf = (s: string | undefined): SectionId =>
+    (PLAN_SECTIONS.find((x) => x.id === s)?.id ?? 'tonight') as SectionId;
+  let activeSection = $state<SectionId>(sectionOf(firstRoute.params.s));
+  /** The sky engine (1.3 MB) loads on the first visit to the Sky page and then stays mounted. */
+  let skyMounted = $state(firstRoute.page === 'sky');
+  $effect(() => {
+    if (page === 'sky') skyMounted = true;
+  });
+
+  function goPage(p: Page, extra: RouteParams = {}) {
+    const next = { ...params, ...extra };
+    if (p === 'sky') delete next.s;
+    location.hash = buildHash(p, next);
+  }
+  function jumpTo(id: SectionId) {
+    activeSection = id;
+    if (page !== 'plan') {
+      location.hash = buildHash('plan', { ...params, s: id });
+      return;
+    }
+    params = { ...params, s: id };
+    history.replaceState(null, '', buildHash('plan', params));
+    document.getElementById(`sec-${id}`)?.scrollIntoView({ block: 'start' });
+  }
+  function sectionInView(id: SectionId) {
+    if (id === activeSection) return;
+    activeSection = id;
+    params = { ...params, s: id };
+    history.replaceState(null, '', buildHash('plan', params));
+  }
+
+  // ---- Beginner / Expert (same data; Expert shows every column and unit) ----
+  let expert = $state(readFlag('anp:expert'));
+  $effect(() => writeFlag('anp:expert', expert));
+  function hasStoredSetups(): boolean {
+    try {
+      return localStorage.getItem('anp.setups.v1') != null;
+    } catch {
+      return false;
+    }
+  }
+
+  // Maps (MapLibre + tiles, ~1–3 MB) load only when their section comes near the viewport.
+  let mapsNear = $state(firstRoute.params.s === 'maps');
+  function nearView(node: HTMLElement, onnear: () => void) {
+    const io = new IntersectionObserver(
+      (es) => {
+        if (es.some((e) => e.isIntersecting)) {
+          onnear();
+          io.disconnect();
+        }
+      },
+      { rootMargin: '600px 0px' },
+    );
+    io.observe(node);
+    return { destroy: () => io.disconnect() };
+  }
+
+  function readFlag(k: string): boolean {
+    try {
+      return localStorage.getItem(k) === '1';
+    } catch {
+      return false;
+    }
+  }
+  function writeFlag(k: string, v: boolean) {
+    try {
+      localStorage.setItem(k, v ? '1' : '0');
+    } catch {
+      /* private mode */
+    }
+  }
+
+  // ---- search: Ctrl/Cmd-K anywhere opens the sky search ----
+  function openSearch() {
+    if (page !== 'sky') goPage('sky');
+    // The sky (and its search box) may still be mounting.
+    let tries = 0;
+    const focus = () => {
+      const el = document.getElementById('sky-search') as HTMLInputElement | null;
+      if (el && el.offsetParent !== null) el.focus();
+      else if (tries++ < 40) setTimeout(focus, 100);
+    };
+    focus();
+  }
+  $effect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        openSearch();
+      }
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  });
   let headH = $state(110);
   /** Time-rate multiplier while not live (Stellarium J/K/L); 0 = stopped at the chosen time. */
   let rate = $state(0);
@@ -522,22 +641,42 @@
     ),
   );
 
+  const ribbonHours = $derived<RibbonHour[]>(
+    timeline.map((r) => ({
+      t: r.t,
+      cloud: r.cloud?.total ?? r.weather?.cloud ?? null,
+      moonAlt: r.moonAlt,
+      sunAlt: r.sunAlt,
+      score: r.score?.score ?? null,
+    })),
+  );
+
   $effect(() => {
     const t = setInterval(() => {
       now = new Date();
       if (live) shown = now;
     }, 1000);
     const onHash = () => {
-      const h = location.hash;
-      // In-page anchors (the skip link) are not section changes.
-      if (h && !h.startsWith('#/')) return;
-      const next = tabFromHash(h);
-      if (next !== tab) {
-        tab = next;
+      const r = parseHash(location.hash);
+      // In-page anchors (the skip link) are not routes.
+      if (!r) return;
+      if (r.redirected) history.replaceState(null, '', buildHash(r.page, r.params));
+      const pageChanged = r.page !== page;
+      page = r.page;
+      params = r.params;
+      if (r.page === 'plan') {
+        const id = sectionOf(r.params.s);
+        activeSection = id;
+        if (r.params.s || pageChanged) {
+          requestAnimationFrame(() => {
+            if (r.params.s)
+              document.getElementById(`sec-${id}`)?.scrollIntoView({ block: 'start' });
+            else window.scrollTo({ top: 0 });
+          });
+        }
+      } else if (pageChanged) {
         window.scrollTo({ top: 0 });
       }
-      if (h === '#/credits')
-        requestAnimationFrame(() => document.getElementById('credits')?.scrollIntoView());
     };
     addEventListener('hashchange', onHash);
     return () => {
@@ -559,7 +698,7 @@
     // Phone status bar / browser chrome: black in night mode.
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', night ? '#000000' : '#05070d');
+      ?.setAttribute('content', night ? '#000000' : '#0b1430');
     try {
       localStorage.setItem('anp:night', night ? '1' : '0');
     } catch {
@@ -614,7 +753,7 @@
   let gotoN = 0;
   function gotoSky(ra: number, dec: number, fovDeg: number, id?: string) {
     gotoTarget = { ra, dec, fovDeg, n: ++gotoN, ...(id ? { id } : {}) };
-    location.hash = '#/sky';
+    goPage('sky', id ? { t: id } : {});
   }
 
   // ---- phone camera horizon view ---------------------------------------------------
@@ -638,6 +777,22 @@
     lunarsolar: false,
   });
   let frameCenter = $state<{ ra: number; dec: number; target: string | null } | null>(null);
+  // The header's profile selector drives the deep-sky frame (FOV, framing scores).
+  let profiles = $state<Profile[]>(loadProfiles());
+  let profileId = $state(loadActiveProfileId());
+  const activeProfile = $derived(profiles.find((p) => p.id === profileId) ?? profiles[0] ?? null);
+  function selectProfile(id: string) {
+    profileId = id;
+    saveActiveProfileId(id);
+    const p = profiles.find((x) => x.id === id);
+    if (p) setups = { ...setups, deepsky: { ...profileSetup(p), kind: 'deepsky' } };
+  }
+  // First visit: start from the active profile instead of the generic default rig.
+  untrack(() => {
+    if (!hasStoredSetups() && activeProfile) {
+      setups = { ...setups, deepsky: { ...profileSetup(activeProfile), kind: 'deepsky' } };
+    }
+  });
   // Setups are saved here too: rotation can change from the sky while the Equipment tab is closed.
   $effect(() => {
     saveSetups($state.snapshot(setups) as Record<SetupKind, Setup>);
@@ -681,9 +836,9 @@
   let satmapWas = false;
   $effect(() => {
     const on = layers.satmap;
-    if (on && !satmapWas && untrack(() => tab) !== 'maps') {
+    if (on && !satmapWas && untrack(() => page) !== 'plan') {
       if (document.fullscreenElement) void document.exitFullscreen();
-      location.hash = '#/maps';
+      location.hash = buildHash('plan', { ...untrack(() => params), s: 'maps' });
     }
     satmapWas = on;
   });
@@ -748,287 +903,353 @@
   {/await}
 {/if}
 
-<div class="head" bind:clientHeight={headH}>
-  <TopBar {place} {now} {tz} bind:night onplace={setPlace} />
-  <TabNav {tab} />
+<div class="head" class:on-sky={page === 'sky'} bind:clientHeight={headH}>
+  <AppHeader
+    {page}
+    {place}
+    {now}
+    {tz}
+    {profiles}
+    {profileId}
+    {expert}
+    {night}
+    onplace={setPlace}
+    onprofile={selectProfile}
+    onexpert={(v) => (expert = v)}
+    onnight={(v) => (night = v)}
+    onpage={(p) => goPage(p)}
+    onsearch={openSearch}
+  />
+  <NightRibbon
+    {tw}
+    hours={ribbonHours}
+    shown={shown.getTime()}
+    now={now.getTime()}
+    {live}
+    {tz}
+    onpick={(t, isLive) => setTime(new Date(t), isLive)}
+  />
 </div>
 
 <main id="main" tabindex="-1" style:--head-h={`${headH}px`}>
-  <!-- The sky stays mounted on every tab (the WebGL engine is never torn down);
-       other tabs move it off-screen at a small size. -->
-  <section
-    class="sky-panel"
-    class:offscreen={tab !== 'sky'}
-    inert={tab !== 'sky'}
-    aria-label="Live sky"
-  >
-    <h1 class="visually-hidden">Live sky</h1>
-    <div class="sky-row" class:with-details={!!selectedInfo}>
-      <div class="sky-box">
-        <SkyView
-          {place}
-          time={shown}
-          {live}
-          {rate}
-          {tz}
-          atmosphere={engineAtmosphere}
-          clouds={cloudInput}
-          horizon={layers.terrain ? (siteHorizon?.profile ?? null) : null}
-          groundColor={groundRgb}
-          glow={domeGlow}
-          survey={engineSurvey}
-          bind:setups
-          bind:shownFrames
-          bind:layers
-          bind:night
-          onframecenter={(c) => (frameCenter = c)}
-          onselect={(i) => (selectedInfo = i)}
-          goto={gotoTarget}
-          {clearSignal}
-          deepSky={layers.deepSky && !layers.surveys ? deepSkyUrl : null}
-          longExposure={layers.longExposure}
-          oncursor={(p) => (cursor = p)}
-          ontime={timeCmd}
-          onsettime={setTime}
-          onrate={(r) => {
-            if (r === 0) setTime(new Date(), true);
-            else {
-              live = false;
-              rate = r;
-            }
-          }}
-          oncamera={() => (cameraOpen = true)}
-        >
-          {#snippet panel(p: SkyPanel, close: () => void)}
-            {#if p === 'location'}
-              <LocationPicker {place} onplace={setPlace} onclose={close} embedded />
-            {:else if p === 'time'}
-              <TimeControls
-                {place}
-                time={shown}
-                {live}
-                {tz}
-                events={timeEvents}
-                onchange={setTime}
-              />
-            {:else if p === 'layers'}
-              <LayerBar
-                bind:layers
-                {surveyStatus}
-                compact
-                ongoto={(ra, dec, fov) => {
-                  close();
-                  gotoSky(ra, dec, fov);
-                }}
-              />
-              <p class="win-note">
-                Display switches (constellations, grids, ground, atmosphere…) are in the button bar
-                at the bottom of the sky; press F1 for the keyboard shortcuts.
-              </p>
-            {/if}
-          {/snippet}
-        </SkyView>
-      </div>
-      {#if selectedInfo}
-        <div class="details-col">
-          <ObjectDetails
-            info={selectedInfo}
+  <!-- The sky loads on the first visit to the Sky page, then stays mounted (the WebGL
+       engine is never torn down); on the Plan page it waits off-screen at a small size. -->
+  {#if skyMounted}
+    <section
+      class="sky-panel"
+      class:offscreen={page !== 'sky'}
+      inert={page !== 'sky'}
+      aria-label="Live sky"
+    >
+      <h1 class="visually-hidden">Live sky</h1>
+      <div class="sky-row" class:with-details={!!selectedInfo}>
+        <div class="sky-box">
+          <SkyView
             {place}
             time={shown}
-            {tw}
+            {live}
+            {rate}
             {tz}
-            {setups}
-            onclose={() => {
-              clearSignal++;
-              selectedInfo = null;
+            atmosphere={engineAtmosphere}
+            clouds={cloudInput}
+            horizon={layers.terrain ? (siteHorizon?.profile ?? null) : null}
+            groundColor={groundRgb}
+            glow={domeGlow}
+            survey={engineSurvey}
+            bind:setups
+            bind:shownFrames
+            bind:layers
+            bind:night
+            onframecenter={(c) => (frameCenter = c)}
+            onselect={(i) => (selectedInfo = i)}
+            goto={gotoTarget}
+            {clearSignal}
+            deepSky={layers.deepSky && !layers.surveys ? deepSkyUrl : null}
+            longExposure={layers.longExposure}
+            oncursor={(p) => (cursor = p)}
+            ontime={timeCmd}
+            onsettime={setTime}
+            onrate={(r) => {
+              if (r === 0) setTime(new Date(), true);
+              else {
+                live = false;
+                rate = r;
+              }
             }}
-          />
+            oncamera={() => (cameraOpen = true)}
+          >
+            {#snippet panel(p: SkyPanel, close: () => void)}
+              {#if p === 'location'}
+                <LocationPicker {place} onplace={setPlace} onclose={close} embedded />
+              {:else if p === 'time'}
+                <TimeControls
+                  {place}
+                  time={shown}
+                  {live}
+                  {tz}
+                  events={timeEvents}
+                  onchange={setTime}
+                />
+              {:else if p === 'layers'}
+                <LayerBar
+                  bind:layers
+                  {surveyStatus}
+                  compact
+                  ongoto={(ra, dec, fov) => {
+                    close();
+                    gotoSky(ra, dec, fov);
+                  }}
+                />
+                <p class="win-note">
+                  Display switches (constellations, grids, ground, atmosphere…) are in the button
+                  bar at the bottom of the sky; press F1 for the keyboard shortcuts.
+                </p>
+              {/if}
+            {/snippet}
+          </SkyView>
         </div>
-      {/if}
-    </div>
-  </section>
-
-  {#if tab === 'tonight'}
-    <section class="page" aria-labelledby="pg-tonight">
-      <header class="page-head">
-        <div>
-          <h1 id="pg-tonight">Tonight</h1>
-          <p class="lede">
-            Conditions at {place.name} for {live ? 'now' : fmtDateTime(shown, tz)}. Pick an hour in
-            the timeline to see that moment here and in the sky.
-          </p>
-        </div>
-        {#if !live}<button onclick={() => setTime(new Date(), true)}>Back to now</button>{/if}
-      </header>
-      {#if sources}
-        <DataStatus
-          now={now.getTime()}
-          sources={[
-            { label: 'Weather', source: sources.weather },
-            { label: 'Models', source: sources.models },
-            { label: 'Air quality', source: sources.air },
-            { label: 'Cloud field', source: sources.ring },
-            ...(sources.satellite ? [{ label: 'Satellite', source: sources.satellite }] : []),
-            ...(sources.sevenTimer ? [{ label: '7Timer!', source: sources.sevenTimer }] : []),
-            ...(sources.light ? [{ label: 'Light pollution', source: sources.light }] : []),
-            ...(sources.aurora ? [{ label: 'Aurora', source: sources.aurora }] : []),
-            { label: 'Kp index', source: kpSource },
-            ...(orbitSource ? [{ label: 'Orbits', source: orbitSource }] : []),
-          ]}
-        />
-      {/if}
-      <Timeline
-        rows={timeline}
-        {tz}
-        shown={shown.getTime()}
-        {sevenTimer}
-        now={nowMin}
-        onpick={(t) => setTime(new Date(t), false)}
-      />
-      <ConditionCards
-        {row}
-        {moon}
-        {tw}
-        {tz}
-        satellite={satSummary}
-        {sevenTimer}
-        light={siteLight}
-        lightStatus={layers.lightpollution ? (sources?.light?.status ?? 'off') : 'off'}
-        loading={sources?.weather.status === 'loading'}
-      />
-      <div class="pair">
-        <PhysicsPanel
-          extinction={ext}
-          {dbv}
-          {sky}
-          {limitMag}
-          {cursor}
-          {pressure}
-          {temperature}
-          {horizonSource}
-          onloadterrain={horizonState === 'saved' ? () => (forceTerrain = true) : undefined}
-        />
+        {#if selectedInfo}
+          <div class="details-col">
+            <ObjectDetails
+              info={selectedInfo}
+              {place}
+              time={shown}
+              {tw}
+              {tz}
+              {setups}
+              onclose={() => {
+                clearSignal++;
+                selectedInfo = null;
+              }}
+            />
+          </div>
+        {/if}
       </div>
     </section>
-  {:else if tab === 'week'}
-    <section class="page" aria-labelledby="pg-week">
-      <header class="page-head">
-        <div>
-          <h1 id="pg-week">Week ahead</h1>
-          <p class="lede">Cloud outlook for the next seven nights from the forecast models.</p>
-        </div>
-      </header>
-      <WeekAhead nights={week} {tz} />
-    </section>
-  {:else if tab === 'targets'}
-    <section class="page" aria-labelledby="pg-targets">
-      <header class="page-head">
-        <div>
-          <h1 id="pg-targets">Targets</h1>
-          <p class="lede">
-            The best deep-sky objects for tonight's dark hours, ranked for your sky and your
-            deep-sky frame. Show one to centre it in the sky with the frame on.
-          </p>
-        </div>
-      </header>
-      <BestTargets
-        {place}
-        {tz}
-        dark={darkTonight}
-        clearAt={clearFactorAt}
-        sqm={siteLight?.sqm ?? 21}
-        sqmKnown={!!siteLight}
-        frameShortDeg={deepFrameShort}
-        stamp={nowMin}
-        onshow={showTarget}
-      />
-    </section>
-  {:else if tab === 'equipment'}
-    <section class="page" aria-labelledby="pg-equipment">
-      <header class="page-head">
-        <div>
-          <h1 id="pg-equipment">Equipment</h1>
-          <p class="lede">
-            Your three setups. Their fields of view appear on the sky with the FOV frame switch.
-          </p>
-        </div>
-        <a class="btn" href="#/sky">Open the sky</a>
-      </header>
-      <Equipment
-        bind:setups
-        bind:shown={shownFrames}
-        seeing={row.seeing?.arcsec ?? null}
-        center={frameCenter}
-      />
-    </section>
-  {:else if tab === 'maps'}
-    <section class="page" aria-labelledby="pg-maps">
-      <header class="page-head">
-        <div>
-          <h1 id="pg-maps">Maps</h1>
-          <p class="lede">
-            Our yearly light-pollution model and the infrared satellite cloud map of the last hours.
-          </p>
-        </div>
-      </header>
-      {#await import('./components/LightPollutionMap.svelte') then { default: LightPollutionMap }}
-        <LightPollutionMap {place} site={siteLight} onplace={setPlace} />
-      {:catch}
-        <p class="note">The light-pollution map could not be loaded. Check the connection.</p>
-      {/await}
-      {#if layers.satmap}
-        {#await import('./components/SatelliteMap.svelte') then { default: SatelliteMap }}
-          <div id="satmap">
-            <SatelliteMap {place} {tz} />
+  {/if}
+
+  {#if page === 'plan'}
+    <div class="plan">
+      <h1 class="visually-hidden">Plan your night at {place.name}</h1>
+      <aside class="plan-index">
+        <SectionIndex active={activeSection} onactive={sectionInView} onjump={jumpTo} />
+      </aside>
+      <div class="plan-body">
+        <section id="sec-tonight" class="sec" aria-labelledby="h-tonight">
+          <header class="sec-head">
+            <div>
+              <h2 id="h-tonight">Tonight at a glance</h2>
+              <p class="lede">
+                Conditions at {place.name} for {live ? 'now' : fmtDateTime(shown, tz)}. Pick an hour
+                in the timeline or drag the night ribbon to see that moment here and in the sky.
+              </p>
+            </div>
+            {#if !live}<button onclick={() => setTime(new Date(), true)}>Back to now</button>{/if}
+          </header>
+
+          {#if sources}
+            <DataStatus
+              now={now.getTime()}
+              sources={[
+                { label: 'Weather', source: sources.weather },
+                { label: 'Models', source: sources.models },
+                { label: 'Air quality', source: sources.air },
+                { label: 'Cloud field', source: sources.ring },
+                ...(sources.satellite ? [{ label: 'Satellite', source: sources.satellite }] : []),
+                ...(sources.sevenTimer ? [{ label: '7Timer!', source: sources.sevenTimer }] : []),
+                ...(sources.light ? [{ label: 'Light pollution', source: sources.light }] : []),
+                ...(sources.aurora ? [{ label: 'Aurora', source: sources.aurora }] : []),
+                { label: 'Kp index', source: kpSource },
+                ...(orbitSource ? [{ label: 'Orbits', source: orbitSource }] : []),
+              ]}
+            />
+          {/if}
+          <Timeline
+            rows={timeline}
+            {tz}
+            shown={shown.getTime()}
+            {sevenTimer}
+            now={nowMin}
+            onpick={(t) => setTime(new Date(t), false)}
+          />
+          <ConditionCards
+            {row}
+            {moon}
+            {tw}
+            {tz}
+            satellite={satSummary}
+            {sevenTimer}
+            light={siteLight}
+            lightStatus={layers.lightpollution ? (sources?.light?.status ?? 'off') : 'off'}
+            loading={sources?.weather.status === 'loading'}
+          />
+          <div class="pair">
+            <PhysicsPanel
+              extinction={ext}
+              {dbv}
+              {sky}
+              {limitMag}
+              {cursor}
+              {pressure}
+              {temperature}
+              {horizonSource}
+              onloadterrain={horizonState === 'saved' ? () => (forceTerrain = true) : undefined}
+            />
           </div>
-        {:catch}
-          <p class="note">
-            The satellite map could not be loaded. Check the connection and try again.
+        </section>
+        <section id="sec-targets" class="sec" aria-labelledby="h-targets">
+          <header class="sec-head">
+            <div>
+              <h2 id="h-targets">Best targets tonight</h2>
+              <p class="lede">
+                Deep-sky objects ranked for tonight's dark hours, your sky and your camera frame.
+              </p>
+            </div>
+          </header>
+
+          <BestTargets
+            {place}
+            {tz}
+            dark={darkTonight}
+            clearAt={clearFactorAt}
+            sqm={siteLight?.sqm ?? 21}
+            sqmKnown={!!siteLight}
+            frameShortDeg={deepFrameShort}
+            stamp={nowMin}
+            onshow={showTarget}
+          />
+        </section>
+        <section id="sec-planets" class="sec" aria-labelledby="h-planets">
+          <header class="sec-head">
+            <div>
+              <h2 id="h-planets">Planets, Sun and Moon</h2>
+              <p class="lede">
+                Where the Solar System is tonight, with rise, transit and set times.
+              </p>
+            </div>
+          </header>
+          <p class="solar-warning" role="note">
+            <strong>Never look at or image the Sun</strong> without a certified full-aperture solar filter
+            on the front of the telescope or lens. Permanent eye and camera damage happens in a fraction
+            of a second.
           </p>
-        {/await}
-      {:else}
-        <div class="placeholder">
-          <div>
-            <h2>Satellite cloud map</h2>
-            <p>
-              Infrared images of the last 2.5 hours around your site (about 1–3 MB). Off until you
-              open it, to save data.
-            </p>
+          <SkyEphem {place} time={shown} {tz} onpick={(n) => goPage('sky', { t: n })} />
+        </section>
+        <section id="sec-week" class="sec" aria-labelledby="h-week">
+          <header class="sec-head">
+            <div>
+              <h2 id="h-week">Week ahead</h2>
+              <p class="lede">Cloud outlook for the next seven nights from the forecast models.</p>
+            </div>
+          </header>
+
+          <WeekAhead nights={week} {tz} />
+        </section>
+        <section id="sec-telescope" class="sec" aria-labelledby="h-telescope">
+          <header class="sec-head">
+            <div>
+              <h2 id="h-telescope">Telescope and field of view</h2>
+              <p class="lede">
+                Your setups and their fields of view; switch the profile in the header.
+              </p>
+            </div>
+          </header>
+
+          <Equipment
+            bind:setups
+            bind:shown={shownFrames}
+            seeing={row.seeing?.arcsec ?? null}
+            center={frameCenter}
+          />
+        </section>
+        <section id="sec-space" class="sec" aria-labelledby="h-space">
+          <header class="sec-head">
+            <div>
+              <h2 id="h-space">Aurora and satellites</h2>
+              <p class="lede">Aurora chances and bright passes of the ISS and other satellites.</p>
+            </div>
+          </header>
+
+          <Extras
+            {place}
+            {tz}
+            {now}
+            aurora={sources?.aurora?.data ?? null}
+            kp={kpSource.data}
+            orbits={orbitSource?.data ?? null}
+            orbitsMissing={!orbitSource || orbitSource.status === 'error'}
+          />
+        </section>
+        <section id="sec-maps" class="sec" aria-labelledby="h-maps">
+          <header class="sec-head">
+            <div>
+              <h2 id="h-maps">Light pollution and cloud maps</h2>
+              <p class="lede">
+                Our yearly light-pollution model and the infrared satellite cloud map of the last
+                hours.
+              </p>
+            </div>
+          </header>
+          <div use:nearView={() => (mapsNear = true)}>
+            {#if mapsNear}
+              {#await import('./components/LightPollutionMap.svelte') then { default: LightPollutionMap }}
+                <LightPollutionMap {place} site={siteLight} onplace={setPlace} />
+              {:catch}
+                <p class="note">
+                  The light-pollution map could not be loaded. Check the connection.
+                </p>
+              {/await}
+              {#if layers.satmap}
+                {#await import('./components/SatelliteMap.svelte') then { default: SatelliteMap }}
+                  <div id="satmap">
+                    <SatelliteMap {place} {tz} />
+                  </div>
+                {:catch}
+                  <p class="note">
+                    The satellite map could not be loaded. Check the connection and try again.
+                  </p>
+                {/await}
+              {:else}
+                <div class="placeholder">
+                  <div>
+                    <h2>Satellite cloud map</h2>
+                    <p>
+                      Infrared images of the last 2.5 hours around your site (about 1–3 MB). Off
+                      until you open it, to save data.
+                    </p>
+                  </div>
+                  <button onclick={() => (layers.satmap = true)}>Show the satellite map</button>
+                </div>
+              {/if}
+            {:else}
+              <p class="note">The maps load when you scroll here (they need about 1–3 MB).</p>
+            {/if}
           </div>
-          <button onclick={() => (layers.satmap = true)}>Show the satellite map</button>
-        </div>
-      {/if}
-    </section>
-  {:else if tab === 'space'}
-    <section class="page" aria-labelledby="pg-space">
-      <header class="page-head">
-        <div>
-          <h1 id="pg-space">Space</h1>
-          <p class="lede">Aurora chances and bright passes of the ISS and other satellites.</p>
-        </div>
-      </header>
-      <Extras
-        {place}
-        {tz}
-        {now}
-        aurora={sources?.aurora?.data ?? null}
-        kp={kpSource.data}
-        orbits={orbitSource?.data ?? null}
-        orbitsMissing={!orbitSource || orbitSource.status === 'error'}
-      />
-    </section>
-  {:else if tab === 'about'}
-    <section class="page prose" aria-label="About and credits">
-      <About />
-      <div id="credits"><Credits /></div>
-    </section>
+        </section>
+        <section id="sec-about" class="sec" aria-labelledby="h-about">
+          <header class="sec-head">
+            <div>
+              <h2 id="h-about">About, methods and credits</h2>
+              <p class="lede">How every number is computed, its limits, and who made the data.</p>
+            </div>
+          </header>
+          <details class="about" open={activeSection === 'about' && params.s === 'about'}>
+            <summary>Methods, honest limits, data sources and credits</summary>
+            <div class="prose">
+              <About />
+              <div id="credits"><Credits /></div>
+            </div>
+          </details>
+        </section>
+      </div>
+    </div>
   {/if}
 </main>
 
-<footer>
+<footer class:hidden={page === 'sky'}>
   <span>Astro Night Planning</span>
-  <a href="#/about">About &amp; methods</a>
-  <a href="#/credits">Credits</a>
+  <a href="#/plan?s=about">About &amp; methods</a>
+  <a href="#/plan?s=about">Credits</a>
   <a href="https://www.gnu.org/licenses/agpl-3.0.html" rel="license">AGPL-3.0</a>
 </footer>
 
@@ -1044,18 +1265,23 @@
     background: var(--panel);
     padding: 8px;
   }
-  /* Top bar + section tabs stay in reach on every page. */
+  /* Header + night ribbon stay in reach on both pages. */
   .head {
     position: sticky;
     top: 0;
     z-index: 15;
-    box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
+    background: var(--ink-1);
+    border-bottom: 1px solid var(--rule);
   }
   main {
-    padding: var(--gap);
+    padding: 0 var(--gap) var(--gap);
     max-width: 1600px;
     margin: 0 auto;
     outline: none;
+  }
+  main:has(.sky-panel:not(.offscreen)) {
+    padding: 0;
+    max-width: none;
   }
   /* ---- sky tab ---- */
   .sky-panel {
@@ -1082,8 +1308,8 @@
   }
   /* Phones: the sky fills the screen under the header. */
   .sky-box {
-    height: calc(100vh - var(--head-h, 110px) - 2 * var(--gap));
-    height: calc(100dvh - var(--head-h, 110px) - 2 * var(--gap));
+    height: calc(100vh - var(--head-h, 110px));
+    height: calc(100dvh - var(--head-h, 110px));
     min-height: 420px;
     min-width: 0;
   }
@@ -1099,8 +1325,8 @@
   @media (min-width: 900px) and (min-height: 600px) {
     /* The whole sky page fits the window: no scrolling to reach the sky. */
     .sky-panel:not(.offscreen) {
-      height: calc(100vh - var(--head-h, 110px) - 2 * var(--gap));
-      height: calc(100dvh - var(--head-h, 110px) - 2 * var(--gap));
+      height: calc(100vh - var(--head-h, 110px));
+      height: calc(100dvh - var(--head-h, 110px));
       min-height: 560px;
     }
     .sky-panel:not(.offscreen) .sky-box {
@@ -1118,48 +1344,101 @@
       scrollbar-width: thin;
     }
   }
-  /* ---- content tabs ---- */
-  .page {
+  /* ---- Plan page ---- */
+  .plan {
     display: grid;
-    gap: var(--gap);
     grid-template-columns: minmax(0, 1fr);
-    max-width: 1280px;
+    gap: var(--s4);
+    max-width: 1440px;
     margin: 0 auto;
-    padding-bottom: 8px;
   }
-  .page-head {
+  .plan-index {
+    position: sticky;
+    top: var(--head-h, 110px);
+    z-index: 5;
+    margin: 0 calc(-1 * var(--gap));
+    padding: var(--s2) var(--gap);
+    background: var(--ink-0);
+    border-bottom: 1px solid var(--rule);
+  }
+  .plan-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+  }
+  .sec {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s4);
+    padding: var(--s6) 0;
+    border-top: 1px solid var(--rule);
+    scroll-margin-top: calc(var(--head-h, 110px) + 64px);
+  }
+  .sec:first-child {
+    border-top: 0;
+    padding-top: var(--s4);
+  }
+  .sec-head {
     display: flex;
     flex-wrap: wrap;
     align-items: end;
     justify-content: space-between;
-    gap: 8px 16px;
-    padding: 4px 2px 2px;
+    gap: var(--s2) var(--s4);
   }
-  .page-head h1 {
+  .sec-head h2 {
     margin: 0;
-    font-size: 22px;
-    font-weight: 650;
-    letter-spacing: -0.01em;
+    font-family: var(--font-name);
+    font-style: italic;
+    font-weight: 600;
+    font-size: var(--fs-30);
+    line-height: var(--lh-head);
   }
-  .lede {
-    margin: 4px 0 0;
-    color: var(--muted);
-    max-width: 70ch;
-    font-size: 14px;
+  .solar-warning {
+    margin: 0;
+    padding: var(--s3) var(--s4);
+    border-left: 4px solid var(--nogo);
+    background: var(--ink-1);
+    border-radius: 0 var(--r-input) var(--r-input) 0;
+    max-width: var(--measure);
   }
-  .btn {
-    display: inline-flex;
+  details.about > summary {
+    cursor: pointer;
+    min-height: var(--touch);
+    display: flex;
     align-items: center;
-    min-height: 36px;
-    padding: 6px 14px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--panel-2);
-    text-decoration: none;
-    color: var(--text);
+    color: var(--brass);
   }
-  .btn:hover {
-    border-color: var(--accent);
+  .prose {
+    max-width: var(--measure);
+  }
+  footer.hidden {
+    display: none;
+  }
+  @media (min-width: 1100px) {
+    .plan {
+      grid-template-columns: 180px minmax(0, 1fr);
+      gap: var(--s6);
+    }
+    .plan-index {
+      align-self: start;
+      margin: 0;
+      padding: var(--s5) 0 0;
+      border-bottom: 0;
+      background: transparent;
+      top: var(--head-h, 110px);
+    }
+  }
+  @media (max-width: 599px) {
+    .sec-head h2 {
+      font-size: var(--fs-24);
+    }
+  }
+  /* ---- shared ---- */
+  .lede {
+    margin: var(--s1) 0 0;
+    color: var(--text-2);
+    max-width: var(--measure);
+    font-size: var(--fs-16);
   }
   .pair {
     display: grid;

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Place } from '../lib/astro/sky';
-  import { loadSavedPlaces, locateMe, saveSavedPlaces } from '../lib/location';
+  import { loadSavedPlaces, locateMe, PRESETS, saveSavedPlaces } from '../lib/location';
   import { searchPlaces, type GeoResult } from '../lib/data/openmeteo';
   import { formatLatLon, parseCoordinates, type LatLon } from '../lib/geo/coords';
   import { elevationAt, reverseOsm, searchOsm, type OsmPlace } from '../lib/geo/places';
@@ -173,6 +173,22 @@
     <button onclick={toggleSave} aria-pressed={isSaved}>
       {isSaved ? '★ Saved' : '☆ Save this place'}
     </button>
+  </div>
+
+  <div class="presets" role="group" aria-label="Built-in places">
+    {#each PRESETS as p (p.id)}
+      <button
+        class="preset"
+        aria-pressed={place.id === p.id}
+        onclick={() => {
+          onplace(p);
+          onclose();
+        }}
+      >
+        <strong>{p.name}</strong>
+        <span>{p.detail}</span>
+      </button>
+    {/each}
   </div>
 
   {#if typed}
@@ -358,6 +374,24 @@
   }
   .coords {
     font-family: var(--mono);
+  }
+  .presets {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+    gap: var(--s2);
+  }
+  .preset {
+    display: grid;
+    gap: 2px;
+    text-align: left;
+    min-height: var(--touch);
+  }
+  .preset span {
+    font-size: var(--fs-12);
+    color: var(--text-2);
+  }
+  .preset[aria-pressed='true'] {
+    border-color: var(--brass);
   }
   .saved {
     display: flex;

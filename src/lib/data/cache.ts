@@ -62,6 +62,56 @@ export function peek<T>(key: string): Cached<T> | null {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Resolve with `p`, or reject with an AbortError as soon as `signal` aborts.
+ * Lets several callers share one network request while each keeps its own
+ * cancel button: one caller giving up never cancels the request for the others
+ * (cancelling it would make the next caller download the same thing again).
+ */
+export function raceSignal<T>(p: Promise<T>, signal?: AbortSignal | null): Promise<T> {
+  if (!signal) return p;
+  if (signal.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
+    signal.addEventListener('abort', onAbort, { once: true });
+    p.then(
+      (v) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(v);
+      },
+      (e: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      },
+    );
+  });
+}
+
+/** Requests in flight, by cache key: concurrent callers share one download. */
+const inflight = new Map<string, Promise<Cached<unknown>>>();
+
+/** Number of requests currently shared (for tests and the budget probe). */
+export function inflightCount(): number {
+  return inflight.size;
+}
+
+const textMemo = new Map<string, Promise<string | null>>();
+
+/**
+ * Small text file fetched at most once per page load (e.g. HiPS `properties`).
+ * Resolves null on any failure, so callers can fall back.
+ */
+export function fetchTextOnce(url: string): Promise<string | null> {
+  let p = textMemo.get(url);
+  if (!p) {
+    p = fetch(url)
+      .then((r) => (r.ok ? r.text() : null))
+      .catch(() => null);
+    textMemo.set(url, p);
+  }
+  return p;
+}
+
 export class HttpError extends Error {
   constructor(
     public status: number,
@@ -88,13 +138,28 @@ export async function fetchJson<T, R = T>(
 ): Promise<Cached<T>> {
   const hit = peek<T>(key);
   if (hit && Date.now() - hit.fetchedAt < opts.maxAgeMs) return hit;
+  let p = inflight.get(key) as Promise<Cached<T>> | undefined;
+  if (!p) {
+    p = download<T, R>(key, url, hit, opts.retries ?? 3, opts.transform);
+    inflight.set(key, p as Promise<Cached<unknown>>);
+    const done = () => inflight.delete(key);
+    p.then(done, done);
+  }
+  return raceSignal(p, opts.signal);
+}
 
-  const retries = opts.retries ?? 3;
+async function download<T, R>(
+  key: string,
+  url: string,
+  hit: Cached<T> | null,
+  retries: number,
+  transform?: (raw: R) => T,
+): Promise<Cached<T>> {
   let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) await sleep(1000 * 2 ** (attempt - 1));
     try {
-      const res = await fetch(url, { signal: opts.signal ?? null });
+      const res = await fetch(url);
       if (!res.ok) {
         const err = new HttpError(res.status, url);
         // Client errors won't fix themselves by retrying (except rate limits).
@@ -103,13 +168,12 @@ export async function fetchJson<T, R = T>(
         continue;
       }
       const raw = (await res.json()) as R;
-      const data = opts.transform ? opts.transform(raw) : (raw as unknown as T);
+      const data = transform ? transform(raw) : (raw as unknown as T);
       const v: Cached<T> = { data, fetchedAt: Date.now() };
       memory.set(key, v);
       writePersisted(key, v);
       return v;
     } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') throw e;
       lastErr = e;
       if (e instanceof HttpError && e.status < 500 && e.status !== 429) break;
     }

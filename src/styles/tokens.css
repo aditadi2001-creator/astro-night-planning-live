@@ -1,0 +1,194 @@
+/*
+ * Design tokens — "Atlas at the eyepiece" (DESIGN.md). Components use these
+ * variables only, never raw hex values. Three themes swap values:
+ *   dark (default, atlas navy) · light ("chart paper") · night (red only, G = B = 0).
+ * Night mode wins over the light theme.
+ */
+
+/* Fonts: self-hosted via @fontsource (OFL 1.1), imported in src/main.ts. */
+
+:root {
+  color-scheme: dark;
+
+  /* ---- colour: dark (default) ---- */
+  --ink-0: #0b1430;
+  --ink-1: #121e44;
+  --ink-2: #1b2a5a;
+  --rule: #2b3c72;
+  --ui-line: #4a5c94;
+  --text: #e7ebf6;
+  --text-2: #a3aecd;
+  --brass: #e0ae4f;
+  --brass-ink: #1a1300;
+  --go: #7ed9a8;
+  --maybe: #e0ae4f;
+  --nogo: #f08a7e;
+  --sky: #000000;
+
+  /* object types (atlas convention; symbols are the primary code) */
+  --obj-galaxy: #f29a8a;
+  --obj-emission: #7ed9a8;
+  --obj-reflection: #8fb8f2;
+  --obj-dark: #8c93ad;
+  --obj-planetary: #9fd0f5;
+  --obj-open: #ebcf6e;
+  --obj-globular: #f2b98a;
+  --obj-remnant: #c9a6f0;
+  --obj-star: #e7ebf6;
+  --obj-planet: #e0ae4f;
+
+  /* charts */
+  --chart-lo: #1b2a5a;
+  --chart-hi: #e0ae4f;
+  --chart-cool: #8fb8f2;
+  --chart-warm: #f29a8a;
+  --cloud: rgb(255 255 255 / 0.75);
+  --twilight-civil: #2f4a8a;
+  --twilight-nautical: #1d3270;
+  --twilight-astro: #142458;
+
+  /* ---- type ---- */
+  --font-ui: 'Atkinson Hyperlegible Next', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-name: 'Spectral', Georgia, 'Times New Roman', serif;
+  --fs-12: 0.75rem;
+  --fs-14: 0.875rem;
+  --fs-16: 1rem;
+  --fs-18: 1.125rem;
+  --fs-21: 1.3125rem;
+  --fs-24: 1.5rem;
+  --fs-30: 1.875rem;
+  --fs-36: 2.25rem;
+  --lh-body: 1.5;
+  --lh-head: 1.25;
+  --measure: 72ch;
+
+  /* ---- space (4 px base) ---- */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+  --s8: 64px;
+
+  /* ---- radius by role ---- */
+  --r-input: 6px;
+  --r-section: 12px;
+  --r-sheet: 18px;
+  --r-pill: 999px;
+
+  /* ---- elevation: lightness on dark themes; one shadow for layers over the sky ---- */
+  --shadow-float: 0 12px 32px rgb(0 0 0 / 0.45);
+
+  /* ---- motion ---- */
+  --t-fast: 120ms;
+  --t-mid: 200ms;
+  --t-slow: 320ms;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  --touch: 44px;
+
+  /* Night mode turns the WebGL sky, map tiles and photos red through this filter. */
+  --media-filter: none;
+
+  /* ---- legacy aliases (pre-redesign components; removed as they migrate) ---- */
+  --bg: var(--ink-0);
+  --panel: var(--ink-1);
+  --panel-2: var(--ink-2);
+  --line: var(--rule);
+  --muted: var(--text-2);
+  --accent: var(--brass);
+  --good: var(--go);
+  --warn: var(--maybe);
+  --bad: var(--nogo);
+  --radius: var(--r-section);
+  --gap: var(--s3);
+  --font: var(--font-ui);
+  --mono: var(--font-ui);
+  --sky-filter: var(--media-filter);
+  --sky-horizon: #1a2440;
+  --sky-mid: #070a14;
+  --sky-top: #03040a;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --ink-0: #edf0f7;
+  --ink-1: #ffffff;
+  --ink-2: #e1e6f2;
+  --rule: #c5cde0;
+  --ui-line: #8592b5;
+  --text: #111a35;
+  --text-2: #46527a;
+  --brass: #8e6210;
+  --brass-ink: #ffffff;
+  --go: #1f7a4d;
+  --maybe: #8e6210;
+  --nogo: #b03a2e;
+  --obj-galaxy: #b5483a;
+  --obj-emission: #1f7a4d;
+  --obj-reflection: #2c5ea8;
+  --obj-dark: #5a6380;
+  --obj-planetary: #1f6d96;
+  --obj-open: #7d6410;
+  --obj-globular: #9a5a1e;
+  --obj-remnant: #6c3fa8;
+  --obj-star: #111a35;
+  --obj-planet: #8e6210;
+  --chart-lo: #e1e6f2;
+  --chart-hi: #8e6210;
+  --cloud: rgb(70 82 122 / 0.55);
+  --twilight-civil: #c8d4ef;
+  --twilight-nautical: #a9bae2;
+  --twilight-astro: #8aa0d4;
+  --shadow-float: 0 12px 32px rgb(17 26 53 / 0.18);
+}
+
+/* Night vision: every colour has G = B = 0. Hierarchy comes from size and weight. */
+:root[data-night='true'] {
+  color-scheme: dark;
+  --ink-0: #000000;
+  --ink-1: #120000;
+  --ink-2: #200000;
+  --rule: #600000;
+  --ui-line: #c00000;
+  --text: #ff0000;
+  --text-2: #f00000;
+  --brass: #ff0000;
+  --brass-ink: #000000;
+  --go: #f00000;
+  --maybe: #f00000;
+  --nogo: #f00000;
+  --obj-galaxy: #f00000;
+  --obj-emission: #f00000;
+  --obj-reflection: #f00000;
+  --obj-dark: #f00000;
+  --obj-planetary: #f00000;
+  --obj-open: #f00000;
+  --obj-globular: #f00000;
+  --obj-remnant: #f00000;
+  --obj-star: #f00000;
+  --obj-planet: #f00000;
+  --chart-lo: #200000;
+  --chart-hi: #ff0000;
+  --chart-cool: #a00000;
+  --chart-warm: #ff0000;
+  --cloud: rgb(255 0 0 / 0.45);
+  --twilight-civil: #400000;
+  --twilight-nautical: #280000;
+  --twilight-astro: #160000;
+  --shadow-float: none;
+  --media-filter: url('#night-red');
+  --sky-horizon: #1a0000;
+  --sky-mid: #070000;
+  --sky-top: #000000;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-fast: 0ms;
+    --t-mid: 0ms;
+    --t-slow: 0ms;
+  }
+}

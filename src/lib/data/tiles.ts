@@ -30,10 +30,12 @@ export function pixelCenter(z: number, tx: number, ty: number, px: number, py: n
   };
 }
 
+import { raceSignal } from './cache';
+
 const decoded = new Map<string, Promise<ImageData | null>>();
 
-async function decode(url: string, signal: AbortSignal): Promise<ImageData | null> {
-  const res = await fetch(url, { signal });
+async function decode(url: string): Promise<ImageData | null> {
+  const res = await fetch(url);
   if (res.status === 404) return null; // no tile = "nothing here" for every layer we use
   if (!res.ok) throw new Error(`tile ${res.status}: ${url}`);
   const bmp = await createImageBitmap(await res.blob());
@@ -49,14 +51,17 @@ async function decode(url: string, signal: AbortSignal): Promise<ImageData | nul
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
-/** Decoded RGBA of one tile (null if the Worker has no tile there); small in-memory cache. */
+/**
+ * Decoded RGBA of one tile (null if the Worker has no tile there); small in-memory
+ * cache. The download is shared: a caller aborting does not cancel it for others.
+ */
 export function decodeTile(url: string, signal: AbortSignal): Promise<ImageData | null> {
   let p = decoded.get(url);
   if (!p) {
-    p = decode(url, signal);
+    p = decode(url);
     decoded.set(url, p);
     p.catch(() => decoded.delete(url));
     while (decoded.size > 24) decoded.delete(decoded.keys().next().value as string);
   }
-  return p;
+  return raceSignal(p, signal);
 }

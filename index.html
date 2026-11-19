@@ -3,40 +3,50 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#05070d" />
+    <meta name="theme-color" content="#0b1430" />
     <meta
       name="description"
       content="Free, open-source live 3D sky and observing conditions for astrophotographers: clouds, seeing, transparency, light pollution and the Moon for your exact location."
     />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <!-- Start the sky engine downloads together with the page script, not after it. -->
-    <link
-      rel="preload"
-      href="/engine/stellarium-web-engine.js?v=%ENGINE_V%"
-      as="fetch"
-      crossorigin="anonymous"
-    />
-    <link
-      rel="preload"
-      href="/engine/stellarium-web-engine.wasm?v=%ENGINE_V%"
-      as="fetch"
-      crossorigin="anonymous"
-    />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="Astro Night" />
     <title>Astro Night Planning — live sky</title>
     <script>
-      // Apply night mode before the first paint, so a dark-adapted eye never sees a bright flash.
+      // Apply night mode and theme before the first paint, so a dark-adapted eye never sees a
+      // bright flash. The sky engine (1.3 MB) is preloaded only when the page opens on the sky.
       try {
-        if (localStorage.getItem('anp:night') === '1')
-          document.documentElement.dataset.night = 'true';
+        var d = document.documentElement;
+        if (localStorage.getItem('anp:night') === '1') d.dataset.night = 'true';
+        var th = localStorage.getItem('anp:theme');
+        if (th === 'light') d.dataset.theme = 'light';
       } catch (e) {}
+      if (/^#\/sky/.test(location.hash)) {
+        ['js', 'wasm'].forEach(function (x) {
+          var l = document.createElement('link');
+          l.rel = 'preload';
+          l.as = 'fetch';
+          l.crossOrigin = 'anonymous';
+          l.href = '/engine/stellarium-web-engine.' + x + '?v=%ENGINE_V%';
+          document.head.appendChild(l);
+        });
+      }
     </script>
   </head>
   <body>
+    <!-- Night vision: luminance into the red channel only (G = B = 0) for the WebGL sky,
+         map tiles and photos. Referenced by --media-filter in src/styles/tokens.css. -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true" focusable="false">
+      <filter id="night-red" color-interpolation-filters="sRGB">
+        <feColorMatrix
+          type="matrix"
+          values="0.2126 0.7152 0.0722 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"
+        />
+      </filter>
+    </svg>
     <div id="app"></div>
     <noscript>This site needs JavaScript to draw the sky.</noscript>
     <script type="module" src="/src/main.ts"></script>

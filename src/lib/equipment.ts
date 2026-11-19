@@ -26,6 +26,8 @@ export interface Setup {
   pixelUm: number;
   /** Frame rotation (degrees): 0 = long side east–west with north up, 90 = long side north–south. */
   rotationDeg: number;
+  /** Sensor size (mm) when it differs from pixels × pitch (non-square pixels, cropped area). */
+  sensorMm?: [number, number];
 }
 
 /** A camera frame drawn on the sky by the sky view. */
@@ -133,8 +135,8 @@ const ARCSEC_PER_RAD = 206_264.806;
 
 export function setupStats(s: Setup, seeingArcsec: number | null = null): SetupStats {
   const F = Math.max(1, s.focalMm * (s.factor || 1));
-  const wMm = (s.widthPx * s.pixelUm) / 1000;
-  const hMm = (s.heightPx * s.pixelUm) / 1000;
+  const wMm = s.sensorMm?.[0] ?? (s.widthPx * s.pixelUm) / 1000;
+  const hMm = s.sensorMm?.[1] ?? (s.heightPx * s.pixelUm) / 1000;
   const ang = (mm: number) => (2 * Math.atan(mm / (2 * F)) * 180) / Math.PI;
   const pixelScale = (ARCSEC_PER_RAD * s.pixelUm) / 1000 / F;
   // Planetary images are limited by the optics, not the seeing, so compare with the Dawes limit.

@@ -85,6 +85,7 @@ type EngineFactory = (opts: {
 }) => void;
 
 import { DSO_DEEP_URL, DSO_SDSS_URL, GAIA_DEEP_URL, GAIA_DEEPER_URL } from '../config';
+import { fetchTextOnce } from '../data/cache';
 
 const BASE = import.meta.env.BASE_URL;
 /** Content hash of the engine files (scripts/engine-version.mjs): JS and WASM always match. */
@@ -130,8 +131,8 @@ async function addDeepStars(stel: Stel): Promise<void> {
   let url = GAIA_DEEP_URL;
   if (GAIA_DEEPER_URL) {
     try {
-      const r = await fetch(`${GAIA_DEEPER_URL}/properties`);
-      if (r.ok && /max_vmag\s*=\s*1[5-9]/.test(await r.text())) url = GAIA_DEEPER_URL;
+      const text = await fetchTextOnce(`${GAIA_DEEPER_URL}/properties`);
+      if (text && /max_vmag\s*=\s*1[5-9]/.test(text)) url = GAIA_DEEPER_URL;
     } catch {
       /* keep the V < 14 layer */
     }
@@ -149,8 +150,8 @@ async function addDsos(stel: Stel): Promise<void> {
   for (const u of [DSO_SDSS_URL, DSO_DEEP_URL]) {
     if (!u) continue;
     try {
-      const r = await fetch(`${u}/properties`);
-      if (r.ok && (await r.text()).includes('type                     = dso')) {
+      const text = await fetchTextOnce(`${u}/properties`);
+      if (text?.includes('type                     = dso')) {
         url = u;
         break;
       }

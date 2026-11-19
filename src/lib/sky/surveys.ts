@@ -25,7 +25,10 @@ export interface Survey {
   coverage: number;
   /** Coverage note shown under the menu when the sky is not fully covered. */
   coverageNote?: string;
-  /** Servers in order of preference (no trailing slash). */
+  /**
+   * Servers in order of preference (no trailing slash). CDS Strasbourg comes last: it has
+   * been degraded since its 2026-11-09 security incident (docs/RESEARCH.md §4).
+   */
   servers: string[];
   /** Matching entry in CREDITS (src/lib/credits.ts). */
   creditId: string;
@@ -42,11 +45,11 @@ export const SURVEYS: readonly Survey[] = [
     frame: 'equatorial',
     coverage: 1,
     servers: [
-      'https://alasky.cds.unistra.fr/DSS/DSSColor',
       'https://skies.esac.esa.int/DSSColor',
       'https://stpubdata.s3.us-east-1.amazonaws.com/mast/skybackgrounds/DSSColor',
       'https://irsa.ipac.caltech.edu/data/hips/CDS/DSS2/color',
       'https://casda.csiro.au/hips/DSS2/color',
+      'https://alasky.cds.unistra.fr/DSS/DSSColor',
     ],
     creditId: 'survey-dss',
   },
@@ -58,8 +61,8 @@ export const SURVEYS: readonly Survey[] = [
     frame: 'galactic',
     coverage: 1,
     servers: [
-      'https://alasky.cds.unistra.fr/FinkbeinerHalpha',
       'https://skies.esac.esa.int/FinkbeinerHa',
+      'https://alasky.cds.unistra.fr/FinkbeinerHalpha',
     ],
     creditId: 'survey-finkbeiner',
   },
@@ -71,10 +74,10 @@ export const SURVEYS: readonly Survey[] = [
     frame: 'equatorial',
     coverage: 1,
     servers: [
-      'https://alasky.cds.unistra.fr/2MASS/Color',
       'https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/Color',
       'https://skies.esac.esa.int/2MASSColor',
       'https://casda.csiro.au/hips/2MASS/Color',
+      'https://alasky.cds.unistra.fr/2MASS/Color',
     ],
     creditId: 'survey-2mass',
   },
@@ -86,10 +89,10 @@ export const SURVEYS: readonly Survey[] = [
     frame: 'equatorial',
     coverage: 1,
     servers: [
-      'https://alasky.cds.unistra.fr/AllWISE/RGB-W4-W2-W1',
       'https://irsa.ipac.caltech.edu/data/hips/CDS/AllWISE/RGB-W4-W2-W1',
       'https://skies.esac.esa.int/AllWISEColor',
       'https://hips.china-vo.org/m/CDS_P_allWISE_color',
+      'https://alasky.cds.unistra.fr/AllWISE/RGB-W4-W2-W1',
     ],
     creditId: 'survey-allwise',
   },
@@ -102,8 +105,8 @@ export const SURVEYS: readonly Survey[] = [
     coverage: 0.75,
     coverageNote: 'Covers only the sky north of declination −30° (about three-quarters).',
     servers: [
-      'https://alasky.cds.unistra.fr/Pan-STARRS/DR1/color-i-r-g',
       'https://stpubdata.s3.us-east-1.amazonaws.com/mast/skybackgrounds/PanSTARRS',
+      'https://alasky.cds.unistra.fr/Pan-STARRS/DR1/color-i-r-g',
     ],
     creditId: 'survey-panstarrs',
   },
@@ -130,9 +133,9 @@ export const SURVEYS: readonly Survey[] = [
     coverageNote:
       'Covers about a third of the sky, mostly the northern sky away from the Milky Way.',
     servers: [
-      'https://alasky.cds.unistra.fr/SDSS/DR9/color',
       'https://skies.esac.esa.int/SDSS9Color',
       'https://irsa.ipac.caltech.edu/data/hips/CDS/SDSS/DR9/color',
+      'https://alasky.cds.unistra.fr/SDSS/DR9/color',
     ],
     creditId: 'survey-sdss',
     fields: [

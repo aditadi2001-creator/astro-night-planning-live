@@ -89,20 +89,33 @@ describe('server choice', () => {
   beforeEach(() => resetServerChoice());
 
   it('skips servers that are down, refuse, or serve something else', async () => {
-    const [cds, esa, mast, irsa] = dss.servers;
+    const [esa, mast, irsa] = dss.servers;
+    expect(esa).toContain('skies.esac.esa.int');
+    expect(irsa).toContain('irsa.ipac.caltech.edu');
     const { fetcher, calls } = fakeFetch({
-      [`${cds}/properties`]: () => new Response('<html>404</html>', { status: 404 }),
-      [`${esa}/properties`]: () => new Response(props('CDS/P/2MASS/color')),
-      // mast: network error (not in table)
+      [`${esa}/properties`]: () => new Response('<html>404</html>', { status: 404 }),
+      // mast: serves another survey
+      [`${mast}/properties`]: () => new Response(props('CDS/P/2MASS/color')),
       [`${irsa}/properties`]: () => new Response(props('CDS/P/DSS2/color')),
     });
     const src = await pickServer(dss, { fetcher });
     expect(src?.url).toBe(irsa);
     expect(src?.host).toBe('irsa.ipac.caltech.edu');
-    expect(calls).toEqual([cds, esa, mast, irsa].map((u) => `${u}/properties`));
+    expect(calls).toEqual([esa, mast, irsa].map((u) => `${u}/properties`));
     // Remembered for the session: no new requests.
     expect((await pickServer(dss, { fetcher }))?.url).toBe(irsa);
-    expect(calls).toHaveLength(4);
+    expect(calls).toHaveLength(3);
+  });
+
+  it('tries CDS Strasbourg last (degraded since 2026-11-09)', () => {
+    for (const s of SURVEYS) {
+      const i = s.servers.findIndex((u) => u.includes('cds.unistra.fr'));
+      const j =
+        s.servers.length -
+        1 -
+        [...s.servers].reverse().findIndex((u) => !u.includes('cds.unistra.fr'));
+      if (i >= 0 && j >= 0) expect(i).toBeGreaterThan(j);
+    }
   });
 
   it('returns null when no server answers', async () => {
