@@ -100,3 +100,103 @@ describe('light domes in the sky glow', () => {
     expect(a(95, 0)).toBeGreaterThan(a(95, 10));
   });
 });
+
+describe('thick and thin high cloud, and low cloud the satellite cannot see', () => {
+  /** Mean texture alpha (0–1) above `minAlt` degrees, and the smallest one. */
+  function alphaStats(img: Uint8ClampedArray, w: number, h: number, minAlt = 20) {
+    let sum = 0;
+    let n = 0;
+    let min = 1;
+    for (let j = Math.floor((minAlt / 90) * h); j < h; j++) {
+      for (let i = 0; i < w; i++) {
+        const a = (img[(j * w + i) * 4 + 3] ?? 0) / 255;
+        sum += a;
+        n++;
+        min = Math.min(min, a);
+      }
+    }
+    return { mean: sum / n, min };
+  }
+
+  it('draws 100 % high cloud as an opaque overcast when it is thick', () => {
+    const c = { ...input(0, 0, 100), highOpacity: 0.98 };
+    const s = alphaStats(renderClouds(c), c.width, c.height);
+    expect(s.mean).toBeGreaterThan(0.95);
+    expect(s.min).toBeGreaterThan(0.9); // no holes in a full overcast
+  });
+
+  it('still draws thin cirrus as a veil the sky shows through', () => {
+    const c = { ...input(0, 0, 100), highOpacity: 0.4 };
+    const s = alphaStats(renderClouds(c), c.width, c.height);
+    expect(s.mean).toBeGreaterThan(0.35);
+    expect(s.mean).toBeLessThan(0.45);
+  });
+
+  /** A uniform satellite field of one brightness temperature. */
+  const field = (bt: number, surfaceK: number, weight: number) => {
+    const n = 41;
+    return {
+      n,
+      stepKm: 5,
+      bt: new Float32Array(n * n).fill(bt),
+      surfaceK,
+      weight,
+      ageS: 0,
+      highK: 235,
+    };
+  };
+
+  it('takes the thickness of high cloud from the satellite where it sees it', () => {
+    // Model: 100 % high, typical (thin) opacity; satellite: a 240 K deck over 299 K ground.
+    const c = { ...input(0, 0, 100), highOpacity: 0.5, field: field(240, 299, 0.85) };
+    expect(alphaStats(renderClouds(c), c.width, c.height).mean).toBeGreaterThan(0.85);
+  });
+
+  it('keeps most of the model’s low cloud when the satellite reads warm (stratus)', () => {
+    // Satellite sees ground temperature everywhere; the model has an overcast of low cloud.
+    const c = { ...input(100, 0, 0), field: field(299, 299, 0.85) };
+    // At most LOW_DENY × weight = 25.5 % removed → ≥ 74.5 % cover × 0.97 opacity.
+    expect(alphaStats(renderClouds(c), c.width, c.height).mean).toBeGreaterThan(0.68);
+  });
+});
+
+describe('the satellite corrects total cover without splitting a deck', () => {
+  const field = (bt: number, weight: number) => {
+    const n = 41;
+    return {
+      n,
+      stepKm: 5,
+      bt: new Float32Array(n * n).fill(bt),
+      surfaceK: 299,
+      weight,
+      ageS: 0,
+      highK: 235,
+    };
+  };
+  const meanAlpha = (img: Uint8ClampedArray, w: number, h: number) => {
+    let s = 0;
+    let n = 0;
+    for (let j = Math.floor(h * 0.2); j < h; j++)
+      for (let i = 0; i < w; i++) {
+        s += (img[(j * w + i) * 4 + 3] ?? 0) / 255;
+        n++;
+      }
+    return s / n;
+  };
+
+  it('keeps a 100 % deck whole when its tops straddle the mid/high boundary (Bangalore, 15 Nov)', () => {
+    // 255 K tops over 299 K ground = 6.8 km: the satellite alone would call it 36 % high, 64 % mid.
+    const c = { ...input(0, 0, 100), highOpacity: 0.95, field: field(255, 0.6) };
+    expect(meanAlpha(renderClouds(c), c.width, c.height)).toBeGreaterThan(0.9);
+  });
+
+  it('clears the sky where the satellite sees ground under a forecast high deck', () => {
+    const c = { ...input(0, 0, 100), highOpacity: 0.95, field: field(299, 0.85) };
+    expect(meanAlpha(renderClouds(c), c.width, c.height)).toBeLessThan(0.3);
+  });
+
+  it('adds a deck the models missed, at the height its tops say', () => {
+    const c = { ...input(0, 0, 0), field: field(240, 0.85) };
+    expect(meanAlpha(renderClouds(c), c.width, c.height)).toBeGreaterThan(0.6);
+  });
+});

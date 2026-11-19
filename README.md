@@ -124,6 +124,7 @@ on its own; custom CPU limits are a paid setting, so the config sets none.
 | `/data/<name>.json`                 | small JSON files (e.g. the list of available cloud hours)                                  |
 | `/dem/<tile>.tif?r=<a>-<b>`         | one byte slice (≤ 4 MiB) of a Copernicus DEM tile (no CORS on that bucket), cached 30 days |
 | `/7timer/<lat>/<lon>`               | 7Timer! ASTRO forecast (no CORS there), cached 3 h                                         |
+| `/aq/<lat>/<lon>`                   | measured air quality: nearest OpenAQ monitors, NowCast PM2.5/PM10 (secret `OPENAQ_KEY`)    |
 
 Everything else is 404, so the Worker can't be used as an open proxy. Large datasets are **one
 PMTiles file each**. The Worker reads single tiles out of them with range requests and serves each

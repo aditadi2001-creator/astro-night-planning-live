@@ -3,10 +3,51 @@ import {
   blendLayers,
   blendSamples,
   cloudsNow,
+  highCloudK,
   irCloudFraction,
+  irEmissivity,
   kelvinFromGrey,
+  planck11,
   satelliteWeight,
+  visibleOpacity,
 } from '../src/lib/sat/ir';
+
+describe('how thick the cloud is (infrared emissivity)', () => {
+  it('is 0 at the surface temperature and 1 at the cloud temperature', () => {
+    expect(irEmissivity(300, 300, 235)).toBeCloseTo(0, 9);
+    expect(irEmissivity(235, 300, 235)).toBeCloseTo(1, 9);
+    expect(irEmissivity(200, 300, 235)).toBe(1); // colder than the assumed cloud: opaque
+    expect(irEmissivity(250, 300, 295)).toBeNull(); // cloud as warm as the ground: can't tell
+  });
+
+  it('works in radiance, not temperature (Planck is steep at 10.8 µm)', () => {
+    // Radiance is convex in temperature, so halfway in temperature is more than
+    // halfway in emissivity: a linear-in-temperature rule would call clouds too thin.
+    expect(planck11(300)).toBeGreaterThan(planck11(235) * 2.5);
+    expect(irEmissivity(267.5, 300, 235)).toBeCloseTo(0.59, 2);
+  });
+
+  it('turns emissivity into the share of sky light blocked (τ_vis ≈ 2 τ_ir)', () => {
+    expect(visibleOpacity(0)).toBe(0);
+    expect(visibleOpacity(0.5)).toBeCloseTo(0.75, 9);
+    expect(visibleOpacity(1)).toBe(1);
+  });
+
+  it('Bangalore, 15 Nov 2026 11:30 IST: a 240 K deck over 26 °C ground is overcast', () => {
+    const ts = 26.4 + 273.15;
+    const tc = highCloudK(ts, -38.5);
+    expect(tc).toBeCloseTo(234.65, 2);
+    for (const bt of [232, 241, 248]) {
+      expect(visibleOpacity(irEmissivity(bt, ts, tc) ?? 0)).toBeGreaterThan(0.95);
+    }
+    // A thin cirrus veil reads only a little colder than the ground.
+    expect(visibleOpacity(irEmissivity(288, ts, tc) ?? 1)).toBeLessThan(0.45);
+  });
+
+  it('falls back to the standard lapse rate for the high-cloud temperature', () => {
+    expect(highCloudK(300, null)).toBeCloseTo(300 - 6.5 * 10.4, 9);
+  });
+});
 import {
   GEO_LAYERS,
   floorSlot,
@@ -46,9 +87,10 @@ describe('infrared cloud estimate', () => {
     expect(cloudsNow(20, 1, 0)).toBe(20);
   });
 
-  it('keeps the model layer split when scaling towards the satellite', () => {
+  it('scales mid/high towards the satellite but only thins low cloud it cannot see', () => {
     const out = blendLayers({ low: 20, mid: 0, high: 20 }, { frac: 0, meanK: 290 }, 0.6);
-    expect(out.low).toBeCloseTo(8, 5);
+    // Low cloud: at most LOW_DENY × weight removed (20 × (1 − 0.3 × 0.6)).
+    expect(out.low).toBeCloseTo(16.4, 5);
     expect(out.high).toBeCloseTo(8, 5);
     expect(out.mid).toBe(0);
   });

@@ -183,6 +183,19 @@ export const CREDITS: Credit[] = [
     status: 'live',
   },
   {
+    id: 'openaq',
+    name: 'OpenAQ air-quality measurements',
+    url: 'https://openaq.org',
+    license: 'Open data (licences of the originating agencies, mostly public domain / CC BY)',
+    attribution:
+      'Measured air quality: OpenAQ (openaq.org), from government monitoring stations (e.g. CPCB, US EPA, EEA).',
+    shortCredit: 'Air quality: OpenAQ',
+    usage:
+      'Nearest reference monitors within 25 km (up to three): last 12 hours of PM2.5 and PM10 for the EPA NowCast, read through the data Worker and cached 20 minutes per place.',
+    kind: 'data',
+    status: 'live',
+  },
+  {
     id: 'noaa-swpc',
     name: 'NOAA SWPC OVATION aurora forecast, Kp index and 10.7 cm solar flux',
     url: 'https://www.swpc.noaa.gov/products/aurora-30-minute-forecast',

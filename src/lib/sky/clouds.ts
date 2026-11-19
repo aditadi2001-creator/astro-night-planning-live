@@ -19,6 +19,7 @@
  */
 
 import { domeAt } from './horizon';
+import { irEmissivity, LOW_DENY, visibleOpacity } from '../sat/ir';
 
 export interface CloudSample {
   /** Bearing from the site, degrees from north. */
@@ -63,7 +64,15 @@ export interface CloudInput {
     surfaceK: number;
     weight: number;
     ageS: number;
+    /** Temperature of high (ice) cloud (K), for its infrared emissivity (sat/ir.ts). */
+    highK?: number;
   } | null;
+  /**
+   * Share of sky light the high layer blocks where it is present (0–1): thin
+   * cirrus ~0.3–0.6, a thick deck ~1. From the satellite's emissivity at the
+   * site when recent, else a typical value. Defaults to the layer's own opacity.
+   */
+  highOpacity?: number;
   /**
    * Artificial sky glow behind the clouds: colour and zenith opacity (0–1), plus
    * optional light domes per 10° of azimuth from north (artificial / natural
@@ -252,7 +261,8 @@ export function renderClouds(input: CloudInput): Uint8ClampedArray {
     const km = (wind.speed * F.ageS) / 3600;
     return { x: Math.sin(to) * km, y: Math.cos(to) * km };
   });
-  const fieldCover = (l: number, x: number, y: number): number => {
+  /** Brightness temperature (K) the satellite saw under layer `l`'s point (x, y) km, or NaN. */
+  const fieldBt = (l: number, x: number, y: number): number => {
     if (!F) return Number.NaN;
     const sh = fieldShift[l] ?? { x: 0, y: 0 };
     const c = (F.n - 1) / 2;
@@ -268,11 +278,13 @@ export function renderClouds(input: CloudInput): Uint8ClampedArray {
     const v10 = at(ix + 1, iy);
     const v01 = at(ix, iy + 1);
     const v11 = at(ix + 1, iy + 1);
-    const bt = (v00 * (1 - tx) + v10 * tx) * (1 - ty) + (v01 * (1 - tx) + v11 * tx) * ty;
-    if (!Number.isFinite(bt)) return Number.NaN;
-    const { frac, topKm } = cellCloud(bt, F.surfaceK);
-    return frac * (layerShare(topKm)[l] ?? 0);
+    return (v00 * (1 - tx) + v10 * tx) * (1 - ty) + (v01 * (1 - tx) + v11 * tx) * ty;
   };
+  const highIdx = LAYERS.findIndex((L) => L.key === 'high');
+  const lowIdx = LAYERS.findIndex((L) => L.key === 'low');
+  const highOp = input.highOpacity ?? LAYERS[highIdx]?.opacity ?? 0.4;
+  const thinHigh = input.color.high;
+  const thickHigh = input.color.mid;
 
   const coverFast = (l: number, i: number, d: number, center: number): number => {
     let prevD = 0;
@@ -337,10 +349,32 @@ export function renderClouds(input: CloudInput): Uint8ClampedArray {
         const R = rowState[l];
         if (!L || !R) continue;
         let cover = coverFast(l, i, R.d, input.center[L.key]);
+        let opacity = l === highIdx ? highOp : L.opacity;
         if (F) {
           // Real clouds where the satellite saw them, blended by the image's weight.
-          const fc = fieldCover(l, R.d * sinA, R.d * cosA);
-          if (Number.isFinite(fc)) cover = F.weight * fc + (1 - F.weight) * cover;
+          const bt = fieldBt(l, R.d * sinA, R.d * cosA);
+          if (Number.isFinite(bt)) {
+            const { frac, topKm } = cellCloud(bt, F.surfaceK);
+            // Blend the TOTAL cover at this point, then scale the model's own layers
+            // to it (as the hourly figure does, clouds/estimate.ts). Blending layer by
+            // layer would split one deck between layers by its top temperature and
+            // leave holes in both.
+            const m0 = coverFast(0, i, R.d, input.center.low);
+            const m1 = coverFast(1, i, R.d, input.center.mid);
+            const m2 = coverFast(2, i, R.d, input.center.high);
+            const M = 1 - (1 - m0) * (1 - m1) * (1 - m2);
+            const T = F.weight * frac + (1 - F.weight) * M;
+            if (M > 0.05) cover = Math.min(1, (cover * T) / M);
+            // Cloud the model doesn't have: put it where its top temperature says.
+            else cover += Math.max(0, T - M) * (layerShare(topKm)[l] ?? 0);
+            // Infrared can't see stratus under a warm top: it may only thin low cloud.
+            if (l === lowIdx) cover = Math.max(cover, m0 * (1 - LOW_DENY * F.weight));
+            if (l === highIdx && F.highK != null && frac > 0.05) {
+              // How thick the high cloud is, from its infrared emissivity in this cell.
+              const e = irEmissivity(bt, F.surfaceK, F.highK);
+              if (e != null) opacity = F.weight * visibleOpacity(e) + (1 - F.weight) * opacity;
+            }
+          }
         }
         if (cover <= 0.001) continue;
         // Offset by an arbitrary 731/198 noise cells so the site never sits on the lattice origin.
@@ -351,14 +385,26 @@ export function renderClouds(input: CloudInput): Uint8ClampedArray {
         const v = -x * L.sa + y * L.ca;
         const n = fbm(u, v, L.seed, R.octaves);
         const q = R.table;
-        const t =
+        let t =
           q[Math.min(q.length - 1, Math.max(0, Math.round((1 - cover) * (q.length - 1))))] ?? 0.5;
+        // Near-full cover: lower the threshold past the soft edge so an overcast has no holes.
+        if (cover > 0.97) t -= 2 * L.soft * Math.min(1, (cover - 0.97) / 0.03);
         const dens = smoothstep(t - L.soft, t + L.soft, n);
-        const a = dens * L.opacity;
+        const a = dens * opacity;
         if (a <= 0) continue;
-        r += transmit * a * L.color[0];
-        g += transmit * a * L.color[1];
-        b += transmit * a * L.color[2];
+        // Thick high cloud (a cirrostratus or anvil deck) looks grey like mid cloud, not white.
+        let col = L.color;
+        if (l === highIdx) {
+          const k = Math.min(1, Math.max(0, (opacity - 0.45) / 0.5));
+          col = [
+            thinHigh[0] + (thickHigh[0] - thinHigh[0]) * k,
+            thinHigh[1] + (thickHigh[1] - thinHigh[1]) * k,
+            thinHigh[2] + (thickHigh[2] - thinHigh[2]) * k,
+          ];
+        }
+        r += transmit * a * col[0];
+        g += transmit * a * col[1];
+        b += transmit * a * col[2];
         transmit *= 1 - a;
       }
       // Artificial sky glow behind the clouds, brighter towards the horizon

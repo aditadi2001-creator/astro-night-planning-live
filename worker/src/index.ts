@@ -13,6 +13,8 @@
  *   /dem/<Copernicus tile>/<same>.tif?r=a-b  one byte slice of a Copernicus DEM tile
  *                                         (no CORS on that bucket), max 4 MiB
  *   /7timer/<lat>/<lon>                   7Timer! ASTRO forecast (no CORS there)
+ *   /aq/<lat>/<lon>                       measured air quality: nearest OpenAQ monitors,
+ *                                         NowCast PM2.5/PM10 (needs the OPENAQ_KEY secret)
  *
  * Tiles are served one per URL so Workers Caching can keep each of them (the
  * cache is keyed by URL, not byte range). The Worker does the range read
@@ -31,12 +33,21 @@ import {
   parse7timer,
   dispatchRequest,
   workflowForCron,
+  parseAq,
+  nowCast,
+  haversineKm,
+  hourlySeries,
+  OPENAQ,
+  AQ_RADIUS_M,
+  AQ_MAX_AGE_MS,
 } from './routes';
 
 export interface Env {
   DATA: R2Bucket;
   /** Fine-grained GitHub token (this repo, Actions read/write), a Worker secret. */
   GH_DISPATCH_TOKEN?: string;
+  /** OpenAQ v3 API key (free account), a Worker secret: measured air quality. */
+  OPENAQ_KEY?: string;
 }
 
 /** Start a GitHub Actions workflow (the Worker's Cron Trigger). */
@@ -208,6 +219,112 @@ async function proxy7timer(path: string): Promise<Response> {
   });
 }
 
+// ---- measured air quality (OpenAQ v3) ---------------------------------------------
+
+interface OaqSensor {
+  id: number;
+  parameter?: { name?: string };
+}
+interface OaqLocation {
+  id: number;
+  name?: string;
+  isMonitor?: boolean;
+  provider?: { name?: string };
+  coordinates?: { latitude?: number; longitude?: number };
+  sensors?: OaqSensor[];
+  datetimeLast?: { utc?: string } | null;
+}
+interface OaqHour {
+  value?: number | null;
+  period?: { datetimeTo?: { utc?: string } };
+}
+
+async function oaq<T>(env: Env, path: string): Promise<T> {
+  const r = await fetch(`${OPENAQ}${path}`, {
+    headers: { 'X-API-Key': (env.OPENAQ_KEY ?? '').trim(), Accept: 'application/json' },
+  });
+  if (!r.ok) throw new Error(`OpenAQ ${r.status}`);
+  return (await r.json()) as T;
+}
+
+/** Last 12 h of one sensor as a NowCast concentration, plus the newest hour. */
+async function sensorNowCast(env: Env, id: number, now: number) {
+  const from = new Date(now - 14 * 3600_000).toISOString();
+  const d = await oaq<{ results?: OaqHour[] }>(
+    env,
+    `/sensors/${id}/hours?datetime_from=${encodeURIComponent(from)}&limit=24`,
+  );
+  const rows = (d.results ?? []).map((h) => ({
+    value: h.value ?? null,
+    end: Date.parse(h.period?.datetimeTo?.utc ?? ''),
+  }));
+  const { series, newest } = hourlySeries(rows);
+  return { nowcast: nowCast(series), latest: series[0] ?? null, newest };
+}
+
+/**
+ * /aq/<lat>/<lon>: the nearest reference monitors (up to 3 within 25 km, reported
+ * in the last 3 h) with NowCast PM2.5 and PM10, as the EPA computes "current AQI".
+ * Low-cost sensors are used only when no reference monitor is in range.
+ * 503 without the OPENAQ_KEY secret (the site then shows the CAMS model).
+ */
+async function serveAq(env: Env, path: string): Promise<Response> {
+  const p = parseAq(path);
+  if (!p) return notFound();
+  if (!env.OPENAQ_KEY)
+    return respond('No station source configured', 503, {
+      'Cache-Control': 'public, max-age=3600',
+    });
+  const now = Date.now();
+  const loc = await oaq<{ results?: OaqLocation[] }>(
+    env,
+    `/locations?coordinates=${p.lat},${p.lon}&radius=${AQ_RADIUS_M}&parameters_id=2&limit=50`,
+  );
+  const fresh = (loc.results ?? [])
+    .map((l) => ({
+      l,
+      km: haversineKm(
+        p.lat,
+        p.lon,
+        l.coordinates?.latitude ?? NaN,
+        l.coordinates?.longitude ?? NaN,
+      ),
+      last: Date.parse(l.datetimeLast?.utc ?? ''),
+    }))
+    .filter((x) => Number.isFinite(x.km) && now - x.last <= AQ_MAX_AGE_MS)
+    .sort((a, b) => a.km - b.km);
+  const monitors = fresh.filter((x) => x.l.isMonitor);
+  const pick = (monitors.length ? monitors : fresh).slice(0, 3);
+  const stations = await Promise.all(
+    pick.map(async ({ l, km }) => {
+      const sensor = (name: string) => l.sensors?.find((s) => s.parameter?.name === name)?.id;
+      const pm25Id = sensor('pm25');
+      const pm10Id = sensor('pm10');
+      const [pm25, pm10] = await Promise.all([
+        pm25Id ? sensorNowCast(env, pm25Id, now).catch(() => null) : null,
+        pm10Id ? sensorNowCast(env, pm10Id, now).catch(() => null) : null,
+      ]);
+      return {
+        name: l.name ?? `OpenAQ ${l.id}`,
+        provider: l.provider?.name ?? null,
+        monitor: !!l.isMonitor,
+        km: Math.round(km * 10) / 10,
+        lat: l.coordinates?.latitude ?? null,
+        lon: l.coordinates?.longitude ?? null,
+        time: pm25?.newest ?? pm10?.newest ?? null,
+        pm25: pm25?.nowcast ?? null,
+        pm25Latest: pm25?.latest ?? null,
+        pm10: pm10?.nowcast ?? null,
+      };
+    }),
+  );
+  return respond(JSON.stringify({ source: 'openaq', fetched: now, stations }), 200, {
+    'Content-Type': 'application/json',
+    // Monitors report hourly; 20 minutes keeps us far inside OpenAQ's free rate limit.
+    'Cache-Control': 'public, max-age=1200',
+  });
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     if (req.method === 'OPTIONS') return respond(null, 204, { 'Access-Control-Max-Age': '86400' });
@@ -220,6 +337,7 @@ export default {
       if (path.startsWith('/data/')) return await serveJson(env, path);
       if (path.startsWith('/dem/')) return await proxyDem(req, url);
       if (path.startsWith('/7timer/')) return await proxy7timer(path);
+      if (path.startsWith('/aq/')) return await serveAq(env, path);
       if (path === '/' || path === '/health')
         return respond('ok', 200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' });
       return notFound();

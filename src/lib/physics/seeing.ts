@@ -36,6 +36,8 @@
  * here).
  */
 
+import { surfaceLayer, type SurfaceInput } from './surfacelayer';
+
 const LAMBDA = 500e-9;
 const K2 = ((2 * Math.PI) / LAMBDA) ** 2;
 const RAD_TO_ARCSEC = (180 / Math.PI) * 3600;
@@ -68,8 +70,36 @@ export const HV_MID_J = 2.7e-16 * 1500;
 /** ∫ of the HV 5/7 ground term: A = 1.7·10⁻¹⁴ × 100 m. */
 export const HV57_GROUND_J = 1.7e-14 * 100;
 
-/** Assumed typical ground-layer seeing for a reasonable amateur site. */
+/** Assumed typical ground-layer seeing for a reasonable amateur site (used only without weather). */
 export const GROUND_ARCSEC = 0.7;
+
+/**
+ * Ground layer on a typical night: the HV 5/7 ground term (1.75″ at sea level),
+ * thinning with the site's height as e^(−H/1500 m). Calibrated against measured
+ * site medians: Kavalur 725 m 1.85″, Sutherland 1760 m 1.32″, Devasthal 2450 m
+ * 1.1″ (2 m above ground), Mauna Kea 4200 m ~0.65″, Paranal 2635 m ~0.8″.
+ */
+export function typicalGroundJ(elevation: number): number {
+  return HV57_GROUND_J * Math.exp(-Math.max(0, elevation) / 1500);
+}
+
+/** The reference night the ground calibration stands for (same air, rural, 3 m/s, 30 % cloud). */
+export function referenceSurface(s: SurfaceInput): SurfaceInput {
+  return {
+    windMs: 3,
+    tempK: s.tempK,
+    pressureHpa: s.pressureHpa,
+    cloud: 0.3,
+    sunAlt: -30,
+    z0: 0.1,
+    heightM: 1.5,
+    urban: 0,
+  };
+}
+
+/** Night-to-night factor on the ground layer, kept within physical bounds. */
+export const GROUND_FACTOR_MIN = 0.25;
+export const GROUND_FACTOR_MAX = 6;
 
 export interface WindAt {
   /** Speed, m/s. */
@@ -87,6 +117,8 @@ export interface SeeingInput {
   w10: WindAt | null;
   /** Site height above sea level, m. */
   elevation: number;
+  /** Near-ground weather (surfacelayer.ts); without it a fixed 0.7″ ground layer is assumed. */
+  surface?: SurfaceInput | null;
 }
 
 export type SeeingRating = 1 | 2 | 3 | 4 | 5;
@@ -103,6 +135,15 @@ export interface SeeingEstimate {
   /** rms upper wind used (m/s) and low-level shear (m/s). */
   jetMs: number;
   shearMs: number | null;
+  /** Near-ground conditions behind the ground layer, when weather was given. */
+  ground?: {
+    /** Ground-layer turbulence relative to a typical night (1 = typical). */
+    factor: number;
+    regime: 'stable' | 'urban' | 'convective';
+    /** Wind 10 m (m/s) and cloud (0–1) used. */
+    windMs: number;
+    cloud: number;
+  };
 }
 
 const toVec = (w: WindAt) => {
@@ -141,18 +182,39 @@ export function estimateSeeing(input: SeeingInput): SeeingEstimate | null {
   const s = input.w850 && input.w10 ? shear(input.w850, input.w10) : null;
   const shearFactor = Math.min(4, 1 + ((s ?? 0) / 12) ** 2);
   const jLower = HV_MID_J * Math.exp(-Math.max(0, input.elevation) / 1500) * shearFactor;
-  const jGround = jFromSeeing(GROUND_ARCSEC);
+
+  // Ground layer: calibrated typical level × how this hour's near-ground weather compares
+  // with a typical night (surfacelayer.ts: wind, cloud, ground cooling, city heat, sun).
+  let jGround = jFromSeeing(GROUND_ARCSEC);
+  let ground: SeeingEstimate['ground'];
+  if (input.surface) {
+    const now = surfaceLayer(input.surface);
+    const ref = surfaceLayer(referenceSurface(input.surface));
+    const factor = Math.min(
+      GROUND_FACTOR_MAX,
+      Math.max(GROUND_FACTOR_MIN, ref.J > 0 ? now.J / ref.J : 1),
+    );
+    jGround = typicalGroundJ(input.elevation) * factor;
+    ground = {
+      factor,
+      regime: now.stable ? 'stable' : now.urbanHeat ? 'urban' : 'convective',
+      windMs: input.surface.windMs,
+      cloud: input.surface.cloud,
+    };
+  }
 
   const arcsec = seeingFromJ(jJet + jLower + jGround);
   const { rating, label } = rateSeeing(arcsec);
   return {
     arcsec,
-    range: [round1(arcsec * 0.8), round1(arcsec * 1.2)],
+    // The ground layer varies with the observer's own surroundings: ±30 % is honest.
+    range: [round1(arcsec * 0.7), round1(arcsec * 1.3)],
     rating,
     label,
-    parts: { jet: seeingFromJ(jJet), lower: seeingFromJ(jLower), ground: GROUND_ARCSEC },
+    parts: { jet: seeingFromJ(jJet), lower: seeingFromJ(jLower), ground: seeingFromJ(jGround) },
     jetMs: v,
     shearMs: s,
+    ...(ground ? { ground } : {}),
   };
 }
 
