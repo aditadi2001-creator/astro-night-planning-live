@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Sesame xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xsi:noNamespaceSchemaLocation="https://vizier.cds.unistra.fr/xml/sesame_4x.xsd">
+<Target option="S">
+  <name>Vega</name>
+  <!-- Q014764 #1 -->
+  <Resolver name="Sca=Simbad (CfA, via client/server)"><!--delay: 0ms [0] -->
+    <INFO>from cache</INFO>
+    <oid>2900336</oid>
+    <otype>dS*</otype>
+    <jpos>18:36:56.33 +38:47:01.2</jpos>
+    <jradeg>279.23473479</jradeg>
+    <jdedeg>38.78368896</jdedeg>
+    <refPos>2007A&amp;A...474..653V</refPos>
+    <errRAmas>3.51</errRAmas><errDEmas>2.81</errDEmas>
+    <pm>
+      <v>349.72</v><e>0.51</e><q>A</q><r>2007A&amp;A...474..653V</r>
+      <pa>35.1</pa>
+      <pmRA>200.94</pmRA><epmRA>0.40</epmRA>
+      <pmDE>286.23</pmDE><epmDE>0.32</epmDE>
+    </pm>
+    <Vel><v>-13.5</v><e>0.4</e><q>C</q><r>2004A&amp;A...420..183A</r></Vel>
+    <plx><v>130.23</v><e>0.36</e><q>A</q><r>2007A&amp;A...474..653V</r></plx>
+    <spType>A0V</spType><spNum>0.0000C800.0030.0000000000000000</spNum>
+    <oname>* alf Lyr</oname>
+    <alias>* alf Lyr</alias>
+    <alias>* 3 Lyr</alias>
+    <alias>ADS 11510 A</alias>
+    <alias>AG+38 1711</alias>
+    <alias>AKARI-IRC-V1 J1836564+384703</alias>
+    <alias>ASCC 507896</alias>
+    <alias>BD+38 3238</alias>
+    <alias>CCDM J18369+3847A</alias>
+    <alias>CEL 4636</alias>
+    <alias>CSI+38 3238 1</alias>
+    <alias>CSV 101745</alias>
+    <alias>1E 183515+3844.3</alias>
+    <alias>EUVE J1836+38.7</alias>
+    <alias>FK5 699</alias>
+    <alias>GAT 1285</alias>
+    <alias>GC 25466</alias>
+    <alias>GCRV 11085</alias>
+    <alias>GEN# +1.00172167</alias>
+    <alias>GJ 721</alias>
+    <alias>GJ 721.0</alias>
+    <alias>HD 172167</alias>
+    <alias>HGAM 706</alias>
+    <alias>HIC 91262</alias>
+    <alias>HIP 91262</alias>
+    <alias>HR 7001</alias>
+    <alias>IDS 18336+3841 A</alias>
+    <alias>IRAS 18352+3844</alias>
+    <alias>IRAS F18352+3844</alias>
+    <alias>IRC +40322</alias>
+    <alias>JCMTSE J183656.4+384709</alias>
+    <alias>JCMTSF J183656.4+384709</alias>
+    <alias>JP11 2999</alias>
+    <alias>LSPM J1836+3847</alias>
+    <alias>LTT 15486</alias>
+    <alias>2MASS J18365633+3847012</alias>
+    <alias>N30 4138</alias>
+    <alias>NAME Vega</alias>
+    <alias>NLTT 46746</alias>
+    <alias>NSV 11128</alias>
+    <alias>8pc 128.93</alias>
+    <alias>PLX 4293</alias>
+    <alias>PLX 4293.00</alias>
+    <alias>PMC 90-93 496</alias>
+    <alias>PPM 81558</alias>
+    <alias>RAFGL 2208</alias>
+    <alias>ROT 2633</alias>
+    <alias>SAO 67174</alias>
+    <alias>SKY# 34103</alias>
+    <alias>TD1 22883</alias>
+    <alias>TIC 157587146</alias>
+    <alias>TIC 471012017</alias>
+    <alias>TYC 3105-2070-1</alias>
+    <alias>UBV 15842</alias>
+    <alias>UBV M 23118</alias>
+    <alias>USNO-B1.0 1287-00305764</alias>
+    <alias>USNO 882</alias>
+    <alias>uvby98 100172167</alias>
+    <alias>V* alf Lyr</alias>
+    <alias>WDS J18369+3846A</alias>
+    <alias>WEB 15681</alias>
+    <alias>WISE J183656.49+384703.9</alias>
+    <alias>Zkh 277</alias>
+    <alias>[HFE83] 1223</alias>
+    <alias>EQ 183456.7+384615.4</alias>
+    <nrefs>2817</nrefs>
+  </Resolver>
+</Target>
+</Sesame>
+<!--- ====Done (2026-Nov-19,17:35:23z)==== -->

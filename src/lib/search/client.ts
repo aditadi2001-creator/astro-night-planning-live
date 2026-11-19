@@ -46,6 +46,12 @@ export function browseCatalog(badge: string): Promise<SearchResponse> {
   return ask({ type: 'browse', badge });
 }
 
+/** The catalog entry for an object known by any of these names (null when not in the catalogs). */
+export async function lookupObject(keys: string[]): Promise<ResultEntry | null> {
+  const r = await ask({ type: 'lookup', keys });
+  return r.ok ? (r.results[0] ?? null) : null;
+}
+
 // ---- recents and favorites (localStorage, this device only) -------------------------------
 
 const RECENT_KEY = 'anp.search.recent.v1';

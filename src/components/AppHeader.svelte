@@ -99,6 +99,7 @@
   <button
     class="night"
     aria-pressed={night}
+    aria-label="Red night mode"
     onclick={() => onnight(!night)}
     title="Red night-vision mode (keeps your eyes dark-adapted)"
   >

@@ -14,6 +14,19 @@
   } from './lib/state/route';
   import type { RibbonHour } from './lib/ribbon';
   import SearchDialog from './components/SearchDialog.svelte';
+  import SkyDock from './components/SkyDock.svelte';
+  import LayersSheet from './components/LayersSheet.svelte';
+  import SkyMore from './components/SkyMore.svelte';
+  import HorizonPanel from './components/HorizonPanel.svelte';
+  import { profileSummary } from './lib/profiles';
+  import {
+    foregroundProfile,
+    loadForeground,
+    tintGround,
+    type ForegroundState,
+  } from './lib/sky/foreground';
+  import { loadCustomHorizon, toProfile, type CustomHorizon } from './lib/sky/customHorizon';
+  import { skyView } from './lib/sky/view.svelte';
   import type { ResultEntry } from './lib/search/client';
   import {
     loadActiveProfileId,
@@ -23,17 +36,16 @@
     type Profile,
   } from './lib/profiles';
   import { fmtDateTime, fmtTime } from './lib/time/format';
-  import SkyView, { type SkyPanel, type TimeCmd } from './components/SkyView.svelte';
-  import LocationPicker from './components/LocationPicker.svelte';
+  import SkyView, { type DockPanel, type TimeCmd } from './components/SkyView.svelte';
   import TimeControls from './components/TimeControls.svelte';
   import ConditionCards from './components/ConditionCards.svelte';
   import Timeline from './components/Timeline.svelte';
   import DataStatus from './components/DataStatus.svelte';
-  import LayerBar, { type LayerState, type SurveyStatus } from './components/LayerBar.svelte';
+  import type { LayerState, SurveyStatus } from './components/LayerBar.svelte';
   import Extras from './components/Extras.svelte';
   import WeekAhead from './components/WeekAhead.svelte';
   import Equipment from './components/Equipment.svelte';
-  import ObjectDetails from './components/ObjectDetails.svelte';
+  import InfoDrawer from './components/InfoDrawer.svelte';
   import TargetsPanel from './components/TargetsPanel.svelte';
   import { loadPlan, type PlanItem } from './lib/plan/plan';
   import { cloudFactor } from './lib/physics/score';
@@ -192,6 +204,12 @@
   }
 
   // ---- search: Ctrl/Cmd-K anywhere opens the sky search ----
+  // ---- the sky's dock, foreground and custom horizon -------------------------------------
+  let dock = $state<DockPanel | null>(null);
+  let skyRef = $state<ReturnType<typeof SkyView>>();
+  let foreground = $state<ForegroundState>(loadForeground());
+  let customHorizon = $state<CustomHorizon | null>(untrack(() => loadCustomHorizon(place)));
+
   let searchOpen = $state(false);
   function openSearch() {
     searchOpen = true;
@@ -217,6 +235,20 @@
         : Math.min(60, Math.max(e.kind === 'star' ? 5 : 0.5, (e.sizeDeg ?? 0.2) * 4));
     gotoSky(e.ra, e.dec, fov, e.engineId);
   }
+  /** A shared link (#/sky?t=M%2042) opens the sky on that object once, at load. */
+  onMount(() => {
+    const t = firstRoute.page === 'sky' ? firstRoute.params.t : undefined;
+    if (!t) return;
+    const name = t.replace(/^NAME /, '');
+    void import('./lib/search/client').then(async ({ searchCatalogs }) => {
+      const r = await searchCatalogs(name, 8);
+      if (!r.ok) return;
+      const key = name.toLowerCase();
+      const hit =
+        r.results.find((e) => e.engineId === t || e.label.toLowerCase() === key) ?? r.results[0];
+      if (hit) pickResult(hit);
+    });
+  });
   function pickSurvey(id: string) {
     layers = { ...layers, surveys: true, survey: id };
     goPage('sky');
@@ -421,6 +453,43 @@
     DEM_BASE ? 'loading' : 'off',
   );
   let forceTerrain = $state(false);
+  /**
+   * Planning horizon (target hours, charts, verdict, telescope HUD): your custom horizon for this
+   * site, else the real terrain when the terrain layer is on, else a flat horizon.
+   */
+  const horizonProfile = $derived<ArrayLike<number> | null>(
+    customHorizon
+      ? toProfile(customHorizon.points)
+      : layers.terrain
+        ? (siteHorizon?.profile ?? null)
+        : null,
+  );
+  /** What the sky draws: the custom horizon, else the chosen foreground, else the terrain. */
+  const skyHorizon = $derived<Float32Array | null>(
+    customHorizon
+      ? toProfile(customHorizon.points)
+      : foreground.id === 'dem'
+        ? layers.terrain
+          ? (siteHorizon?.profile ?? null)
+          : null
+        : foregroundProfile(foreground.id),
+  );
+  // "None" hides the ground; any other foreground shows it.
+  let lastFg = '';
+  $effect(() => {
+    const id = foreground.id;
+    if (id === lastFg) return;
+    if (lastFg) skyView.ground = id !== 'none';
+    lastFg = id;
+  });
+  // Custom horizons are per site.
+  let lastSite = '';
+  $effect(() => {
+    const key = `${place.lat.toFixed(2)},${place.lon.toFixed(2)}`;
+    if (key === lastSite) return;
+    if (lastSite) customHorizon = loadCustomHorizon(place);
+    lastSite = key;
+  });
   $effect(() => {
     const lat = place.lat;
     const lon = place.lon;
@@ -551,7 +620,8 @@
       ? {
           pressure,
           temperature,
-          k: ext.total,
+          // Foreground fog adds visual haze only (never used in planning numbers).
+          k: ext.total + foreground.fog * 0.6,
           dbv,
           // Long exposure reaches ~4 mag deeper than the eye against the same sky.
           limitMag: limitMag + (layers.longExposure ? 4 : 0),
@@ -982,7 +1052,7 @@
       aria-label="Live sky"
     >
       <h1 class="visually-hidden">Live sky</h1>
-      <div class="sky-row" class:with-details={!!selectedInfo}>
+      <div class="sky-row">
         <div class="sky-box">
           <SkyView
             {place}
@@ -992,8 +1062,8 @@
             {tz}
             atmosphere={engineAtmosphere}
             clouds={cloudInput}
-            horizon={layers.terrain ? (siteHorizon?.profile ?? null) : null}
-            groundColor={groundRgb}
+            horizon={skyHorizon}
+            groundColor={tintGround(groundRgb, foreground)}
             glow={domeGlow}
             survey={engineSurvey}
             bind:setups
@@ -1001,14 +1071,19 @@
             bind:layers
             bind:night
             onframecenter={(c) => (frameCenter = c)}
-            onselect={(i) => (selectedInfo = i)}
+            onselect={(i) => {
+              // The info is refreshed every second while selected; only a newly picked
+              // object opens the Info panel, so other panels stay usable.
+              const picked = i != null && i.name !== selectedInfo?.name;
+              selectedInfo = i;
+              if (picked) dock = 'info';
+            }}
             goto={gotoTarget}
             {clearSignal}
             deepSky={layers.deepSky && !layers.surveys ? deepSkyUrl : null}
             longExposure={layers.longExposure}
             oncursor={(p) => (cursor = p)}
             ontime={timeCmd}
-            onsettime={setTime}
             onrate={(r) => {
               if (r === 0) setTime(new Date(), true);
               else {
@@ -1016,54 +1091,146 @@
                 rate = r;
               }
             }}
-            oncamera={() => (cameraOpen = true)}
+            bind:this={skyRef}
+            onopen={(p) => (dock = dock === p ? null : p)}
+            onsearch={openSearch}
           >
-            {#snippet panel(p: SkyPanel, close: () => void)}
-              {#if p === 'location'}
-                <LocationPicker {place} onplace={setPlace} onclose={close} embedded />
-              {:else if p === 'time'}
-                <TimeControls
-                  {place}
-                  time={shown}
-                  {live}
-                  {tz}
-                  events={timeEvents}
-                  onchange={setTime}
-                />
-              {:else if p === 'layers'}
-                <LayerBar
-                  bind:layers
-                  {surveyStatus}
-                  compact
-                  ongoto={(ra, dec, fov) => {
-                    close();
-                    gotoSky(ra, dec, fov);
-                  }}
-                />
-                <p class="win-note">
-                  Display switches (constellations, grids, ground, atmosphere…) are in the button
-                  bar at the bottom of the sky; press F1 for the keyboard shortcuts.
-                </p>
-              {/if}
+            {#snippet overlay()}
+              <SkyDock bind:active={dock} onsearch={openSearch} infoAvailable={!!selectedInfo}>
+                {#snippet content(p: DockPanel)}
+                  {#if p === 'targets'}
+                    <TargetsPanel
+                      compact
+                      {place}
+                      {tz}
+                      {tw}
+                      dark={tonightVerdict.dark}
+                      clear={clearByHour}
+                      sqm={sqmUsed.value ?? 21}
+                      profile={activeProfile}
+                      horizon={horizonProfile}
+                      shown={shown.getTime()}
+                      {expert}
+                      bind:plan
+                      onshow={(r) =>
+                        showTarget({
+                          ra: r.o.ra,
+                          dec: r.o.dec,
+                          sizeDeg: (r.o.maj ?? 6) / 60,
+                          ...(r.best ? { bestT: r.best.t } : {}),
+                          id: r.o.name,
+                        })}
+                    />
+                  {:else if p === 'info'}
+                    {#if selectedInfo}
+                      <InfoDrawer
+                        info={selectedInfo}
+                        {place}
+                        time={shown}
+                        {tw}
+                        {tz}
+                        {profiles}
+                        {expert}
+                        horizon={horizonProfile}
+                        bind:plan
+                        onclose={() => {
+                          clearSignal++;
+                          selectedInfo = null;
+                          dock = null;
+                        }}
+                        ongoto={() => skyRef?.centreSelected()}
+                        onframe={() => {
+                          if (!Object.values(shownFrames).some(Boolean)) skyRef?.frame();
+                        }}
+                      />
+                    {:else}
+                      <p class="dock-empty">
+                        Tap any star, planet, galaxy or nebula in the sky to see what it is, where
+                        it is, when it is best and how it fits your camera.
+                      </p>
+                    {/if}
+                  {:else if p === 'layers'}
+                    <LayersSheet bind:layers {surveyStatus} {expert} />
+                  {:else if p === 'telescope'}
+                    <div class="dock-stack">
+                      <p>
+                        <strong>{activeProfile?.name ?? 'No profile'}</strong>
+                        {#if activeProfile}<br /><span class="dock-note"
+                            >{profileSummary(activeProfile)}</span
+                          >{/if}
+                      </p>
+                      <div class="dock-row">
+                        <button
+                          aria-pressed={Object.values(shownFrames).some(Boolean)}
+                          onclick={() => skyRef?.frame()}>Camera frame on the sky</button
+                        >
+                        <button onclick={() => skyRef?.centreSelected()} disabled={!selectedInfo}
+                          >Centre on selected</button
+                        >
+                      </div>
+                      <label class="dock-range">
+                        Frame rotation
+                        <input
+                          type="range"
+                          min="0"
+                          max="180"
+                          step="1"
+                          bind:value={setups.deepsky.rotationDeg}
+                        />
+                        <output>{Math.round(setups.deepsky.rotationDeg)}°</output>
+                      </label>
+                      <p class="dock-note">
+                        The frame uses the header's equipment profile. Live telescope position
+                        (NINA, ASCOM Alpaca) and mosaics arrive with the telescope update.
+                      </p>
+                    </div>
+                  {:else if p === 'horizon'}
+                    <HorizonPanel
+                      {place}
+                      bind:foreground
+                      bind:customHorizon
+                      terrainOn={layers.terrain}
+                      ontoggleterrain={(v) => (layers = { ...layers, terrain: v })}
+                      shown={shown.getTime()}
+                      terrain={siteHorizon?.profile ?? null}
+                    />
+                  {:else if p === 'time'}
+                    <div class="dock-stack">
+                      <TimeControls
+                        {place}
+                        time={shown}
+                        {live}
+                        {tz}
+                        events={timeEvents}
+                        onchange={setTime}
+                      />
+                      <div class="dock-row" role="group" aria-label="Time speed">
+                        <button onclick={() => timeCmd('slower')} aria-label="Slower (J)">◀◀</button
+                        >
+                        <button onclick={() => timeCmd(live || rate !== 0 ? 'pause' : 'real')}
+                          >{live || rate !== 0 ? 'Pause' : 'Play'}</button
+                        >
+                        <button onclick={() => timeCmd('faster')} aria-label="Faster (L)">▶▶</button
+                        >
+                        <button onclick={() => timeCmd('now')} aria-pressed={live}>Now</button>
+                      </div>
+                    </div>
+                  {:else}
+                    <SkyMore
+                      {place}
+                      time={shown}
+                      {tz}
+                      onplace={setPlace}
+                      onpick={(n) => pickResult({ kind: 'planet', label: n, sub: '', badges: [] })}
+                      onfull={() => skyRef?.fullScreen()}
+                      oncamera={() => (cameraOpen = true)}
+                    />
+                  {/if}
+                {/snippet}
+              </SkyDock>
             {/snippet}
           </SkyView>
         </div>
-        {#if selectedInfo}
-          <div class="details-col">
-            <ObjectDetails
-              info={selectedInfo}
-              {place}
-              time={shown}
-              {tw}
-              {tz}
-              {setups}
-              onclose={() => {
-                clearSignal++;
-                selectedInfo = null;
-              }}
-            />
-          </div>
-        {/if}
       </div>
     </section>
   {/if}
@@ -1156,7 +1323,7 @@
             clear={clearByHour}
             sqm={sqmUsed.value ?? 21}
             profile={activeProfile}
-            horizon={layers.terrain ? (siteHorizon?.profile ?? null) : null}
+            horizon={horizonProfile}
             shown={shown.getTime()}
             {expert}
             bind:plan
@@ -1369,11 +1536,6 @@
     min-height: 420px;
     min-width: 0;
   }
-  .win-note {
-    margin: 0;
-    font-size: 12px;
-    color: var(--muted);
-  }
   .offscreen .sky-box {
     height: 240px;
     min-height: 0;
@@ -1391,14 +1553,42 @@
     }
   }
   @media (min-width: 1100px) {
-    .sky-row.with-details {
-      grid-template-columns: minmax(0, 1fr) 380px;
-    }
-    .details-col {
-      min-height: 0;
-      overflow-y: auto;
-      scrollbar-width: thin;
-    }
+  }
+  /* ---- dock panels drawn by this page ---- */
+  .dock-empty,
+  .dock-note {
+    margin: 0;
+    color: var(--text-2);
+    font-size: var(--fs-14);
+  }
+  .dock-note {
+    font-size: var(--fs-12);
+  }
+  .dock-stack {
+    display: grid;
+    gap: var(--s3);
+  }
+  .dock-stack p {
+    margin: 0;
+  }
+  .dock-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s2);
+  }
+  .dock-row button[aria-pressed='true'] {
+    border-color: var(--brass);
+    color: var(--brass);
+  }
+  .dock-range {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    font-size: var(--fs-14);
+  }
+  .dock-range input {
+    flex: 1;
+    accent-color: var(--brass);
   }
   /* ---- Plan page ---- */
   .plan {

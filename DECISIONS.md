@@ -150,3 +150,30 @@ the info drawer and the ranking agree (one source of truth).
 
 **D29. Plan exports PA 0** until Phase 5 adds frame rotation; NINA treats the PA column as
 optional, so 0 means "no rotation requested".
+
+## Phase 4 (2026-11-19)
+
+**D30. One dock with labelled tabs replaces the side rail and floating windows.** A beginner
+reads words, an expert uses the F-keys; both reach the same seven panels. The sky's view switches
+live in one shared store (`skyView`, saved on the device) so the Layers sheet and keyboard
+shortcuts never disagree.
+
+**D31. Foregrounds are drawn in code, not shipped as panoramas.** Zero bytes, nothing to license,
+and they render through the engine's existing terrain layer. They are for looks and practice
+only: planning never uses them.
+
+**D32. Planning horizon precedence: your custom horizon, then the real terrain (if the terrain
+layer is on), then flat.** One horizon feeds target hours, charts, the verdict and the sky's
+ground, so the numbers match what you see.
+
+**D33. Object details come from Sesame (SIMBAD data) on the CfA mirror with the IDIA mirror as
+fallback, cached 30 days on the device.** A SIMBAD TAP join was tried and was several seconds
+slower; CDS Strasbourg itself has been degraded since 2026-11-09 (D22, docs/RESEARCH.md). Only
+the object's name is sent.
+
+**D34. The engine's meteor simulation is switched off.** It draws random meteors that are not
+real events, which breaks "no fabricated data". Real meteor showers belong in the events
+calendar (not built).
+
+**D35. A selection opens the Info tab only when a new object is picked.** The info refreshes
+every second as the object moves; re-opening Info on each refresh made the other tabs unusable.

@@ -176,7 +176,64 @@ docs/RESEARCH.md, this file.
   comets/asteroids: not built.
 - Lunar terminator position is approximate (±3°, libration ignored), stated in the UI.
 
-## Phase 4 — Sky Explorer ⏳
+## Phase 4 — Sky Explorer ✅ (2026-11-19)
+
+**Done (evidence)**
+
+- **One dock instead of 25 unlabeled icons** (`SkyDock.svelte`): search, "Tonight's best" and
+  seven labelled tabs (Targets, Info, Layers, Telescope, Horizon, Time, More). Bottom sheet on
+  phones, right-hand drawer from 900 px; Esc closes; F-keys open the same panels. The old side
+  rail, floating windows, time bar, button bar and chips are gone, and so are `SkySearch`,
+  `SkyInfo`, `ObjectDetails`, `TabNav` and `TopBar` (unused after the refactor).
+- **Layers sheet** (`LayersSheet.svelte`, view state in `src/lib/sky/view.svelte.ts`): presets
+  Beginner / Imager / Survey / Full; grouped switches (lines and labels, grids, ground and
+  atmosphere, objects) each with a one-line hint and its keyboard shortcut; the physical layers
+  (clouds, light pollution, haze, terrain, long exposure, deep-sky images) with what they show;
+  the survey picker: 36 surveys grouped by band, each with a live HiPS thumbnail of Orion, the
+  serving mirror and an opacity slider.
+- **Horizon and foreground** (`HorizonPanel.svelte`): 12 foregrounds drawn in code (real
+  terrain, none, flat, ocean, desert, hills, forest, mountains, Himalayan peaks, city, Bangalore
+  rooftop with parapet, observatory dome) with brightness and fog (`src/lib/sky/foreground.ts`,
+  3 tests). **Custom horizon** per site (`src/lib/sky/customHorizon.ts`, 5 tests): import NINA
+  `.hrz`, CSV or JSON, export NINA `.hrz`, clear; draw by clicking or typing az/alt, start from
+  the terrain; trace a panorama photo (click points or auto-trace the sky edge); phone survey
+  with the compass, calibrated on the Sun or Moon. The custom horizon drives target hours,
+  charts and the verdict on the Plan page and the sky's ground.
+- **Info drawer** (`InfoDrawer.svelte`, `src/lib/info/details.ts`, 2 tests on recorded Sesame
+  replies): plain-language "What is this?" plus the Wikipedia summary; Centre, Frame, + Plan,
+  Favorite; survey cut-outs (DSS2, 2MASS, AllWISE, Pan-STARRS, Hα, GALEX) at a zoom chosen from
+  the object's size (`src/lib/sky/healpix.ts`, 3 tests); identity and aliases; position (J2000,
+  of date, hour angle, galactic, ecliptic, constellation); physical data with its source
+  (magnitude, size and PA, computed surface brightness, distance, redshift for z ≥ 0.001, radial
+  velocity, spectral type, proper motion, parallax; planet disc, phase, Jupiter's moons,
+  Saturn's ring tilt, Moon phase and libration); visibility tonight with the altitude chart;
+  imaging strategy and fit for each equipment profile; private notes; links (SIMBAD, NED,
+  Wikipedia, ESASky). Checked on M 42, Saturn and Vega.
+- **Shared links open on the object:** `#/sky?t=M%2042` now selects M 42 at load (it was written
+  to the URL but never read). Search go-to waits up to 6 s for the engine's deep-sky tile.
+- **Fixes found on the way:** the engine's random meteor simulation is off (it drew invented
+  streaks; constraint 7); `describe()` no longer asks the engine for a non-existent `type`
+  info (one console line per second while something was selected); picking a dock tab no longer
+  snaps back to Info every second; disabled buttons now look disabled; the night button has an
+  accessible name on phones.
+- No new Worker or R2 requests: SIMBAD/Sesame, Wikipedia and the HiPS thumbnails come from
+  public servers and are cached on the device.
+- Gate: svelte-check 0/0, ESLint clean, Prettier clean, **334 tests pass**, build OK,
+  `check:budget` OK, no horizontal scroll at 390 px, 0 console errors after reload. Night mode:
+  the SVG filter matrix zeroes G and B (the JPEG screenshot shows only chroma bleed next to
+  bright red text). Screenshots: `docs/screenshots/phase4/` (1440 info, 768 horizon, 390 info,
+  layers and night).
+
+**Not verified / carried to later phases**
+
+- The panorama tracer and the phone compass survey were not exercised end to end here (the
+  browser pane has no camera roll or orientation sensor); the `.hrz` import, export and clear
+  were.
+- A burst of short streaks can appear in the first seconds after load at wide fields; it is not
+  the meteor module (off) and disappears once the view settles. To investigate in Phase 6.
+- Opacity is one slider for the survey layer, not per stacked layer.
+- The telescope tab holds the existing frame controls; the frame upgrade, mosaics and live
+  telescope HUD are Phase 5.
 
 ## Phase 5 — FOV frame and telescope ⏳
 

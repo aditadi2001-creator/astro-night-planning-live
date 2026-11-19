@@ -4,7 +4,7 @@
    * tabs, presets, filters, an explainable score, filter advice for the active profile, and a
    * local "tonight plan" with NINA / JSON / calendar export.
    */
-  import { onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import TargetsWorker from '../lib/plan/targets.worker?worker';
   import type { TargetsResponse } from '../lib/plan/targets.worker';
   import type { Filters, Ranked, ScoreKind, Tab } from '../lib/plan/rank';
@@ -44,6 +44,8 @@
     expert: boolean;
     plan: PlanItem[];
     onshow: (r: Ranked) => void;
+    /** Dock version: top 10, no filters, no plan list. */
+    compact?: boolean;
   }
   let {
     place,
@@ -58,6 +60,7 @@
     expert,
     plan = $bindable(),
     onshow,
+    compact = false,
   }: Props = $props();
 
   type PresetId = 'none' | 'moonproof' | 'beginner' | 'frame' | 'narrowband';
@@ -130,7 +133,7 @@
   let tab = $state<Tab>('any');
   let preset = $state<PresetId>('none');
   let showFilters = $state(false);
-  let limit = $state(20);
+  let limit = $state(untrack(() => (compact ? 10 : 20)));
   // Free filters (merged with the preset's).
   let f = $state({
     text: '',
@@ -349,31 +352,41 @@
   const dateTag = $derived(new Date(dark?.start ?? shown).toISOString().slice(0, 10));
 </script>
 
-<div class="targets">
-  <div class="bar">
+<div class="targets" class:compact>
+  {#if compact}
     <div class="tabs" role="tablist" aria-label="Object type">
       {#each TABS as t (t.id)}
         <button role="tab" aria-selected={tab === t.id} onclick={() => (tab = t.id)}
           >{t.label}</button
         >
       {/each}
-      <a class="planets-link" href="#/plan?s=planets">Planets →</a>
     </div>
-    <div class="presets" role="group" aria-label="Presets">
-      {#each PRESETS as p (p.id)}
+  {:else}
+    <div class="bar">
+      <div class="tabs" role="tablist" aria-label="Object type">
+        {#each TABS as t (t.id)}
+          <button role="tab" aria-selected={tab === t.id} onclick={() => (tab = t.id)}
+            >{t.label}</button
+          >
+        {/each}
+        <a class="planets-link" href="#/plan?s=planets">Planets →</a>
+      </div>
+      <div class="presets" role="group" aria-label="Presets">
+        {#each PRESETS as p (p.id)}
+          <button
+            aria-pressed={preset === p.id}
+            title={p.hint}
+            onclick={() => (preset = preset === p.id ? 'none' : p.id)}>{p.label}</button
+          >
+        {/each}
         <button
-          aria-pressed={preset === p.id}
-          title={p.hint}
-          onclick={() => (preset = preset === p.id ? 'none' : p.id)}>{p.label}</button
+          class="ftoggle"
+          aria-expanded={showFilters}
+          onclick={() => (showFilters = !showFilters)}>Filters</button
         >
-      {/each}
-      <button
-        class="ftoggle"
-        aria-expanded={showFilters}
-        onclick={() => (showFilters = !showFilters)}>Filters</button
-      >
+      </div>
     </div>
-  </div>
+  {/if}
   {#if preset !== 'none'}
     <p class="hint">{PRESETS.find((p) => p.id === preset)?.hint}</p>
   {/if}
@@ -587,74 +600,76 @@
       </li>
     {/each}
   </ol>
-  {#if list.length >= limit && limit < 60}
+  {#if !compact && list.length >= limit && limit < 60}
     <button class="more" onclick={() => (limit += 20)}>Show 20 more</button>
   {/if}
 
-  <section class="plan" aria-labelledby="plan-h">
-    <h3 id="plan-h">Tonight’s plan ({plan.length})</h3>
-    {#if !plan.length}
-      <p class="note">
-        Add targets with “+ Plan”. The plan stays on this device and can be exported for NINA.
-      </p>
-    {:else}
-      <ol class="plist">
-        {#each plan as p (p.name)}
-          <li>
-            <span class="obj-name">{p.name}</span>{p.common ? ` ${p.common}` : ''}
-            <span class="note"
-              >{p.window
-                ? `${fmtTime(p.window.start, tz)}–${fmtTime(p.window.end, tz)}`
-                : 'window n/a'} · {raHms(p.ra)}
-              {decDms(p.dec)}</span
-            >
-            <button
-              class="x"
-              aria-label={`Remove ${p.name} from the plan`}
-              onclick={() => {
-                plan = plan.filter((x) => x.name !== p.name);
-                savePlan(plan);
-              }}>×</button
-            >
-          </li>
-        {/each}
-      </ol>
-      <div class="pactions">
-        <button
-          onclick={() => {
-            plan = autoOrder(plan);
-            savePlan(plan);
-          }}>Order by best time</button
-        >
-        <button
-          onclick={() => download(`targets-${dateTag}.csv`, toNinaCsv(plan), 'text/csv')}
-          title="NINA 3.2+ sequencer “Import targets” and Target Scheduler">NINA CSV</button
-        >
-        <button
-          onclick={() =>
-            download(
-              `plan-${dateTag}.json`,
-              toJson(plan, { site: place.name, date: dateTag }),
-              'application/json',
-            )}>JSON</button
-        >
-        <button
-          onclick={() =>
-            download(`plan-${dateTag}.ics`, toIcs(plan, dark, place.name), 'text/calendar')}
-          >Calendar (.ics)</button
-        >
-        <button
-          onclick={() =>
-            copy(
-              plan.map((p) => `${p.name}\t${raHms(p.ra)}\t${decDms(p.dec)}`).join('\n'),
-              'Plan copied',
-            )}>Copy list</button
-        >
-        <button onclick={() => window.print()}>Print</button>
-      </div>
-    {/if}
-    {#if copied}<p class="note" role="status">{copied}</p>{/if}
-  </section>
+  {#if !compact}
+    <section class="plan" aria-labelledby="plan-h">
+      <h3 id="plan-h">Tonight’s plan ({plan.length})</h3>
+      {#if !plan.length}
+        <p class="note">
+          Add targets with “+ Plan”. The plan stays on this device and can be exported for NINA.
+        </p>
+      {:else}
+        <ol class="plist">
+          {#each plan as p (p.name)}
+            <li>
+              <span class="obj-name">{p.name}</span>{p.common ? ` ${p.common}` : ''}
+              <span class="note"
+                >{p.window
+                  ? `${fmtTime(p.window.start, tz)}–${fmtTime(p.window.end, tz)}`
+                  : 'window n/a'} · {raHms(p.ra)}
+                {decDms(p.dec)}</span
+              >
+              <button
+                class="x"
+                aria-label={`Remove ${p.name} from the plan`}
+                onclick={() => {
+                  plan = plan.filter((x) => x.name !== p.name);
+                  savePlan(plan);
+                }}>×</button
+              >
+            </li>
+          {/each}
+        </ol>
+        <div class="pactions">
+          <button
+            onclick={() => {
+              plan = autoOrder(plan);
+              savePlan(plan);
+            }}>Order by best time</button
+          >
+          <button
+            onclick={() => download(`targets-${dateTag}.csv`, toNinaCsv(plan), 'text/csv')}
+            title="NINA 3.2+ sequencer “Import targets” and Target Scheduler">NINA CSV</button
+          >
+          <button
+            onclick={() =>
+              download(
+                `plan-${dateTag}.json`,
+                toJson(plan, { site: place.name, date: dateTag }),
+                'application/json',
+              )}>JSON</button
+          >
+          <button
+            onclick={() =>
+              download(`plan-${dateTag}.ics`, toIcs(plan, dark, place.name), 'text/calendar')}
+            >Calendar (.ics)</button
+          >
+          <button
+            onclick={() =>
+              copy(
+                plan.map((p) => `${p.name}\t${raHms(p.ra)}\t${decDms(p.dec)}`).join('\n'),
+                'Plan copied',
+              )}>Copy list</button
+          >
+          <button onclick={() => window.print()}>Print</button>
+        </div>
+      {/if}
+      {#if copied}<p class="note" role="status">{copied}</p>{/if}
+    </section>
+  {/if}
 </div>
 
 <style>
@@ -987,6 +1002,17 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--s2);
+  }
+  .compact .viz,
+  .compact .strat,
+  .compact .rank {
+    display: none;
+  }
+  .compact .main {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .compact .actions {
+    padding-left: 0;
   }
   @media (max-width: 599px) {
     .main {

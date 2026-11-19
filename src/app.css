@@ -41,8 +41,12 @@ button {
   transition: border-color var(--t-fast) var(--ease);
 }
 
-button:hover {
+button:hover:not(:disabled) {
   border-color: var(--accent);
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 :focus-visible {

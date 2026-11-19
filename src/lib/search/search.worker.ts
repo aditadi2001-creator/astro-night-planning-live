@@ -9,6 +9,7 @@ import {
   catalogEntries,
   constellationEntries,
   dsoEntries,
+  norm,
   notableEntries,
   search,
   solarSystemEntries,
@@ -21,7 +22,9 @@ import {
 import { SURVEYS } from '../sky/surveys';
 
 export type SearchAsk =
-  { type: 'query'; q: string; limit?: number } | { type: 'browse'; badge: string };
+  | { type: 'query'; q: string; limit?: number }
+  | { type: 'browse'; badge: string }
+  | { type: 'lookup'; keys: string[] };
 export type SearchRequest = SearchAsk & { id: number };
 
 export type ResultEntry = Omit<Entry, 'ids' | 'words' | 'names' | 'rank'>;
@@ -130,6 +133,20 @@ self.onmessage = async (e: MessageEvent<SearchRequest>) => {
   const m = e.data;
   try {
     await init();
+    if (m.type === 'lookup') {
+      // First entry whose designations include one of the keys (e.g. the engine's names).
+      const keys = m.keys.map(norm).filter(Boolean);
+      let hit = entries.find((e) => e.kind === 'dso' && keys.some((k) => e.ids.includes(k)));
+      hit ??= entries.find((e) => keys.some((k) => e.ids.includes(k)));
+      post({
+        id: m.id,
+        ok: true,
+        results: hit ? [strip(hit)] : [],
+        galaxiesLoaded,
+        size: entries.length,
+      });
+      return;
+    }
     if (m.type === 'browse') {
       if (['PGC', 'UGC', 'ESO'].includes(m.badge)) await loadGalaxies();
       const results = browse(entries, m.badge).map(strip);

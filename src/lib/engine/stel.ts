@@ -10,7 +10,7 @@
 export interface SweObj {
   designations(): string[];
   culturalDesignations(): { name_english?: string; name_native?: string }[];
-  getInfo(info: 'vmag' | 'distance' | 'phase' | 'radius' | 'type'): number | string | undefined;
+  getInfo(info: 'vmag' | 'distance' | 'phase' | 'radius'): number | string | undefined;
   getInfo(info: 'radec' | 'azalt' | 'pvo', obs?: SweObserver): number[];
   readonly type?: string;
   [attr: string]: unknown;
@@ -46,6 +46,8 @@ export interface SweCore extends SweObj {
   stars: SweModule;
   dsos: SweModule;
   milkyway: SweModule;
+  /** Random meteor simulation (kept off: not real events). */
+  meteors?: SweModule;
   planets: SweModule;
   skycultures: SweModule & { current_id?: string };
   constellations: SweModule;
@@ -387,10 +389,15 @@ export function describe(stel: Stel, obj: SweObj): ObjectInfo {
   const observed = stel.convertFrame(obs, 'CIRS', 'OBSERVED', cirs);
   const [az, alt] = stel.c2s(observed);
   const vmag = obj.getInfo('vmag');
-  const t = typeof obj.type === 'string' ? obj.type : String(obj.getInfo('type') ?? '');
   const [ra0, dec0] = stel.c2s(radec);
-  const json = (obj as { jsonData?: { model?: string; model_data?: Record<string, unknown> } })
-    .jsonData;
+  const json = (
+    obj as {
+      jsonData?: { model?: string; model_data?: Record<string, unknown>; types?: string[] };
+    }
+  ).jsonData;
+  // getInfo('type') is not an engine info name (it logs an error on every call); the type
+  // comes from the object itself or its JSON data.
+  const t = typeof obj.type === 'string' ? obj.type : (json?.types?.[0] ?? '');
   const md = json?.model_data ?? {};
   const model = json?.model ?? '';
   const safe = (k: 'distance' | 'radius' | 'phase') => {

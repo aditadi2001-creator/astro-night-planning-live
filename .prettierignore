@@ -12,3 +12,4 @@ tests/fixtures/*.json
 public/catalog/
 public/horizons/
 public/data/
+tests/fixtures/*.xml

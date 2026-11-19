@@ -38,6 +38,16 @@ export interface Entry {
   ref?: string;
   /** Tie-break: lower is more important. */
   rank: number;
+  /** Catalog facts for the info drawer (deep-sky objects). */
+  info?: {
+    designations: string[];
+    common: string[];
+    min: number | null;
+    pa: number | null;
+    z: number | null;
+    distKpc: number | null;
+    morph: string | null;
+  };
 }
 
 const GREEK: Record<string, string> = {
@@ -273,6 +283,9 @@ export function dsoEntries(shard: Shard): Entry[] {
     'ids',
     'names',
   ].map(col) as number[];
+  const [cMin, cPa, cZ, cDist, cMorph] = ['min', 'pa', 'z', 'distKpc', 'morph'].map(
+    col,
+  ) as number[];
   const out: Entry[] = [];
   for (const r of shard.rows) {
     const ids = String(r[cIds as number] ?? '')
@@ -307,6 +320,15 @@ export function dsoEntries(shard: Shard): Entry[] {
       type: kind,
       engineId: /^(M|NGC|IC) \d+$/.test(primary) ? primary : undefined,
       rank,
+      info: {
+        designations: desig,
+        common: names,
+        min: (r[cMin as number] as number | null) ?? null,
+        pa: (r[cPa as number] as number | null) ?? null,
+        z: (r[cZ as number] as number | null) ?? null,
+        distKpc: (r[cDist as number] as number | null) ?? null,
+        morph: (r[cMorph as number] as string | null) ?? null,
+      },
     });
   }
   return out;
