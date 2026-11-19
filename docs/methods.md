@@ -160,11 +160,12 @@ model behind the forecast AQI (~45 km grid) badly underestimates city particle p
 on 15 Nov 2026 it gave Delhi 46 µg/m³ PM2.5 (US AQI 155) while stations read several times that. For
 the present hour the site therefore uses measured data: the nearest OpenAQ reference monitors
 (government stations such as India's CPCB/DPCC, the US EPA, the EEA; low-cost sensors only if no
-monitor is in range) within 25 km that reported in the last 3 h, up to three. The Worker turns
+monitor is in range) within 25 km that reported in the last 3 h, up to five. The Worker turns
 each monitor's last 12 hourly PM2.5 and PM10 values into EPA NowCast concentrations (weight
 w = min/max floored at 0.5; at least two of the last three hours); the site turns those into the US
 AQI with the February 2024 breakpoints (PM2.5 Good to 9.0 µg/m³), taking the larger of the PM2.5
-and PM10 indices, and shows the nearest station with the range of the others. CAMS remains for
+and PM10 indices, and shows the nearest station that reports PM2.5 (PM10-only stations read low; used only when no
+station has PM2.5) with the range of the others. CAMS remains for
 forecast hours and where no station is near. Needs a free OpenAQ key as the Worker secret
 `OPENAQ_KEY`; the Worker caches each 0.01° cell for 20 minutes.
 

@@ -94,6 +94,37 @@ describe('station AQI at the site', () => {
     expect(s?.others).toEqual([aqiPm25(250)]);
     expect(siteAqi(null)).toBeNull();
   });
+
+  it('prefers the nearest station with PM2.5 over a closer PM10-only one (Bangalore, 19 Nov)', () => {
+    const s = siteAqi(
+      parseStationAir({
+        fetched: 0,
+        stations: [
+          {
+            name: 'Hombegowda Nagar',
+            provider: 'CPCB',
+            monitor: true,
+            km: 3.5,
+            time: 1,
+            pm25: null,
+            pm10: 138.5,
+          },
+          {
+            name: 'Jayanagar',
+            provider: 'CPCB',
+            monitor: true,
+            km: 5.5,
+            time: 1,
+            pm25: 81.0,
+            pm10: 138.9,
+          },
+        ],
+      }),
+    );
+    expect(s?.station.name).toBe('Jayanagar');
+    expect(s?.aqi).toBe(169);
+    expect(s?.others).toEqual([aqiPm10(138.5)]);
+  });
 });
 
 describe('Worker /aq route helpers', () => {

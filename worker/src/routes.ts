@@ -206,6 +206,8 @@ export const OPENAQ = 'https://api.openaq.org/v3';
 export const AQ_RADIUS_M = 25_000;
 /** Readings older than this are not current. */
 export const AQ_MAX_AGE_MS = 3 * 3600_000;
+/** Monitors read per place (some report only PM10, or nothing in the last hours). */
+export const AQ_STATIONS = 5;
 
 /** GitHub repository whose workflows the Worker's cron starts. */
 export const GH_REPO = 'aditadi2001-creator/astro-night-planning-live';

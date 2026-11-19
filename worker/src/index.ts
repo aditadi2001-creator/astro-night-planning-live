@@ -40,6 +40,7 @@ import {
   OPENAQ,
   AQ_RADIUS_M,
   AQ_MAX_AGE_MS,
+  AQ_STATIONS,
 } from './routes';
 
 export interface Env {
@@ -263,7 +264,7 @@ async function sensorNowCast(env: Env, id: number, now: number) {
 }
 
 /**
- * /aq/<lat>/<lon>: the nearest reference monitors (up to 3 within 25 km, reported
+ * /aq/<lat>/<lon>: the nearest reference monitors (up to 5 within 25 km, reported
  * in the last 3 h) with NowCast PM2.5 and PM10, as the EPA computes "current AQI".
  * Low-cost sensors are used only when no reference monitor is in range.
  * 503 without the OPENAQ_KEY secret (the site then shows the CAMS model).
@@ -294,7 +295,7 @@ async function serveAq(env: Env, path: string): Promise<Response> {
     .filter((x) => Number.isFinite(x.km) && now - x.last <= AQ_MAX_AGE_MS)
     .sort((a, b) => a.km - b.km);
   const monitors = fresh.filter((x) => x.l.isMonitor);
-  const pick = (monitors.length ? monitors : fresh).slice(0, 3);
+  const pick = (monitors.length ? monitors : fresh).slice(0, AQ_STATIONS);
   const stations = await Promise.all(
     pick.map(async ({ l, km }) => {
       const sensor = (name: string) => l.sensors?.find((s) => s.parameter?.name === name)?.id;

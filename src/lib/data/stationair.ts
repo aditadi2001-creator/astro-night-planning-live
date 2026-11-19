@@ -55,19 +55,23 @@ export function parseStationAir(raw: Raw): StationAir {
   };
 }
 
-/** The site's measured AQI: the nearest station, with the spread of the others. */
+/**
+ * The site's measured AQI: the nearest station that reports PM2.5 (the pollutant
+ * that sets the AQI almost everywhere; a PM10-only station would read low), else
+ * the nearest station; with the spread of the others.
+ */
 export function siteAqi(sa: StationAir | null): {
   aqi: number;
   station: Station;
   others: number[];
 } | null {
   const st = sa?.stations ?? [];
-  const first = st[0];
-  if (!first || first.aqi == null) return null;
+  const pick = st.find((s) => s.pm25 != null) ?? st[0];
+  if (!pick || pick.aqi == null) return null;
   return {
-    aqi: first.aqi,
-    station: first,
-    others: st.slice(1).map((s) => s.aqi ?? 0),
+    aqi: pick.aqi,
+    station: pick,
+    others: st.filter((s) => s !== pick).map((s) => s.aqi ?? 0),
   };
 }
 
