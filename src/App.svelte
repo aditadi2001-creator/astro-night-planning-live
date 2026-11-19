@@ -1395,9 +1395,9 @@
   .solar-warning {
     margin: 0;
     padding: var(--s3) var(--s4);
-    border-left: 4px solid var(--nogo);
+    border: 1px solid var(--nogo);
     background: var(--ink-1);
-    border-radius: 0 var(--r-input) var(--r-input) 0;
+    border-radius: var(--r-input);
     max-width: var(--measure);
   }
   details.about > summary {
