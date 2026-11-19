@@ -222,6 +222,18 @@ def build_dso(names: dict, h400: set[int]) -> tuple[list[list], dict[str, int]]:
                 if n not in common:
                     common.append(n)
         primary = next(p for p in PRIMARY if p in ids)
+        # Not a brightness of the object itself: dark nebulae carry an opacity class (1-6),
+        # van den Bergh / vdBH / Cederblad entries the magnitude of the illuminating star,
+        # and 0.0 is a placeholder. Store "unknown" instead of a misleading number.
+        # Lynds dark / Barnard entries are dark nebulae even where the source types them
+        # otherwise (LDN 1550 is listed as "PN?" with its opacity class as magnitude).
+        if primary in ("LDN", "B"):
+            kind = "dark"
+        # A reflection nebula in van den Bergh's catalogue carries its star's magnitude.
+        if kind == "reflection" and ("vdB" in ids or "vdBH" in ids):
+            mag = None
+        if kind == "dark" or primary in ("vdB", "vdBH", "Ced") or mag == 0:
+            mag = None
         designations = [FMT[primary].format(ids[primary])] + [
             FMT[p].format(ids[p]) for p in PRIMARY if p in ids and p != primary
         ]

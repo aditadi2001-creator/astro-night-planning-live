@@ -127,7 +127,54 @@ docs/RESEARCH.md, this file.
 - The Worker change (`Timing-Allow-Origin`) needs a deploy, which waits for the owner's OK.
 - Coorg ships without a static horizon (copy failed its checksum); it is computed on first visit.
 
-## Phase 3 — Plan page ⏳
+## Phase 3 — Plan page ✅ (2026-11-19)
+
+**Done (evidence)**
+
+- **Tonight at a glance** (`src/lib/plan/verdict.ts`, 6 tests; `TonightGlance.svelte`): go /
+  marginal / no-go in one sentence with plain reasons (when clouds clear, Moon and narrowband,
+  seeing, haze, dew, model disagreement), darkness window, best hour, Moon, clouds, seeing,
+  transparency, dew, sky brightness (your measurement or the model, with Bortle). Example today:
+  "Go — 10 good hours tonight, 07:00 PM–05:00 AM".
+- **Best targets** (`src/lib/plan/rank.ts` in a Web Worker, 7 tests): the documented five-factor
+  score on ~25,000 catalog objects; hours count only above the minimum altitude and the terrain
+  horizon; tabs Any / Galaxies / Nebulae / Clusters; presets Moon-proof, Beginner-friendly,
+  Fits my frame, Narrowband tonight; filters for catalog, type, constellation, magnitude, size,
+  surface brightness, minimum altitude, minimum hours, Moon distance, frame fit, visible-at time,
+  RA/Dec range and text. "Any type" avoids near-duplicates and caps each type at a quarter (the
+  open-cluster flood is gone). Each row: type symbol, names, constellation, magnitude/size/SB
+  (Expert), when and where it is highest, usable hours, Moon distance, sparkline, frame-fit
+  glyph, filter advice for the profile's filters, difficulty and a one-line "why". "Clouds for
+  much of the night" is said once per list. Expanded row: altitude chart with twilight bands,
+  Moon and horizon floor, "Why this score?" factor bars, best time of year, copy RA/Dec.
+- **Tonight plan** (`src/lib/plan/plan.ts`, 5 tests): add/remove, order by best time, NINA CSV
+  (NINA 3.2+ sequencer and Target Scheduler headers), JSON, `.ics`, copy, print.
+- **Planets · Sun · Moon** (`src/lib/plan/solarsystem.ts`, 5 tests; `PlanetsPanel.svelte`):
+  every planet with best time tonight, altitude sparkline, magnitude, apparent size, phase,
+  elongation, distance, rise/transit/set, Jupiter's moons diagram, Saturn ring tilt, capture
+  tips from the planetary profile (disc size in px, ROI, critical sampling f/ratio, IR-pass in
+  poor seeing); the Moon's phase, age, libration, next phases and features on the terminator;
+  the Sun with NOAA SWPC flux, sunspot number and active regions, the SDO image, and the safety
+  warning.
+- **Data fixes found on the way:** dark nebulae had their opacity class as magnitude, reflection
+  nebulae their star's magnitude, LDN 1550 was typed as a planetary nebula → set to unknown /
+  dark at build time; the ribbon's best window used a 0–100 score as 0–1 (fixed).
+- Method changes documented in About and `docs/methods.md` (constraint 9).
+- Gate: svelte-check 0/0, ESLint clean, Prettier clean, **321 tests pass**, build OK, budget OK
+  (initial JS 185.9 KiB gz of 250), 0 console errors, no horizontal scroll at 390 px.
+  Screenshots: `docs/screenshots/phase3/`.
+
+**Carried to later phases**
+
+- The custom horizon (Phase 4) will feed the same `horizon` input; today it is the terrain
+  profile.
+- Week ahead, Space and Maps keep their previous content in the new order; multi-night
+  campaign view and integration-time estimates are not built.
+- Mosaic panes CSV and auto-rotation of the frame to the object's long axis are Phase 5
+  (plan items export PA 0 for now).
+- Upcoming-events calendar (conjunctions, oppositions, eclipses, meteor showers) and bright
+  comets/asteroids: not built.
+- Lunar terminator position is approximate (±3°, libration ignored), stated in the UI.
 
 ## Phase 4 — Sky Explorer ⏳
 

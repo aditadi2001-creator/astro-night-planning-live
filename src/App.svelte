@@ -3,7 +3,7 @@
   import AppHeader from './components/AppHeader.svelte';
   import NightRibbon from './components/NightRibbon.svelte';
   import SectionIndex from './components/SectionIndex.svelte';
-  import SkyEphem from './components/SkyEphem.svelte';
+  import PlanetsPanel from './components/PlanetsPanel.svelte';
   import {
     buildHash,
     parseHash,
@@ -22,7 +22,7 @@
     saveActiveProfileId,
     type Profile,
   } from './lib/profiles';
-  import { fmtDateTime } from './lib/time/format';
+  import { fmtDateTime, fmtTime } from './lib/time/format';
   import SkyView, { type SkyPanel, type TimeCmd } from './components/SkyView.svelte';
   import LocationPicker from './components/LocationPicker.svelte';
   import TimeControls from './components/TimeControls.svelte';
@@ -34,7 +34,8 @@
   import WeekAhead from './components/WeekAhead.svelte';
   import Equipment from './components/Equipment.svelte';
   import ObjectDetails from './components/ObjectDetails.svelte';
-  import BestTargets from './components/BestTargets.svelte';
+  import TargetsPanel from './components/TargetsPanel.svelte';
+  import { loadPlan, type PlanItem } from './lib/plan/plan';
   import { cloudFactor } from './lib/physics/score';
   import * as Astronomy from 'astronomy-engine';
   import { altAz, bodyFor } from './lib/astro/target';
@@ -52,7 +53,10 @@
   import PhysicsPanel from './components/PhysicsPanel.svelte';
   import Credits from './pages/Credits.svelte';
   import About from './pages/About.svelte';
-  import { loadPlace, savePlace } from './lib/location';
+  import { effectiveSqm, loadPlace, loadSiteSky, savePlace } from './lib/location';
+  import TonightGlance from './components/TonightGlance.svelte';
+  import { verdict } from './lib/plan/verdict';
+  import { bortle } from './lib/lp/lightpollution';
   import type { Place } from './lib/astro/sky';
   import { LiveSource } from './lib/data/live.svelte';
   import {
@@ -669,13 +673,30 @@
     ),
   );
 
+  // ---- tonight at a glance -------------------------------------------------------------
+  const siteSky = $derived(loadSiteSky(place));
+  const sqmUsed = $derived.by(() => {
+    const e = effectiveSqm(siteLight?.sqm ?? null, siteSky);
+    return { value: e.sqm, source: e.source, bortle: e.sqm == null ? null : bortle(e.sqm) };
+  });
+  const tonightVerdict = $derived(verdict(timeline, tw, moon.illumination, (t) => fmtTime(t, tz)));
+
+  // Cloud factor per forecast hour (the same factor the hourly score uses) for target ranking.
+  const clearByHour = $derived<[number, number][]>(
+    timeline.flatMap((r): [number, number][] =>
+      r.cloud ? [[r.t, cloudFactor(r.cloud.low, r.cloud.mid, r.cloud.high)]] : [],
+    ),
+  );
+  let plan = $state<PlanItem[]>(loadPlan());
+
   const ribbonHours = $derived<RibbonHour[]>(
     timeline.map((r) => ({
       t: r.t,
       cloud: r.cloud?.total ?? r.weather?.cloud ?? null,
       moonAlt: r.moonAlt,
       sunAlt: r.sunAlt,
-      score: r.score?.score ?? null,
+      // The hourly score is 0–100; the ribbon works in 0–1.
+      score: r.score ? r.score.score / 100 : null,
     })),
   );
 
@@ -827,19 +848,6 @@
   });
 
   // ---- best targets tonight -------------------------------------------------------
-  const darkTonight = $derived.by(() => {
-    const start = tw.astroEnd ?? tw.nauticalEnd;
-    const end = tw.astroStart ?? tw.nauticalStart;
-    return start && end && end > start ? { start: start.getTime(), end: end.getTime() } : null;
-  });
-  const clearFactorAt = (t: number) => {
-    const c = cloudAt(hourStart(t));
-    return c ? cloudFactor(c.low, c.mid, c.high) : 1;
-  };
-  const deepFrameShort = $derived.by(() => {
-    const st = setupStats(setups.deepsky);
-    return Math.min(st.fovW, st.fovH);
-  });
   function showTarget(t: {
     ra: number;
     dec: number;
@@ -1079,6 +1087,7 @@
             {#if !live}<button onclick={() => setTime(new Date(), true)}>Back to now</button>{/if}
           </header>
 
+          <TonightGlance v={tonightVerdict} {moon} {tz} {expert} sqm={sqmUsed} />
           {#if sources}
             <DataStatus
               now={now.getTime()}
@@ -1139,16 +1148,26 @@
             </div>
           </header>
 
-          <BestTargets
+          <TargetsPanel
             {place}
             {tz}
-            dark={darkTonight}
-            clearAt={clearFactorAt}
-            sqm={siteLight?.sqm ?? 21}
-            sqmKnown={!!siteLight}
-            frameShortDeg={deepFrameShort}
-            stamp={nowMin}
-            onshow={showTarget}
+            {tw}
+            dark={tonightVerdict.dark}
+            clear={clearByHour}
+            sqm={sqmUsed.value ?? 21}
+            profile={activeProfile}
+            horizon={layers.terrain ? (siteHorizon?.profile ?? null) : null}
+            shown={shown.getTime()}
+            {expert}
+            bind:plan
+            onshow={(r) =>
+              showTarget({
+                ra: r.o.ra,
+                dec: r.o.dec,
+                sizeDeg: (r.o.maj ?? 6) / 60,
+                ...(r.best ? { bestT: r.best.t } : {}),
+                id: r.o.name,
+              })}
           />
         </section>
         <section id="sec-planets" class="sec" aria-labelledby="h-planets">
@@ -1160,12 +1179,16 @@
               </p>
             </div>
           </header>
-          <p class="solar-warning" role="note">
-            <strong>Never look at or image the Sun</strong> without a certified full-aperture solar filter
-            on the front of the telescope or lens. Permanent eye and camera damage happens in a fraction
-            of a second.
-          </p>
-          <SkyEphem {place} time={shown} {tz} onpick={(n) => goPage('sky', { t: n })} />
+          <PlanetsPanel
+            {place}
+            {tz}
+            {tw}
+            shown={shown.getTime()}
+            {expert}
+            profile={profiles.find((p) => p.profileKind === 'planetary') ?? activeProfile}
+            seeing={tonightVerdict.seeing}
+            onshow={(name) => pickResult({ kind: 'planet', label: name, sub: '', badges: [] })}
+          />
         </section>
         <section id="sec-week" class="sec" aria-labelledby="h-week">
           <header class="sec-head">
@@ -1424,14 +1447,6 @@
     font-weight: 600;
     font-size: var(--fs-30);
     line-height: var(--lh-head);
-  }
-  .solar-warning {
-    margin: 0;
-    padding: var(--s3) var(--s4);
-    border: 1px solid var(--nogo);
-    background: var(--ink-1);
-    border-radius: var(--r-input);
-    max-width: var(--measure);
   }
   details.about > summary {
     cursor: pointer;

@@ -134,3 +134,19 @@ live computation, so it was not shipped).
 **D25. `Timing-Allow-Origin: *` added to the Worker's responses** (code only; the Worker is not
 redeployed until the owner agrees) so future request measurements can tell cache hits from
 downloads.
+
+## Phase 3 (2026-11-19)
+
+**D26. Verdict thresholds:** an hour is usable at an imaging score ≥ 40/100; go needs 3 such
+hours. These match the existing score's meaning (relative signal-to-noise) and were checked on
+tonight's Bangalore data (scores 40–56 under a 70 % Moon read as a workable narrowband night).
+
+**D27. Ranking keeps the documented factors;** only the inputs changed (catalog, horizon,
+computed surface brightness). Galaxies rank low from a Bortle 9 sky because their contrast is
+low — that is the method working, so they get their own tab instead of a boost.
+
+**D28. Bad catalog magnitudes are removed at build time, not patched in the ranking,** so search,
+the info drawer and the ranking agree (one source of truth).
+
+**D29. Plan exports PA 0** until Phase 5 adds frame rotation; NINA treats the PA column as
+optional, so 0 means "no rotation requested".

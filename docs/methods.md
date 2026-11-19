@@ -168,3 +168,28 @@ for the picture.
 The imaging score does not include light pollution as a penalty: it rates each hour for the site
 (the Moon factor uses the site's own dark-sky brightness). The Sky quality card shows the site's
 light pollution itself.
+
+## Best targets (updated 2026-11-19)
+
+`src/lib/plan/rank.ts`, tests in `tests/rank.test.ts`. The score is unchanged in form:
+100 × time × Moon × contrast × framing × brightness (factor definitions as in
+`src/lib/targets.ts`). What changed:
+
+- Catalog: the Stellarium DSO catalog (≈ 25,000 core objects) instead of OpenNGC alone.
+- Usable time counts 15-minute samples in darkness that are above the minimum altitude
+  (default 30°) **and** above the horizon profile (terrain from the Copernicus DEM, or a custom
+  horizon) at the object's azimuth.
+- Surface brightness = m + 2.5 log10(π/4 · a · b), a and b in arcsec (mean over the ellipse).
+- Catalog magnitudes that do not describe the object are set to unknown at build time: opacity
+  classes of Lynds/Barnard dark nebulae, illuminating-star magnitudes of van den Bergh / vdBH /
+  Cederblad reflection nebulae, and 0.0 placeholders.
+- The bright-core contrast boost applies to emission nebulae only (not reflection nebulae).
+- "Any type" list: an object within max(0.25°, half the larger size) of one already listed is
+  skipped unless it is ≥ 1.5× larger, of the same type and scores ≥ 60 % as much (then it
+  replaces the smaller one); no type takes more than a quarter of the list.
+
+## Tonight verdict
+
+`src/lib/plan/verdict.ts`, tests in `tests/verdict.test.ts`. Go = ≥ 3 dark hours with an hourly
+imaging score ≥ 40/100; marginal = 1–3 such hours or a best hour of 25–40; no-go otherwise;
+"no darkness" when the Sun stays above −12°.
