@@ -36,6 +36,7 @@
   } from '../lib/engine/stel';
   import { renderClouds, type CloudInput } from '../lib/sky/clouds';
   import { skyView, VIEW_KEY, type BoolKey } from '../lib/sky/view.svelte';
+  import ScopeReticle from './ScopeReticle.svelte';
   import CloudWorker from '../lib/sky/clouds.worker.ts?worker';
   import { renderTerrain, type DomeGlow, type Rgb } from '../lib/sky/horizon';
   import { fmtDateTime } from '../lib/time/format';
@@ -43,7 +44,11 @@
   interface Props {
     setups: Record<SetupKind, Setup>;
     shownFrames: Record<SetupKind, boolean>;
-    onframecenter?: (c: { ra: number; dec: number; target: string | null } | null) => void;
+    onframecenter?: (
+      c: { ra: number; dec: number; target: string | null; pa: number } | null,
+    ) => void;
+    /** Live telescope position (J2000 degrees) for the reticle, or null. */
+    scope?: { ra: number; dec: number; label: string; slewing: boolean } | null;
     onselect?: (info: ObjectInfo | null) => void;
     /** Point at J2000 coordinates; with `id`, also select that object when the engine knows it. */
     goto?: { ra: number; dec: number; fovDeg: number; n: number; id?: string } | null;
@@ -90,6 +95,7 @@
     setups = $bindable(),
     shownFrames = $bindable(),
     onframecenter,
+    scope = null,
     onselect,
     goto = null,
     clearSignal = 0,
@@ -888,6 +894,18 @@
   export function zoomTo(deg: number) {
     zoomToDeg(deg);
   }
+  /** Turn the view to a J2000 position without zooming ("Follow telescope"). */
+  export function pointAt(raDeg: number, decDeg: number) {
+    if (!stel) return;
+    const v = stel.convertFrame(
+      stel.core.observer,
+      'ICRF',
+      'MOUNT',
+      stel.s2c(raDeg * stel.D2R, decDeg * stel.D2R),
+    );
+    unlock();
+    stel.lookAt(v, 0.5);
+  }
   export const isFull = () => full;
   // Full screen: the bars fade after 3 s without mouse or touch (Stellarium auto-hide).
   let idle = $state(false);
@@ -952,6 +970,17 @@
       {onframecenter}
       onzoom={zoomToDeg}
       onpreview={onrate}
+    />
+  {/if}
+
+  {#if scope}
+    <ScopeReticle
+      {stel}
+      {canvas}
+      ra={scope.ra}
+      dec={scope.dec}
+      label={scope.label}
+      slewing={scope.slewing}
     />
   {/if}
 

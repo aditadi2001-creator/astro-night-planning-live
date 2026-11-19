@@ -46,6 +46,8 @@
   import WeekAhead from './components/WeekAhead.svelte';
   import Equipment from './components/Equipment.svelte';
   import InfoDrawer from './components/InfoDrawer.svelte';
+  import TelescopePanel from './components/TelescopePanel.svelte';
+  import { telescope } from './lib/telescope/session.svelte';
   import TargetsPanel from './components/TargetsPanel.svelte';
   import { loadPlan, type PlanItem } from './lib/plan/plan';
   import { cloudFactor } from './lib/physics/score';
@@ -895,7 +897,29 @@
     planetary: false,
     lunarsolar: false,
   });
-  let frameCenter = $state<{ ra: number; dec: number; target: string | null } | null>(null);
+  let frameCenter = $state<{
+    ra: number;
+    dec: number;
+    target: string | null;
+    pa: number;
+  } | null>(null);
+  // ---- live telescope (dock "Telescope") -------------------------------------------
+  const scopeMark = $derived(
+    telescope.status === 'live' && telescope.state
+      ? {
+          ra: telescope.state.ra2000,
+          dec: telescope.state.dec2000,
+          label: telescope.settings.kind === 'simulator' ? 'Telescope (simulator)' : 'Telescope',
+          slewing: telescope.state.slewing,
+        }
+      : null,
+  );
+  // "Follow the telescope": turn the sky to each new reading.
+  $effect(() => {
+    const m = scopeMark;
+    if (!telescope.follow || !m) return;
+    untrack(() => skyRef?.pointAt(m.ra, m.dec));
+  });
   // The header's profile selector drives the deep-sky frame (FOV, framing scores).
   let profiles = $state<Profile[]>(loadProfiles());
   let profileId = $state(loadActiveProfileId());
@@ -1071,6 +1095,7 @@
             bind:layers
             bind:night
             onframecenter={(c) => (frameCenter = c)}
+            scope={scopeMark}
             onselect={(i) => {
               // The info is refreshed every second while selected; only a newly picked
               // object opens the Info panel, so other panels stay usable.
@@ -1152,38 +1177,18 @@
                   {:else if p === 'layers'}
                     <LayersSheet bind:layers {surveyStatus} {expert} />
                   {:else if p === 'telescope'}
-                    <div class="dock-stack">
-                      <p>
-                        <strong>{activeProfile?.name ?? 'No profile'}</strong>
-                        {#if activeProfile}<br /><span class="dock-note"
-                            >{profileSummary(activeProfile)}</span
-                          >{/if}
-                      </p>
-                      <div class="dock-row">
-                        <button
-                          aria-pressed={Object.values(shownFrames).some(Boolean)}
-                          onclick={() => skyRef?.frame()}>Camera frame on the sky</button
-                        >
-                        <button onclick={() => skyRef?.centreSelected()} disabled={!selectedInfo}
-                          >Centre on selected</button
-                        >
-                      </div>
-                      <label class="dock-range">
-                        Frame rotation
-                        <input
-                          type="range"
-                          min="0"
-                          max="180"
-                          step="1"
-                          bind:value={setups.deepsky.rotationDeg}
-                        />
-                        <output>{Math.round(setups.deepsky.rotationDeg)}°</output>
-                      </label>
-                      <p class="dock-note">
-                        The frame uses the header's equipment profile. Live telescope position
-                        (NINA, ASCOM Alpaca) and mosaics arrive with the telescope update.
-                      </p>
-                    </div>
+                    <TelescopePanel
+                      {place}
+                      selected={selectedInfo}
+                      bind:setups
+                      frameOn={Object.values(shownFrames).some(Boolean)}
+                      {frameCenter}
+                      profileName={activeProfile?.name ?? 'No profile'}
+                      profileText={activeProfile ? profileSummary(activeProfile) : ''}
+                      horizon={horizonProfile}
+                      ontoggleframe={() => skyRef?.frame()}
+                      oncentre={() => skyRef?.centreSelected()}
+                    />
                   {:else if p === 'horizon'}
                     <HorizonPanel
                       {place}
@@ -1555,14 +1560,10 @@
   @media (min-width: 1100px) {
   }
   /* ---- dock panels drawn by this page ---- */
-  .dock-empty,
-  .dock-note {
+  .dock-empty {
     margin: 0;
     color: var(--text-2);
     font-size: var(--fs-14);
-  }
-  .dock-note {
-    font-size: var(--fs-12);
   }
   .dock-stack {
     display: grid;
@@ -1579,16 +1580,6 @@
   .dock-row button[aria-pressed='true'] {
     border-color: var(--brass);
     color: var(--brass);
-  }
-  .dock-range {
-    display: flex;
-    align-items: center;
-    gap: var(--s2);
-    font-size: var(--fs-14);
-  }
-  .dock-range input {
-    flex: 1;
-    accent-color: var(--brass);
   }
   /* ---- Plan page ---- */
   .plan {

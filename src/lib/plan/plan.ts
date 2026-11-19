@@ -187,3 +187,19 @@ export function download(name: string, text: string, type: string): void {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
+
+/**
+ * NINA mosaic panes CSV ("Pane, RA, DEC, Position Angle (East)", NINA SimpleSequenceVM import).
+ * RA/Dec in degrees J2000.
+ */
+export function toMosaicCsv(
+  name: string,
+  panes: readonly { pane: number; ra: number; dec: number }[],
+  paDeg: number,
+): string {
+  const pa = (((paDeg % 360) + 360) % 360).toFixed(1);
+  const rows = panes.map((p) =>
+    [`${name} Panel ${p.pane}`, raHms(p.ra), decDms(p.dec), pa].map(csvCell).join(','),
+  );
+  return ['Pane,RA,DEC,Position Angle (East)', ...rows].join('\r\n') + '\r\n';
+}

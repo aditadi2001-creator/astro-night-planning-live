@@ -244,6 +244,67 @@ export function framePolygon(
   return pts;
 }
 
+export interface MosaicPane {
+  /** 1-based, row by row from the top-left of the unrotated grid. */
+  pane: number;
+  /** Centre, radians (same convention as framePolygon). */
+  ra: number;
+  dec: number;
+}
+
+/**
+ * Pane centres of a cols × rows mosaic around (ra0, dec0) (radians), panes overlapping by
+ * `overlap` (0–0.5), the whole grid turned by `rotationDeg` like framePolygon (so each pane keeps
+ * the frame's rotation). Offsets are laid out on the tangent plane and projected back.
+ */
+export function mosaicPanes(
+  ra0: number,
+  dec0: number,
+  fovWDeg: number,
+  fovHDeg: number,
+  cols: number,
+  rows: number,
+  overlap: number,
+  rotationDeg: number,
+): MosaicPane[] {
+  const ov = Math.min(0.5, Math.max(0, overlap));
+  const stepW = fovWDeg * (1 - ov);
+  const stepH = fovHDeg * (1 - ov);
+  const th = (rotationDeg * Math.PI) / 180;
+  const out: MosaicPane[] = [];
+  let n = 0;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      n++;
+      const x = Math.tan(((c - (cols - 1) / 2) * stepW * Math.PI) / 180);
+      // Row 0 at the top (positive y = the frame's "up").
+      const y = Math.tan((((rows - 1) / 2 - r) * stepH * Math.PI) / 180);
+      const xi = x * Math.cos(th) - y * Math.sin(th);
+      const eta = x * Math.sin(th) + y * Math.cos(th);
+      const den = Math.cos(dec0) - eta * Math.sin(dec0);
+      const ra = ra0 + Math.atan2(xi, den);
+      const dec = Math.atan2(Math.sin(dec0) + eta * Math.cos(dec0), Math.hypot(xi, den));
+      out.push({ pane: n, ra, dec });
+    }
+  }
+  return out;
+}
+
+/** Total field covered by a mosaic (degrees). */
+export function mosaicSpan(
+  fovWDeg: number,
+  fovHDeg: number,
+  cols: number,
+  rows: number,
+  overlap: number,
+) {
+  const ov = Math.min(0.5, Math.max(0, overlap));
+  return {
+    w: fovWDeg * (1 + (cols - 1) * (1 - ov)),
+    h: fovHDeg * (1 + (rows - 1) * (1 - ov)),
+  };
+}
+
 // ---- Stellarium-style ocular view (sky overlay) ------------------------------------
 
 export type OcularMode = 'sensor' | 'eyepiece' | 'telrad' | 'nightscape';

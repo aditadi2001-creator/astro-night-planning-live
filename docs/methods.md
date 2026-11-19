@@ -193,3 +193,17 @@ light pollution itself.
 `src/lib/plan/verdict.ts`, tests in `tests/verdict.test.ts`. Go = ≥ 3 dark hours with an hourly
 imaging score ≥ 40/100; marginal = 1–3 such hours or a best hour of 25–40; no-go otherwise;
 "no darkness" when the Sun stays above −12°.
+
+## Telescope HUD (added 2026-11-20)
+
+- **J2000 ↔ of date:** Astronomy Engine `Rotation_EQJ_EQD` (IAU 2006 precession + IAU 2000B
+  nutation), applied to the mount's reported epoch. Round trip < 0.01″ (tests/telescope.test.ts).
+- **Hour angle** = local apparent sidereal time (the mount's own when it reports one) − RA of
+  date. **To the meridian** = −HA (or 24 h − HA) in sidereal hours × 0.99727.
+- **Below your horizon in:** the position of date is stepped forward in 2-minute steps (up to
+  12 h) and compared with your planning horizon (custom horizon, else terrain, else flat); no
+  refraction.
+- **Pier side** is what the mount reports; the simulator uses the usual GEM rule (looking east →
+  telescope on the west side).
+- **Mosaic panes** are laid out on the tangent plane around the frame centre, spaced by the frame
+  size × (1 − overlap) and turned with the frame, then projected back (gnomonic).

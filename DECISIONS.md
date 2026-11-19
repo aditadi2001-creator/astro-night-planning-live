@@ -177,3 +177,21 @@ calendar (not built).
 
 **D35. A selection opens the Info tab only when a new object is picked.** The info refreshes
 every second as the object moves; re-opening Info on each refresh made the other tabs unusable.
+
+## Phase 5 (2026-11-20)
+
+**D36. Telescope readings bypass the data cache.** They are live readings from a device on your
+network: nothing to share or reuse, and a cached position would be wrong. One poll loop per page
+does the deduplication; it backs off while the device does not answer.
+
+**D37. Read-only is enforced twice: a path allow-list in the app and the same list in the
+bridge.** "Enable control" resets on every visit and on disconnect, every slew/sync is
+confirmed, and even "Stop" needs control on: read-only means no command at all.
+
+**D38. Mosaic panes are placed on the sky, not on the screen.** Each pane is computed on the
+tangent plane around the frame centre and projected, so the grid stays correct in the alt-az view
+where north is not up; "zoom to frame" measures what is drawn.
+
+**D39. Browser-drawn form controls get the red filter at night** (sliders, checkboxes, radio
+buttons) and scrollbars get theme colours; select boxes use the theme colours instead of the
+filter, because the filter maps red text to near-black.

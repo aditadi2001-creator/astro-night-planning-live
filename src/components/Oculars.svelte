@@ -24,6 +24,8 @@
     fitFov,
     fmtFov,
     framePolygon,
+    mosaicPanes,
+    mosaicSpan,
     normRotation,
     plateScale,
     SETUP_LABELS,
@@ -33,6 +35,7 @@
     type Setup,
     type SetupKind,
   } from '../lib/equipment';
+  import { frameAlign, mosaic } from '../lib/sky/frame.svelte';
 
   interface Props {
     stel: Stel | null;
@@ -41,7 +44,10 @@
     shown: Record<SetupKind, boolean>;
     /** Name of the selected object, for the frame-centre report. */
     selectedName: string | null;
-    onframecenter?: (c: { ra: number; dec: number; target: string | null } | null) => void;
+    /** Frame centre (J2000 degrees), the frame's "up" position angle and the target under it. */
+    onframecenter?: (
+      c: { ra: number; dec: number; target: string | null; pa: number } | null,
+    ) => void;
     /** Smooth zoom to a field of view in degrees (the sky view's own animation). */
     onzoom?: (deg: number) => void;
     /** Time-lapse preview: run the sky clock at this rate (0 = stop). */
@@ -169,7 +175,37 @@
   let northA = $state(-Math.PI / 2);
   let eastA = $state(Math.PI);
   let polys = $state<{ id: SetupKind; d: string }[]>([]);
+  /** Mosaic panes of the active setup (true positions on the sky). */
+  let panes = $state<{ n: number; d: string; x: number; y: number }[]>([]);
   let lastKey = '';
+  /** Half-extent (px) of the drawn mosaic from the screen centre, for "zoom to frame". */
+  let paneExt: { x: number; y: number } | null = null;
+  /** PA of the active frame's "up" side from the current screen geometry. */
+  function paNow(): number {
+    if (northUp) return normRotation(-setup.rotationDeg);
+    const th = (-setup.rotationDeg * Math.PI) / 180;
+    const ux = Math.sin(th);
+    const uy = -Math.cos(th);
+    const n = ux * Math.cos(northA) + uy * Math.sin(northA);
+    const e = ux * Math.cos(eastA) + uy * Math.sin(eastA);
+    return normRotation((Math.atan2(e, n) * 180) / Math.PI);
+  }
+  // A new mosaic grid: zoom out (or in) so all of it shows.
+  let gridKey = `${mosaic.cols}x${mosaic.rows}`;
+  $effect(() => {
+    const k = `${mosaic.cols}x${mosaic.rows}`;
+    if (k === gridKey) return;
+    gridKey = k;
+    setTimeout(() => zoomToFit(), 50);
+  });
+  // "Align to the object": show the frame at a true position angle.
+  let alignSeen = frameAlign.seq;
+  $effect(() => {
+    if (frameAlign.seq === alignSeen) return;
+    alignSeen = frameAlign.seq;
+    northUp = true;
+    setups[active].rotationDeg = normRotation(-frameAlign.paUp);
+  });
 
   function tick() {
     const s = stel;
@@ -211,6 +247,46 @@
       }
       polys = out;
     } else if (polys.length) polys = [];
+    // Mosaic: every pane at its true place, turned like the frame.
+    if (mode === 'sensor' && shown[active] && mosaic.cols * mosaic.rows > 1) {
+      const st = setupStats(setup);
+      const rotN = -paNow();
+      const out: { n: number; d: string; x: number; y: number }[] = [];
+      let ex = 0;
+      let ey = 0;
+      for (const p of mosaicPanes(
+        ra0,
+        dec0,
+        st.fovW,
+        st.fovH,
+        mosaic.cols,
+        mosaic.rows,
+        mosaic.overlap,
+        rotN,
+      )) {
+        const pts = framePolygon(p.ra, p.dec, st.fovW, st.fovH, rotN, 8).map(([ra, dec]) =>
+          toScreen(ra, dec),
+        );
+        const c = toScreen(p.ra, p.dec);
+        if (pts.some((q) => !q) || !c) continue;
+        const xy = pts as [number, number][];
+        for (const [x, y] of xy) {
+          ex = Math.max(ex, Math.abs(x - w / 2));
+          ey = Math.max(ey, Math.abs(y - h / 2));
+        }
+        out.push({
+          n: p.pane,
+          d: `M${xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L')}Z`,
+          x: c[0],
+          y: c[1],
+        });
+      }
+      panes = out;
+      paneExt = out.length ? { x: ex, y: ey } : null;
+    } else {
+      if (panes.length) panes = [];
+      paneExt = null;
+    }
     if (mode === 'nightscape') nsPath = nightscapePath(s, c);
     else if (nsPath) nsPath = '';
     // Report the frame centre (J2000) for the Equipment tab.
@@ -220,10 +296,11 @@
     const sp = sel ? icrfToScreen(s, sel) : null;
     const target =
       sp && Math.hypot(sp[0] - w / 2, sp[1] - h / 2) < 6 ? (selectedName ?? null) : null;
-    const key = `${ra.toFixed(3)},${dec.toFixed(3)},${target}`;
+    const paUp = paNow();
+    const key = `${ra.toFixed(3)},${dec.toFixed(3)},${target},${paUp.toFixed(1)}`;
     if (key !== lastKey) {
       lastKey = key;
-      onframecenter?.({ ra, dec, target });
+      onframecenter?.({ ra, dec, target, pa: paUp });
     }
   }
   // Redrawn every frame, so the frame never lags behind the sky while panning or zooming.
@@ -303,11 +380,18 @@
     else if (mode === 'nightscape')
       // Wide lenses: the view needs some margin around the frame.
       fov = Math.min(185, Math.max(ns.fovW, (ns.fovH * w) / Math.max(1, h)) * 1.25);
-    else {
-      // Rotated frame: fit its bounding box.
+    else if (paneExt && mosaic.cols * mosaic.rows > 1) {
+      // Mosaic: fit what is actually drawn (the sky may be turned on the screen).
+      fov = fovNow * Math.max((2 * paneExt.x) / (w * 0.85), (2 * paneExt.y) / (h * 0.85));
+    } else {
+      // Rotated frame (or the whole mosaic): fit its bounding box.
+      const sp =
+        mosaic.cols * mosaic.rows > 1
+          ? mosaicSpan(stats.fovW, stats.fovH, mosaic.cols, mosaic.rows, mosaic.overlap)
+          : { w: stats.fovW, h: stats.fovH };
       const th = (setup.rotationDeg * Math.PI) / 180;
-      const bw = Math.abs(stats.fovW * Math.cos(th)) + Math.abs(stats.fovH * Math.sin(th));
-      const bh = Math.abs(stats.fovW * Math.sin(th)) + Math.abs(stats.fovH * Math.cos(th));
+      const bw = Math.abs(sp.w * Math.cos(th)) + Math.abs(sp.h * Math.sin(th));
+      const bh = Math.abs(sp.w * Math.sin(th)) + Math.abs(sp.h * Math.cos(th));
       fov = Math.max(fitFov(fovNow, pxPerDeg, bw, w, 0.85), fitFov(fovNow, pxPerDeg, bh, h, 0.85));
     }
     const deg = Math.min(185, Math.max(0.01, fov));
@@ -356,13 +440,9 @@
   }
   /** Position angle of the active frame's "up" side, measured from north through east. */
   const pa = $derived.by(() => {
-    if (northUp) return normRotation(-setup.rotationDeg);
-    const th = (-setup.rotationDeg * Math.PI) / 180;
-    const ux = Math.sin(th);
-    const uy = -Math.cos(th);
-    const n = ux * Math.cos(northA) + uy * Math.sin(northA);
-    const e = ux * Math.cos(eastA) + uy * Math.sin(eastA);
-    return normRotation((Math.atan2(e, n) * 180) / Math.PI);
+    void northA;
+    void eastA;
+    return paNow();
   });
   const epR = $derived((ep.trueFovDeg / 2) * pxPerDeg);
   const cross = $derived(
@@ -397,6 +477,10 @@
           />
         {/each}
       {/if}
+      {#each panes as p (p.n)}
+        <path d={p.d} class="pane" stroke={FRAME_COLORS[active]} />
+        <text x={p.x} y={p.y} class="pane-n" fill={FRAME_COLORS[active]}>{p.n}</text>
+      {/each}
       <path class="cross" d={cross} />
     {:else if mode === 'eyepiece'}
       <path
@@ -625,6 +709,17 @@
   .ocular .main {
     stroke-width: 1.8;
     opacity: 1;
+  }
+  .ocular .pane {
+    stroke-dasharray: 5 4;
+    stroke-width: 1.2;
+    opacity: 0.9;
+  }
+  .ocular .pane-n {
+    font-size: 12px;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    opacity: 0.8;
   }
   .ocular .cross {
     stroke: #ffffff;

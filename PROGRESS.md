@@ -235,6 +235,58 @@ docs/RESEARCH.md, this file.
 - The telescope tab holds the existing frame controls; the frame upgrade, mosaics and live
   telescope HUD are Phase 5.
 
-## Phase 5 — FOV frame and telescope ⏳
+## Phase 5 — FOV frame and telescope ✅ (2026-11-20)
+
+**Done (evidence)**
+
+- **Telescope panel** (`TelescopePanel.svelte`, dock tab "Telescope"): camera frame on/off,
+  centre on the selected object, rotation (−180°…180°), the frame centre (J2000) and the
+  position angle of its top edge.
+- **Align to the object:** turns the frame so its long side follows the object's catalog
+  position angle (M 42, PA 90° → top edge at PA 0°). Objects with no PA in the catalog say so.
+- **Mosaic:** 1–6 × 1–6 panes with 5–40 % overlap, drawn on the sky at their true positions and
+  turned with the frame (`mosaicPanes` in `src/lib/equipment.ts`). "Zoom to frame" fits the whole
+  mosaic as drawn. Export as NINA mosaic panes CSV (`Pane, RA, DEC, Position Angle (East)`).
+- **Live telescope** (`src/lib/telescope/`): simulator, NINA Advanced API v2 and ASCOM Alpaca
+  adapters behind one interface; one poll loop (1.5 s, 0.5 s while slewing, backing off to 15 s
+  while failing); plain-language errors with what to check.
+- **HUD:** altitude/azimuth, RA/Dec J2000 and of date, hour angle, pier side, state (parked,
+  slewing, tracking), time to the meridian, NINA's meridian-flip countdown, time until it drops
+  below your planning horizon, rotator angle, offset from the selected object, the mount's epoch.
+  A ring on the sky marks where the telescope points, with an edge arrow when off-screen;
+  "Follow the telescope" keeps the sky on it.
+- **Safety (constraint 8):** read-only by default. Control appears only after "Enable control"
+  (off on every visit and on disconnect); slew and sync each need a confirmation that names the
+  target, warns when it is below your horizon, and reminds to clear cables and people. Even
+  "Stop" needs control on. Requests are checked against a path allow-list (`allow.ts`): park,
+  flip, connect and NINA's `/profile/show` (which exposes API keys) are never sent.
+- **Bridge** (`tools/bridge/bridge.mjs`, ~200 lines, no dependencies): serves the built app and
+  forwards the same allow-list on the same origin for Safari/iPhone/Firefox; commands only with
+  `--allow-control`. Five-step guide: `docs/telescope.md`, and in the panel ("How to connect").
+- **Tests:** 11 in `tests/telescope.test.ts` (allow-lists and bridge routes agree, NINA/Alpaca
+  parsing with JNow → J2000, coordinates, horizon/meridian times, simulator, mosaic, CSV).
+- **Browser checks:** simulator connect → enable control → confirm → slew → tracking; a mock NINA
+  server following `ninaAPI`'s `api_spec.yaml`, reached directly (Chrome) and through the bridge:
+  HUD filled (JNow → J2000 gave M 42's position), only `mount/info` and `rotator/info` were
+  requested while read-only, and the confirmed slew arrived as J2000 degrees
+  (`ra=83.823910&dec=-5.388232`). The bridge answered 403 to slew without `--allow-control`, to
+  park and to `/profile/show`, and path traversal returned only the app page.
+- **Night mode fixes found here:** slider tracks, checkboxes and scrollbars were drawn white/grey
+  by the browser; select boxes now use theme colours. 0 grey pixels at 768 px with the panel open.
+- Gate: svelte-check 0/0, ESLint clean, Prettier clean, **345 tests pass**, build OK,
+  `check:budget` OK (no new Worker or R2 requests: the telescope is on your network), no
+  horizontal scroll at 390 px, 0 console errors. Screenshots: `docs/screenshots/phase5/`
+  (1440 mosaic + reticle, 390 HUD and confirmation, 768 night).
+
+**Not verified / carried over**
+
+- Not tested against a real NINA or a real Alpaca driver (only the simulator and a mock that
+  follows the published API). The direct path from the deployed HTTPS site depends on Chrome's
+  local-network prompt, which a localhost test cannot show.
+- NINA's "Position Angle (East)" convention for mosaic panes and plan items is assumed to equal
+  the app's (PA of the frame's top edge, east of north); check once against a plate solve.
+  Plan items still export PA 0 unless a mosaic is exported (D29).
+- No drag-to-move or rotate handle on the frame itself (rotation is the slider, `[`/`]` keys and
+  "Align"); frame offsets from the screen centre are not supported.
 
 ## Phase 6 — polish ⏳
