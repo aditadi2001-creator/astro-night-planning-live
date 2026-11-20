@@ -351,3 +351,12 @@ uploads are skipped while the context is missing.
 **D69. A missing DEM tile counts as sea only inside its own 1° square.** It used to read 0 m for
 every point, so a site with sea within 90 km got a flat sea-level terrain horizon (found while
 computing the Mauna Kea and Paranal presets; tests/dem-sea.test.ts).
+
+**D70. The service worker never stores the HTML page as a script; unknown paths are real 404s.**
+Right after the 20 November deploy a browser updated its service worker before the new files had
+reached every Cloudflare edge; Pages answered the new script's path with the app page (status
+200, text/html) and the worker cached it, so the site stayed blank in that browser. The install
+now fetches each file itself and fails (keeping the old version, retried on the next visit) on an
+HTML answer for anything but the page; a stored HTML copy of a script is dropped and fetched
+again; and `404.html` makes Pages answer unknown paths with a 404 (routing is hash-based, so
+nothing relied on the fallback). Tested in tests/sw-html-guard.test.ts.

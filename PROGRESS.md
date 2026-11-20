@@ -495,4 +495,7 @@ OpenAQ air quality missing. Cause: that work lived on a parallel branch never me
 - Fixed on the way: coastal sites got a flat terrain horizon (D69); without WebGL the sky threw on
   every Sky → Plan switch, also on production (D68). Generic wording in the glossary, foreground
   hints and telescope help.
-- Gates: check, lint, format, 58 test files / 492 tests, build, check:budget all pass.
+- Published (owner's "publish both"). The production check found returning browsers blank: the
+  updated service worker had cached the HTML page as the new script during the deploy (D70).
+  Fixed (HTML guard in the worker, `404.html`) and published again.
+- Gates: check, lint, format, 59 test files / 495 tests, build, check:budget all pass.

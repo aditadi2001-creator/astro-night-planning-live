@@ -21,11 +21,31 @@ const CAP = 150 * 1024 * 1024;
 /** When over the cap, drop the oldest entries down to this. */
 const LOW = Math.round(CAP * 0.85);
 
+/**
+ * A file answered with the HTML page instead of itself. Cloudflare Pages does that for a path
+ * it does not know yet, e.g. in the first moments after a deploy, before the new files reach
+ * every edge. Such an answer must never be stored as a script: the site would stay blank.
+ */
+function wrongType(url, res) {
+  const path = new URL(url, self.location.origin).pathname;
+  return path !== '/' && /text\/html/i.test(res.headers.get('content-type') || '');
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(CACHE)
-      .then((c) => c.addAll(PRECACHE))
+      .then((c) =>
+        Promise.all(
+          PRECACHE.map(async (url) => {
+            const res = await fetch(url, { cache: 'reload' });
+            // Fail the install (the old version keeps running, retried on the next visit)
+            // rather than keep a wrong or failed answer.
+            if (!res.ok || wrongType(url, res)) throw new Error(`precache ${url}: ${res.status}`);
+            await c.put(url, res);
+          }),
+        ),
+      )
       .then(() => self.skipWaiting()),
   );
 });
@@ -65,10 +85,12 @@ async function cacheFirst(request) {
   // ignoreVary: servers send "Vary: Origin", and module scripts are requested with an
   // Origin header that the install-time requests did not have.
   const hit = await cache.match(request, { ignoreVary: true });
-  if (hit) return hit;
+  if (hit && !wrongType(request.url, hit)) return hit;
+  if (hit) await cache.delete(request, { ignoreVary: true }); // heal a stored HTML answer
   const res = await fetch(request);
-  // Only whole, successful same-origin answers are kept.
-  if (res.ok && res.status === 200 && res.type === 'basic') cache.put(request, res.clone());
+  // Only whole, successful same-origin answers of the right type are kept.
+  if (res.ok && res.status === 200 && res.type === 'basic' && !wrongType(request.url, res))
+    cache.put(request, res.clone());
   return res;
 }
 
