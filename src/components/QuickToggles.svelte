@@ -14,8 +14,18 @@
     layers: LayerState;
     surveyLabel: string;
     surveyStatus: SurveyStatus;
+    full: boolean;
+    onfull: () => void;
   }
-  let { frameOn, ontoggleframe, layers = $bindable(), surveyLabel, surveyStatus }: Props = $props();
+  let {
+    frameOn,
+    ontoggleframe,
+    layers = $bindable(),
+    surveyLabel,
+    surveyStatus,
+    full,
+    onfull,
+  }: Props = $props();
 
   const short = $derived(shortSurveyLabel(surveyLabel));
   const surveyTitle = $derived(
@@ -66,6 +76,24 @@
     <span>Grid</span>
   </button>
   <button
+    aria-pressed={skyView.eqMount}
+    onclick={() => (skyView.eqMount = !skyView.eqMount)}
+    title="Equatorial view: the sky turns about the celestial pole, like an equatorial mount sees it (Ctrl+M)"
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true"
+      ><circle cx="12" cy="12" r="8" /><path d="M12 4v16M5 9c4 2 10 2 14 0" /></svg
+    >
+    <span>EQ view</span>
+  </button>
+  <button
+    aria-pressed={skyView.meridian}
+    onclick={() => (skyView.meridian = !skyView.meridian)}
+    title="Meridian line (where objects are highest and mounts flip)"
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M8 6h8" /></svg>
+    <span>Meridian</span>
+  </button>
+  <button
     aria-pressed={skyView.ground}
     onclick={() => (skyView.ground = !skyView.ground)}
     title="Ground and horizon"
@@ -83,6 +111,12 @@
     >
     <span>Air</span>
   </button>
+  <button aria-pressed={full} onclick={onfull} title="Full screen (F11)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"
+      ><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" /></svg
+    >
+    <span>{full ? 'Exit full' : 'Full screen'}</span>
+  </button>
 </div>
 
 <style>
@@ -95,7 +129,7 @@
     justify-items: center;
     gap: 1px;
     width: 58px;
-    min-height: 46px;
+    min-height: 44px;
     padding: 4px 2px;
     font-size: 10.5px;
     line-height: 1.1;

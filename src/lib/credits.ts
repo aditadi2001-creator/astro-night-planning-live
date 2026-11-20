@@ -71,6 +71,19 @@ const CORE_CREDITS: Credit[] = [
     status: 'live',
   },
   {
+    id: 'open-meteo-era5',
+    name: 'Open-Meteo Historical Weather API (ERA5 reanalysis)',
+    url: 'https://open-meteo.com/en/docs/historical-weather-api',
+    license: 'CC BY 4.0 (Open-Meteo); ERA5: Copernicus Climate Change Service licence',
+    attribution:
+      'Weather data by Open-Meteo.com (CC BY 4.0). Contains modified Copernicus Climate Change Service information (ERA5, Hersbach et al. 2020).',
+    shortCredit: 'Clear-night history: ERA5 via Open-Meteo',
+    usage:
+      'Trip planner: hourly cloud cover 2016–2025 at the site, reduced on the device to the share of clear nights per month (cached 90 days).',
+    kind: 'data',
+    status: 'live',
+  },
+  {
     id: 'open-meteo-geocoding',
     name: 'Open-Meteo Geocoding API (GeoNames)',
     url: 'https://open-meteo.com/en/docs/geocoding-api',

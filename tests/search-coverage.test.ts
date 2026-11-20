@@ -86,7 +86,9 @@ describe('best surveys for an object', () => {
   it('suits the survey to the object and its place in the sky', () => {
     // M 51 (galaxy, north Galactic cap): deep galaxy surveys first.
     const m51 = bestSurveys('galaxy', 202.47, 47.195, 11).map((p) => p.survey.id);
-    expect(m51[0]).toBe('legacy');
+    // Legacy is the deepest, but served only by CDS (often down): listed after mirrored ones.
+    expect(m51[0]).toBe('sdss');
+    expect(m51).toContain('legacy');
     expect(m51).toContain('sdss');
     // M 31 is outside Legacy DR10 and SDSS's main footprint.
     const m31 = bestSurveys('galaxy', 10.68, 41.27, 190).map((p) => p.survey.id);
@@ -99,7 +101,8 @@ describe('best surveys for an object', () => {
     // Carina Nebula (dec −60): no Pan-STARRS or VTSS there; SHASSA instead.
     const car = bestSurveys('emission', 161.26, -59.87, 120).map((p) => p.survey.id);
     expect(car).not.toContain('panstarrs');
-    expect(car[0]).toBe('shassa');
+    expect(car[0]).toBe('dss');
+    expect(car).toContain('shassa');
   });
   it('knows rough footprints', () => {
     expect(covers('panstarrs', 0, -40)).toBe(false);

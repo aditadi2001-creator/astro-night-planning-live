@@ -176,6 +176,10 @@
     left: var(--s3);
     display: grid;
     gap: 4px;
+    /* Short screens: the column scrolls instead of running under the tab bar. */
+    max-height: calc(100% - var(--touch) * 2 - 60px);
+    overflow-y: auto;
+    scrollbar-width: none;
   }
   /* Phones: the open sheet needs the room; the strip comes back when it closes. */
   @media (max-width: 899px) {

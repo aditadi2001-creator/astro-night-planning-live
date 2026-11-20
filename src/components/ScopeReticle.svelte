@@ -14,8 +14,10 @@
     dec: number;
     label: string;
     slewing: boolean;
+    /** "scope": the telescope (green ring); "target": a searched object pinned on the sky. */
+    tone?: 'scope' | 'target';
   }
-  let { stel, canvas, ra, dec, label, slewing }: Props = $props();
+  let { stel, canvas, ra, dec, label, slewing, tone = 'scope' }: Props = $props();
 
   let pos = $state<{ x: number; y: number; on: boolean; angle: number } | null>(null);
   let w = $state(0);
@@ -61,11 +63,15 @@
 </script>
 
 {#if pos && w > 0}
-  <svg class="scope" viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
+  <svg class="scope" class:target={tone === 'target'} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
     {#if pos.on}
       <g transform={`translate(${pos.x} ${pos.y})`} class:slewing>
-        <circle r="18" />
-        <path d="M-28,0H-10M10,0H28M0,-28V-10M0,10V28" />
+        {#if tone === 'target'}
+          <path d="M-16,-8V-16H-8M8,-16H16V-8M16,8V16H8M-8,16H-16V8" />
+        {:else}
+          <circle r="18" />
+          <path d="M-28,0H-10M10,0H28M0,-28V-10M0,10V28" />
+        {/if}
         <text y="-24" text-anchor="middle">{label}</text>
       </g>
     {:else}
@@ -98,6 +104,15 @@
   }
   .arrow {
     fill: var(--good);
+  }
+  .target path {
+    stroke: var(--brass);
+  }
+  .target .arrow {
+    fill: var(--brass);
+  }
+  .target text {
+    fill: var(--brass);
   }
   .slewing circle {
     stroke-dasharray: 6 5;

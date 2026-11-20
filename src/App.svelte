@@ -23,6 +23,7 @@
   } from './lib/sky/foreground';
   import { loadCustomHorizon, toProfile, type CustomHorizon } from './lib/sky/customHorizon';
   import { skyView } from './lib/sky/view.svelte';
+  import type { Pin } from './lib/astro/pin';
   import type { ResultEntry } from './lib/search/client';
   import {
     loadActiveProfileId,
@@ -40,6 +41,7 @@
   import type { LayerState, SurveyStatus } from './components/LayerBar.svelte';
   import Extras from './components/Extras.svelte';
   import WeekAhead from './components/WeekAhead.svelte';
+  import YearPlanner from './components/YearPlanner.svelte';
   import Equipment from './components/Equipment.svelte';
   import { telescope } from './lib/telescope/session.svelte';
   import HelpDialog from './components/HelpDialog.svelte';
@@ -173,6 +175,7 @@
     'targets',
     'planets',
     'week',
+    'trips',
     'telescope',
     'space',
     'maps',
@@ -203,10 +206,15 @@
       if (!userMoved) document.getElementById(`sec-${s}`)?.scrollIntoView({ block: 'start' });
     };
     void tick().then(go);
-    // Once more after the first data arrives and the sections above settle.
-    const t = setTimeout(go, 1500);
+    // Sections above grow as their data arrives (forecasts, maps): keep the asked-for section
+    // in place for the first 10 s, until the user scrolls.
+    const body = document.querySelector('.plan-body');
+    const ro = body ? new ResizeObserver(() => go()) : null;
+    if (body) ro?.observe(body);
+    const t = setTimeout(() => ro?.disconnect(), 10_000);
     return () => {
       clearTimeout(t);
+      ro?.disconnect();
       removeEventListener('wheel', mark);
       removeEventListener('touchmove', mark);
     };
@@ -281,6 +289,7 @@
   let dock = $state<DockPanel | null>(null);
   /** Part of the sky the open dock sheet covers; the sky shrinks so nothing hides under it. */
   let dockInset = $state({ right: 0, bottom: 0 });
+  let skyFull = $state(false);
   let skyRef = $state<ReturnType<typeof SkyView>>();
   let foreground = $state<ForegroundState>(loadForeground());
   let customHorizon = $state<CustomHorizon | null>(untrack(() => loadCustomHorizon(place)));
@@ -375,7 +384,22 @@
       e.kind === 'constellation'
         ? 50
         : Math.min(60, Math.max(e.kind === 'star' ? 5 : 0.5, (e.sizeDeg ?? 0.2) * 4));
-    gotoSky(e.ra, e.dec, fov, e.engineId);
+    // Everything but constellations gets a pin: used when the 3D sky has no entry for it
+    // (Sharpless, Lynds, PGC, SDSS, SIMBAD, coordinates…), so it is marked and described.
+    const name = e.label.split(' · ')[0] ?? e.label;
+    const pin =
+      e.kind === 'constellation'
+        ? undefined
+        : {
+            label: name,
+            ra: e.ra,
+            dec: e.dec,
+            names: [...new Set([name, ...(e.info?.designations ?? []), ...(e.info?.common ?? [])])],
+            type: e.type ?? '',
+            mag: e.mag ?? null,
+            sizeArcmin: e.sizeDeg != null ? e.sizeDeg * 60 : null,
+          };
+    gotoSky(e.ra, e.dec, fov, e.engineId, pin);
   }
   /** A shared link (#/sky?t=M%2042) opens the sky on that object once, at load. */
   onMount(() => {
@@ -387,7 +411,12 @@
       if (!r.ok) return;
       const key = name.toLowerCase();
       const hit =
-        r.results.find((e) => e.engineId === t || e.label.toLowerCase() === key) ?? r.results[0];
+        r.results.find(
+          (e) =>
+            e.engineId === t ||
+            e.label.toLowerCase() === key ||
+            (e.label.split(' · ')[0] ?? '').toLowerCase() === key,
+        ) ?? r.results[0];
       if (hit) pickResult(hit);
     });
   });
@@ -1104,11 +1133,12 @@
     fovDeg: number;
     n: number;
     id?: string;
+    pin?: Pin;
   } | null>(null);
   let gotoN = 0;
-  function gotoSky(ra: number, dec: number, fovDeg: number, id?: string) {
-    gotoTarget = { ra, dec, fovDeg, n: ++gotoN, ...(id ? { id } : {}) };
-    goPage('sky', id ? { t: id } : {});
+  function gotoSky(ra: number, dec: number, fovDeg: number, id?: string, pin?: Pin) {
+    gotoTarget = { ra, dec, fovDeg, n: ++gotoN, ...(id ? { id } : {}), ...(pin ? { pin } : {}) };
+    goPage('sky', id ? { t: id } : pin ? { t: pin.label } : {});
   }
 
   // ---- phone camera horizon view ---------------------------------------------------
@@ -1363,6 +1393,7 @@
                 if (picked) dock = 'info';
               }}
               goto={gotoTarget}
+              onjumptime={(t) => setTime(t, false)}
               {clearSignal}
               deepSky={layers.deepSky && !layers.surveys ? deepSkyUrl : null}
               longExposure={layers.longExposure}
@@ -1377,6 +1408,7 @@
               }}
               bind:this={skyRef}
               inset={dockInset}
+              bind:fullscreen={skyFull}
               onopen={(p) => (dock = dock === p ? null : p)}
               onsearch={openSearch}
             >
@@ -1394,6 +1426,8 @@
                       bind:layers
                       surveyLabel={surveyById(layers.survey)?.label ?? 'Survey'}
                       {surveyStatus}
+                      full={skyFull}
+                      onfull={() => skyRef?.fullScreen()}
                     />
                   {/snippet}
                   {#snippet content(p: DockPanel)}
@@ -1675,6 +1709,46 @@
           </header>
           {#if ready('week')}
             <WeekAhead nights={week} {tz} />
+          {:else}
+            <p class="sec-wait" aria-hidden="true"></p>
+          {/if}
+        </section>
+        <section id="sec-trips" class="sec" aria-labelledby="h-trips">
+          <header class="sec-head">
+            <div>
+              <h2 id="h-trips">Trip planner: months and years ahead</h2>
+              <p class="lede">
+                Every night of any year to {new Date().getFullYear() + 15}: dark hours without the
+                Moon, when your target is up, and how often each month's nights were clear here over
+                the last ten years. Change the place (top left) to plan a trip somewhere else.
+              </p>
+            </div>
+          </header>
+          {#if ready('trips')}
+            <YearPlanner
+              {place}
+              {tz}
+              targets={[
+                ...(selectedInfo
+                  ? [
+                      {
+                        name: selectedInfo.name,
+                        ra: selectedInfo.ra2000,
+                        dec: selectedInfo.dec2000,
+                      },
+                    ]
+                  : []),
+                ...plan.map((p) => ({
+                  name: p.common ? `${p.name} · ${p.common}` : p.name,
+                  ra: p.ra,
+                  dec: p.dec,
+                })),
+              ]}
+              onnight={(t) => {
+                setTime(t, false);
+                jumpTo('tonight');
+              }}
+            />
           {:else}
             <p class="sec-wait" aria-hidden="true"></p>
           {/if}

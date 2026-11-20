@@ -165,8 +165,13 @@ export function bestSurveys(
     // Hubble/Webb surveys only cover a few famous fields.
     if (survey.fields && !survey.fields.some((f) => near(f.ra, f.dec, ra, dec, f.fovDeg))) continue;
     seen.add(id);
-    out.push({ survey, why });
+    out.push({ survey, why: survey.cdsOnly ? `${why} (its only host, CDS, is often down)` : why });
     if (out.length >= n) break;
   }
-  return out;
+  // Surveys served only by CDS go after those with an independent mirror: CDS outages are
+  // common, and the first pick should load.
+  return [...out.filter((p) => !p.survey.cdsOnly), ...out.filter((p) => p.survey.cdsOnly)].slice(
+    0,
+    n,
+  );
 }

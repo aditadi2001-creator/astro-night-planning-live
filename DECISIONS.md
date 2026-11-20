@@ -279,3 +279,22 @@ PositionAngle). A direct USB connection (Web Serial, LX200 and NexStar/SynScan) 
 other software. A GoTo is refused near the Sun without a confirmed solar filter, and below the
 horizon. Never sent: flip, connect, starting a sequence, the NINA profile endpoint, LX200 site/time
 or NexStar setup commands.
+
+## Search pins, sky switches and the trip planner (2026-11-20)
+
+**D58. Objects the 3D sky has no entry for are pinned, not just pointed at.** Sharpless, Barnard,
+Lynds, PGC/UGC galaxies, SDSS and SIMBAD results and typed coordinates get a marker and an Info
+panel built from the catalog (`src/lib/astro/pin.ts`); before, the view moved but nothing was
+selected, so search looked broken. Any object below the horizon gets a note with when to look and
+a "see through the ground" switch.
+
+**D59. Nine switches stay on the sky:** frame, survey, constellation lines, RA/Dec grid,
+equatorial view, meridian, ground, atmosphere and full screen. Full screen falls back to covering
+the page where the Fullscreen API is missing (iPhone Safari).
+
+**D60. Trip planner from ERA5 history, not long-range forecasts.** No free forecast reaches past
+about 16 days; ten years of ERA5 night cloud say which months are usually clear, which is what a trip
+needs. Only twelve monthly figures are kept on the device.
+
+**D61. Survey recommendations put mirrored surveys first;** surveys served only by CDS (Legacy,
+DECaPS, SkyMapper, ZTF, SHASSA, unWISE, ROSAT) follow, because CDS was down on 20 Nov 2026.

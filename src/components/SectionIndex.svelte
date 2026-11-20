@@ -21,12 +21,14 @@
     const seen: Record<string, number> = {};
     const io = new IntersectionObserver(
       (entries) => {
-        for (const e of entries) seen[e.target.id] = e.isIntersecting ? e.intersectionRatio : 0;
-        // The topmost section that is meaningfully visible.
-        const first = els.find((el) => (seen[el.id] ?? 0) > 0.05);
+        for (const e of entries)
+          seen[e.target.id] = e.isIntersecting ? e.intersectionRect.height : 0;
+        // The topmost section that is meaningfully visible: a sliver of a short section above
+        // (its last few lines) does not count.
+        const first = els.find((el) => (seen[el.id] ?? 0) > Math.min(140, el.offsetHeight * 0.5));
         if (first) onactive(first.id.slice(4) as SectionId);
       },
-      { rootMargin: '-120px 0px -45% 0px', threshold: [0, 0.05, 0.25, 0.5] },
+      { rootMargin: '-120px 0px -45% 0px', threshold: [0, 0.02, 0.05, 0.1, 0.25, 0.5, 0.75, 1] },
     );
     for (const el of els) io.observe(el);
     return () => io.disconnect();

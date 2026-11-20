@@ -355,3 +355,20 @@ imaging score ≥ 40/100; marginal = 1–3 such hours or a best hour of 25–40;
   telescope on the west side).
 - **Mosaic panes** are laid out on the tangent plane around the frame centre, spaced by the frame
   size × (1 − overlap) and turned with the frame, then projected back (gnomonic).
+
+## Trip planner (added 2026-11-20)
+
+`src/lib/plan/year.ts` (Web Worker), `src/lib/data/climate.ts`; tests `tests/year-planner.test.ts`.
+
+- **Darkness:** Sun −18° crossings found with Astronomy Engine's SearchAltitude, starting from local
+  solar noon of each date. Checked: about 10.0 h at the December solstice and 8.6 h in June at 13°N.
+- **Moon:** topocentric apparent RA/Dec every hour, interpolated; altitude every 15 minutes;
+  "moonless" = centre below the horizon (refraction ignored, about ±2 min).
+- **Target:** J2000 → of date once per year, altitude every 15 minutes; hours above the chosen
+  altitude in darkness and in moonless darkness. Milky Way core taken at RA 266.42°, Dec −29.0°.
+- **Clear nights per month:** ERA5 hourly cloud cover 2016–2025 at the site (rounded to 0.1°),
+  a night counts as clear when its 9 pm–3 am (solar time) mean is ≤ 30 %. History, not a forecast.
+- **Best nights:** usable hours × that month's clear-night share, top ten of the (remaining) year.
+- **Events:** new/full Moons, lunar eclipses (visible when the Moon is up at mid-eclipse), local
+  solar eclipses (with the solar-filter warning), oppositions of Mars to Neptune, and the IMO's usual
+  meteor-shower peak dates (they move by about a day between years).

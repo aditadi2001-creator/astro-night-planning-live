@@ -398,3 +398,21 @@ OpenAQ air quality missing. Cause: that work lived on a parallel branch never me
   `Timing-Allow-Origin` header live.
 - Pages project `astro-night-planning-live` created (production branch `main`, still empty);
   first deployment is a **preview** of `redesign`: https://redesign.astro-night-planning-live.pages.dev
+
+## Search pins, sky switches, trip planner and bug sweep ✅ (2026-11-20, owner's request)
+
+- **Search:** results the 3D sky does not know (Sh 2-129, Barnard, PGC, SDSS, SIMBAD,
+  coordinates) are now pinned and described (D58); objects below the horizon get a note with the
+  best time to look and a "see through the ground" button. Shared links match designations.
+- **On the sky:** EQ view, meridian and full screen joined the quick switches (D59); full screen works
+  on iPhones through a page-covering fallback.
+- **Trip planner** (Plan → Trips, D60): any year to 2041, night by night (moonless dark
+  hours, target hours above a chosen altitude), clear-night share per month from ERA5 2016–2025,
+  best nights for a trip, and the year's Moon phases, eclipses, oppositions and meteor showers. Time
+  controls gained −1 yr / −1 mo / −7 d / +7 d / +1 mo / +1 yr.
+- **Bugs fixed:** survey picks fell on CDS-only hosts during a CDS outage (D61); linking to a Plan
+  section landed on the one above it (section highlight now uses visible height, and the page keeps
+  the section in place while data loads); the night ribbon was outside any landmark; planner
+  accessibility (contrast, heading order, keyboard-scrollable list).
+- Evidence: tests 438+ (`tests/year-planner.test.ts`); axe: no violations on Plan (Trips) and Sky;
+  browser checks at 1440 and 375 px.

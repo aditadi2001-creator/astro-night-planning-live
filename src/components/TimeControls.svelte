@@ -34,6 +34,15 @@
   const HOUR = 60 * MIN;
   const DAY = 24 * HOUR;
   const step = (ms: number) => onchange(new Date(time.getTime() + ms), false);
+  /** Calendar steps (same clock time): months and years for trip planning. */
+  function shiftMonths(n: number) {
+    const t = new Date(time.getTime());
+    const y = t.getUTCFullYear();
+    const m = t.getUTCMonth() + n;
+    const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const ms = t.getTime() - Date.UTC(y, t.getUTCMonth(), t.getUTCDate());
+    onchange(new Date(Date.UTC(y, m, Math.min(t.getUTCDate(), last)) + ms), false);
+  }
 
   function onInput(e: Event) {
     const d = fromLocalInput((e.currentTarget as HTMLInputElement).value, tz);
@@ -131,6 +140,15 @@
     <button onclick={() => step(DAY)} title="One day later"
       >+1 d<span class="visually-hidden"> (one day later)</span></button
     >
+  </div>
+
+  <div class="row" role="group" aria-label="Jump by weeks, months and years">
+    <button onclick={() => shiftMonths(-12)} title="One year earlier">−1 yr</button>
+    <button onclick={() => shiftMonths(-1)} title="One month earlier">−1 mo</button>
+    <button onclick={() => step(-7 * DAY)} title="One week earlier">−7 d</button>
+    <button onclick={() => step(7 * DAY)} title="One week later">+7 d</button>
+    <button onclick={() => shiftMonths(1)} title="One month later">+1 mo</button>
+    <button onclick={() => shiftMonths(12)} title="One year later">+1 yr</button>
   </div>
 
   <div class="row">

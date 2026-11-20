@@ -38,9 +38,10 @@
   import { renderClouds, type CloudInput } from '../lib/sky/clouds';
   import { skyView, VIEW_KEY, type BoolKey } from '../lib/sky/view.svelte';
   import ScopeReticle from './ScopeReticle.svelte';
+  import { nextGoodTime, pinInfo, type Pin } from '../lib/astro/pin';
   import CloudWorker from '../lib/sky/clouds.worker.ts?worker';
   import { renderTerrain, type DomeGlow, type Rgb } from '../lib/sky/horizon';
-  import { fmtDateTime } from '../lib/time/format';
+  import { fmtDateTime, fmtTime } from '../lib/time/format';
 
   interface Props {
     setups: Record<SetupKind, Setup>;
@@ -52,7 +53,17 @@
     scope?: { ra: number; dec: number; label: string; slewing: boolean } | null;
     onselect?: (info: ObjectInfo | null) => void;
     /** Point at J2000 coordinates; with `id`, also select that object when the engine knows it. */
-    goto?: { ra: number; dec: number; fovDeg: number; n: number; id?: string } | null;
+    goto?: {
+      ra: number;
+      dec: number;
+      fovDeg: number;
+      n: number;
+      id?: string;
+      /** For objects the engine may not know: pinned and described instead. */
+      pin?: Pin;
+    } | null;
+    /** Jump the sky's clock (the "show it when it is up" button). */
+    onjumptime?: (t: Date) => void;
     clearSignal?: number;
     place: Place;
     time: Date;
@@ -81,6 +92,8 @@
     onsearch?: () => void;
     /** Drawn inside the sky's frame (so it stays visible in full screen): the dock. */
     overlay?: Snippet;
+    /** Whether the sky is full screen (read by the page's quick switches). */
+    fullscreen?: boolean;
     /** Part of the frame an open panel covers: the sky itself shrinks to stay in view. */
     inset?: { right: number; bottom: number };
   }
@@ -101,6 +114,7 @@
     scope = null,
     onselect,
     goto = null,
+    onjumptime,
     clearSignal = 0,
     deepSky = null,
     longExposure = false,
@@ -114,6 +128,7 @@
     onsearch,
     overlay,
     inset = { right: 0, bottom: 0 },
+    fullscreen = $bindable(false),
   }: Props = $props();
 
   let canvas = $state<HTMLCanvasElement>() as HTMLCanvasElement;
@@ -125,14 +140,39 @@
   let status = $state<'loading' | 'ready' | 'error'>('loading');
   let errorMsg = $state('');
   let selected = $state<ObjectInfo | null>(null);
+  /** A searched object the engine has no entry for: marked on the sky and described. */
+  let pin = $state<Pin | null>(null);
 
   // ---- fullscreen ---------------------------------------------------------------
+  /** Full screen without the Fullscreen API (iPhone Safari): the sky covers the page. */
+  let pseudo = $state(false);
   function toggleFull() {
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void wrap?.requestFullscreen?.().catch(() => undefined);
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+      return;
+    }
+    if (pseudo) {
+      pseudo = false;
+      full = false;
+      return;
+    }
+    const el = wrap as HTMLDivElement & { webkitRequestFullscreen?: () => void };
+    const req = el?.requestFullscreen?.bind(el) ?? el?.webkitRequestFullscreen?.bind(el);
+    const fallback = () => {
+      pseudo = true;
+      full = true;
+    };
+    if (!req) fallback();
+    else
+      void Promise.resolve()
+        .then(() => req())
+        .catch(fallback);
   }
+  $effect(() => {
+    fullscreen = full;
+  });
   onMount(() => {
-    const on = () => (full = document.fullscreenElement === wrap);
+    const on = () => (full = document.fullscreenElement === wrap || pseudo);
     document.addEventListener('fullscreenchange', on);
     return () => document.removeEventListener('fullscreenchange', on);
   });
@@ -224,6 +264,7 @@
   /** Centre the view on the selected object and keep it there (Stellarium "centre on selected"). */
   function gotoSelected() {
     if (stel?.core.selection) stel.pointAndLock(stel.core.selection, glide(1));
+    else if (pin) lookAtRaDec(pin.ra, pin.dec, stel ? stel.core.fov * stel.R2D : 10);
   }
   /** Stellarium "/": centre and zoom in on the selected object. */
   function autoZoomSelected() {
@@ -264,6 +305,7 @@
         // stars and labels below 0°. Our terrain layer adds the real silhouette.
         s.change((_obj, attr) => {
           if (attr === 'selection') {
+            if (c.selection) pin = null;
             const info = c.selection ? describe(s, c.selection) : null;
             if (info && unnamed(info)) {
               c.selection = null;
@@ -540,9 +582,10 @@
     }
   }
   /** Select a catalogue object and centre it; if the engine does not know it, point at its coordinates. */
-  async function selectOrPoint(id: string, ra: number, dec: number, fov: number) {
+  async function selectOrPoint(id: string, ra: number, dec: number, fov: number, fallback?: Pin) {
     const s = stel;
     if (!s) return;
+    pin = null;
     // Look there first: the engine loads the object's data tile once it is in view.
     s.core.selection = null;
     selected = null;
@@ -553,7 +596,10 @@
       await new Promise((r) => setTimeout(r, 150));
       obj = findObj(id);
     }
-    if (!obj) return;
+    if (!obj) {
+      if (fallback) setPin(fallback);
+      return;
+    }
     s.core.selection = obj;
     s.pointAndLock(obj, glide(0.6));
   }
@@ -653,7 +699,24 @@
   $effect(() => {
     void time;
     if (stel?.core.selection) selected = describe(stel, stel.core.selection);
+    else if (pin) selected = pinInfo(pin, place, time);
   });
+  function setPin(p: Pin) {
+    if (stel) stel.core.selection = null;
+    pin = p;
+    selected = pinInfo(p, place, time);
+  }
+  /** Below the horizon now: when to look instead (recomputed when the object changes). */
+  const below = $derived.by(() => {
+    const s = selected;
+    if (!s || s.alt >= 0 || !s.name) return null;
+    return {
+      name: s.name,
+      alt: s.alt,
+      next: nextGoodTime(s.ra2000, s.dec2000, place, time),
+    };
+  });
+  let belowHidden = $state('');
   $effect(() => {
     onselect?.(selected);
   });
@@ -662,11 +725,16 @@
     const g = goto;
     if (!stel || !g || g.n === lastGoto) return;
     lastGoto = g.n;
-    if (g.id) void selectOrPoint(g.id, g.ra, g.dec, g.fovDeg);
+    belowHidden = '';
+    if (g.id) void selectOrPoint(g.id, g.ra, g.dec, g.fovDeg, g.pin);
     else {
-      stel.core.selection = null;
-      selected = null;
       lookAtRaDec(g.ra, g.dec, g.fovDeg);
+      if (g.pin) setPin(g.pin);
+      else {
+        stel.core.selection = null;
+        pin = null;
+        selected = null;
+      }
     }
   });
   let lastClear = 0;
@@ -678,6 +746,7 @@
   });
   function clearSelection() {
     if (stel) stel.core.selection = null;
+    pin = null;
     selected = null;
   }
 
@@ -946,6 +1015,7 @@
 <div
   class="wrap"
   class:full
+  class:pseudo
   class:idle={full && view.autoHideBars && idle}
   bind:this={wrap}
   onkeydown={onKey}
@@ -1006,6 +1076,35 @@
         slewing={scope.slewing}
       />
     {/if}
+    {#if pin}
+      <ScopeReticle
+        {stel}
+        {canvas}
+        ra={pin.ra}
+        dec={pin.dec}
+        label={pin.label}
+        slewing={false}
+        tone="target"
+      />
+    {/if}
+    {#if below && belowHidden !== below.name}
+      <div class="below" role="status">
+        <p>
+          <strong>{below.name}</strong> is {Math.round(-below.alt)}° below the horizon now{below.next
+            ? `; ${below.next.dark ? 'best in the dark' : 'highest'} at ${fmtTime(below.next.t, tz)} (${Math.round(below.next.alt)}° up).`
+            : ': it never rises here.'}
+        </p>
+        <div class="below-row">
+          {#if below.next}
+            <button onclick={() => below.next && onjumptime?.(below.next.t)}>Show it then</button>
+          {/if}
+          <button onclick={() => (view.ground = false)} aria-pressed={!view.ground}
+            >See through the ground</button
+          >
+          <button onclick={() => (belowHidden = below.name)} aria-label="Hide this note">×</button>
+        </div>
+      </div>
+    {/if}
   </div>
 
   {@render overlay?.()}
@@ -1035,9 +1134,41 @@
     border: 1px solid var(--line);
     background: #000;
   }
+  .wrap.pseudo {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    height: 100dvh;
+  }
   .wrap.full {
     border-radius: 0;
     border: none;
+  }
+  .below {
+    position: absolute;
+    left: 50%;
+    bottom: 40px;
+    transform: translateX(-50%);
+    z-index: 5;
+    width: min(460px, calc(100% - 24px));
+    padding: 8px 12px;
+    font-size: var(--fs-14);
+    background: color-mix(in srgb, var(--ink-1) 92%, transparent);
+    border: 1px solid var(--brass);
+    border-radius: 12px;
+    box-shadow: var(--shadow-float);
+  }
+  .below p {
+    margin: 0 0 6px;
+  }
+  .below-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .below-row button {
+    min-height: 36px;
+    font-size: var(--fs-14);
   }
   .stage {
     position: absolute;

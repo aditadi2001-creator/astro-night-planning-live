@@ -83,7 +83,7 @@
   );
 </script>
 
-<div class="ribbon">
+<section class="ribbon" aria-label="Tonight from sunset to sunrise">
   <span class="edge">
     <span class="k">Sunset</span>
     <span class="v">{fmtTime(tw.sunset, tz)}</span>
@@ -150,7 +150,7 @@
   >
     Now
   </button>
-</div>
+</section>
 
 <style>
   .ribbon {
