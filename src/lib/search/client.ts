@@ -42,6 +42,11 @@ export function searchCatalogs(q: string, limit = 40): Promise<SearchResponse> {
   return ask({ type: 'query', q, limit });
 }
 
+/** The installed SDSS galaxies around a point (from the deep-sky layer's tiles). */
+export function sdssInstalled(ra: number, dec: number, radiusDeg: number): Promise<SearchResponse> {
+  return ask({ type: 'sdss', ra, dec, radiusDeg });
+}
+
 export function browseCatalog(badge: string): Promise<SearchResponse> {
   return ask({ type: 'browse', badge });
 }

@@ -14,6 +14,7 @@
     recents,
     resolveOnline,
     sdssAround,
+    sdssInstalled,
     searchCatalogs,
     toggleFavorite,
     type ResultEntry,
@@ -96,6 +97,14 @@
       if (r.ok) {
         results = r.results;
         status = 'ready';
+        // Just "sdss": list the installed SDSS galaxies around the view right away.
+        if (/^\s*sdss(\s+(galaxies|objects))?\s*$/i.test(text)) {
+          const cat = r.results.find((x) => x.ref === 'online:sdss');
+          if (cat) {
+            void choose(cat);
+            return;
+          }
+        }
         // Designations only an online service knows (SDSS J…, 2MASS J…, Mrk, MCG, UGCA, HD…):
         // ask SIMBAD by itself once the typing stops, unless the exact name is already here.
         const exact = r.results.some((x) => norm(x.label.split(' · ')[0] ?? '') === norm(text));
@@ -135,29 +144,53 @@
 
   async function choose(e: ResultEntry) {
     if (e.kind === 'catalog' && e.ref?.startsWith('online:')) {
-      const c = centre?.();
-      if (!c) {
-        onlineNote = 'Open the Sky page first: this catalog is listed around the view centre.';
-        return;
-      }
       const id = ++seq;
       online = 'loading';
       onlineNote = '';
+      // Famous SDSS discoveries first (smiley lens, Hanny's Voorwerp…), then the installed
+      // SDSS galaxies around the view (the same tiles the sky draws them from).
+      const fam = await searchCatalogs('sdss', 80);
+      const famous = fam.ok
+        ? fam.results.filter((x) => x.kind === 'notable' && x.badges.includes('SDSS'))
+        : [];
+      const c = centre?.();
+      if (id !== seq) return;
+      if (!c) {
+        online = 'idle';
+        browsing = 'Famous SDSS objects';
+        results = famous;
+        onlineNote =
+          'Open the Sky page and look anywhere in the SDSS area (Ursa Major, Leo, Virgo, Coma, around M 51 or M 101) to list the installed SDSS galaxies there.';
+        active = 0;
+        return;
+      }
+      const radius = Math.min(0.5, Math.max(0.1, c.fovDeg / 2));
+      const where = `${Math.round(radius * 60)}′`;
       try {
-        const radius = Math.min(1, Math.max(0.1, c.fovDeg / 2));
-        const list = await sdssAround(c.ra, c.dec, radius);
+        let list: ResultEntry[] = [];
+        let from = 'installed';
+        const r = await sdssInstalled(c.ra, c.dec, radius);
+        if (r.ok) list = r.results;
+        else {
+          // No data Worker (local development): the same objects from VizieR.
+          list = await sdssAround(c.ra, c.dec, radius);
+          from = 'VizieR';
+        }
         if (id !== seq) return;
         online = 'idle';
-        browsing = `${e.label} within ${radius < 1 ? `${Math.round(radius * 60)}′` : '1°'} of the view centre`;
-        results = list;
+        browsing = `SDSS galaxies within ${where} of the view centre (${from}): ${list.length}${list.length >= 300 ? '+' : ''}, then famous SDSS objects`;
+        results = [...list, ...famous];
         if (!list.length)
           onlineNote =
-            'SDSS has no galaxies or quasars with spectra here. SDSS covers about a third of the sky, mostly far from the Milky Way: try around M 51, M 101 or the Coma cluster.';
+            'No SDSS galaxies here: SDSS covers about a third of the sky, mostly far from the Milky Way. Look towards Ursa Major, Leo, Virgo or Coma (around M 51, M 101) and choose this again.';
         active = 0;
         await tick();
         listEl?.scrollTo({ top: 0 });
       } catch {
-        if (id === seq) online = 'error';
+        if (id === seq) {
+          online = 'error';
+          results = famous;
+        }
       }
       return;
     }

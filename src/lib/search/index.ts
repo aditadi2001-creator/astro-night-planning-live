@@ -645,9 +645,9 @@ export const looksLikeDesignation = (q: string) =>
 export const ONLINE_CATALOGS = [
   {
     ref: 'online:sdss',
-    name: 'SDSS galaxies and quasars (online)',
-    aka: ['sdss', 'sloan', 'sloan digital sky survey'],
-    sub: 'Sloan Digital Sky Survey DR16 objects with spectra, listed around the view centre · from VizieR',
+    name: 'SDSS galaxies (installed in the app)',
+    aka: ['sdss', 'sloan', 'sloan digital sky survey', 'sdss galaxies'],
+    sub: '2.6 million SDSS DR17 galaxies with spectra, drawn in the sky: choose to list those around the view centre',
   },
 ] as const;
 
@@ -662,5 +662,42 @@ export function onlineCatalogEntries(): Entry[] {
     ref: c.ref,
     // Above the survey of the same name: someone typing "sdss" most likely wants objects.
     rank: 0.5 + i * 0.05,
+  }));
+}
+
+/** Famous SDSS discoveries as search entries (found by nickname or SDSS name). */
+export function famousSdssEntries(
+  list: readonly {
+    name: string;
+    nick: string;
+    sub: string;
+    ra: number;
+    dec: number;
+    keys: string[];
+  }[],
+): Entry[] {
+  return list.map((f) => ({
+    kind: 'notable' as const,
+    label: `${f.name} · ${f.nick}`,
+    sub: `${f.sub} · SDSS`,
+    ids: [norm(f.name), ...f.keys.map(norm)],
+    words: [...nameWords(f.nick), ...f.keys.flatMap(nameWords), 'sdss'],
+    names: [norm(f.nick), ...f.keys.map(norm)],
+    badges: ['SDSS'],
+    ra: f.ra,
+    dec: f.dec,
+    sizeDeg: 0.02,
+    type: 'galaxy',
+    engineId: f.name,
+    rank: 1.5,
+    info: {
+      designations: [f.name],
+      common: [f.nick],
+      min: null,
+      pa: null,
+      z: null,
+      distKpc: null,
+      morph: null,
+    },
   }));
 }

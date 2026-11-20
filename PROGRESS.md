@@ -445,3 +445,12 @@ OpenAQ air quality missing. Cause: that work lived on a parallel branch never me
   of 8 models".
 - **Free use** audited (docs/USER_GUIDE.md §10, DATA_BUDGET.md).
 - **docs/USER_GUIDE.md**: the complete guide to every part of the app.
+
+## Installed SDSS objects in search ✅ (2026-11-20, owner's request)
+
+- "sdss" lists the installed SDSS DR17 galaxies around the view straight away (115 near M 51, 159
+  near M 101, 73 at the smiley lens), then the famous SDSS objects; full and short SDSS names work
+  ("SDSS J1038+4849" → three galaxies, the lens's SDSS J103843.59+484917.7 first); "smiley",
+  "cheshire cat", "hanny's voorwerp", "teacup"… find their objects, pinned with an Info panel that
+  describes them. Read from the same R2 tiles the sky draws (src/lib/search/eph.ts, sdss.ts), at most
+  about a dozen cached Worker requests per listing, none for missing tiles.

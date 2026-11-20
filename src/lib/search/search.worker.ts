@@ -22,9 +22,13 @@ import {
   type Shard,
 } from './index';
 import { SURVEYS } from '../sky/surveys';
+import { DSO_SDSS_URL } from '../config';
+import { famousSdssEntries } from './index';
+import { FAMOUS_SDSS, parseSdssName, sdssInstalledAround, type SdssObject } from './sdss';
 
 export type SearchAsk =
   | { type: 'query'; q: string; limit?: number }
+  | { type: 'sdss'; ra: number; dec: number; radiusDeg: number }
   | { type: 'browse'; badge: string }
   | { type: 'lookup'; keys: string[] };
 export type SearchRequest = SearchAsk & { id: number };
@@ -104,6 +108,7 @@ function init(): Promise<void> {
       ...constellationEntries(constellations(sky, stars)),
       ...catalogEntries(manifest.catalogs),
       ...onlineCatalogEntries(),
+      ...famousSdssEntries(FAMOUS_SDSS),
       ...surveyEntries(SURVEYS),
       ...notableEntries(notable),
       ...starEntries(stars),
@@ -126,6 +131,68 @@ function loadGalaxies(): Promise<void> {
 /** Queries that are about the big galaxy catalogs, or found almost nothing in the core set. */
 const wantsGalaxies = (q: string, hits: number) =>
   /^\s*(pgc|ugc|eso|leda|mcg)\b/i.test(q) || (hits < 3 && q.trim().length >= 3);
+
+/** An installed SDSS object as a search result (the sky engine knows it by its SDSS name). */
+function sdssEntry(o: SdssObject): ResultEntry {
+  return {
+    kind: 'dso',
+    label: o.others[0] ? `${o.name} · ${o.others[0]}` : o.name,
+    sub: [
+      'Galaxy',
+      o.mag != null ? `r ${o.mag.toFixed(1)}` : '',
+      o.z != null ? `redshift ${o.z.toFixed(3)}` : '',
+      'SDSS DR17, installed',
+    ]
+      .filter(Boolean)
+      .join(' · '),
+    badges: ['SDSS'],
+    ra: o.ra,
+    dec: o.dec,
+    sizeDeg: Math.max(0.01, (o.sizeArcmin ?? 0.3) / 60),
+    mag: o.mag,
+    type: 'galaxy',
+    engineId: o.name,
+    info: {
+      designations: [o.name, ...o.others],
+      common: [],
+      min: null,
+      pa: null,
+      z: o.z,
+      distKpc: null,
+      morph: null,
+    },
+  };
+}
+
+/** Results for a typed SDSS name: the position from the name, or matches from the tiles. */
+async function sdssNameResults(q: string): Promise<ResultEntry[]> {
+  const n = parseSdssName(q);
+  if (!n) return [];
+  if (n.exact)
+    return [
+      {
+        kind: 'dso',
+        label: n.name,
+        sub: 'SDSS object · position read from its name (J2000)',
+        badges: ['SDSS'],
+        ra: n.ra,
+        dec: n.dec,
+        sizeDeg: 0.02,
+        type: 'galaxy',
+        engineId: n.name,
+      },
+    ];
+  if (!DSO_SDSS_URL) return [];
+  const near = await sdssInstalledAround(DSO_SDSS_URL, n.ra, n.dec, 0.35, 2000).catch(() => []);
+  return near
+    .filter(
+      (o) =>
+        o.name.startsWith(n.prefix ?? '') &&
+        o.name.slice(o.name.search(/[+-]/)).startsWith(n.decPart ?? ''),
+    )
+    .slice(0, 20)
+    .map(sdssEntry);
+}
 
 /** Drop the index-only fields before sending a result to the page. */
 function strip(e: Entry): ResultEntry {
@@ -155,6 +222,21 @@ self.onmessage = async (e: MessageEvent<SearchRequest>) => {
       });
       return;
     }
+    if (m.type === 'sdss') {
+      if (!DSO_SDSS_URL) {
+        post({ id: m.id, ok: false, error: 'no-data-worker' });
+        return;
+      }
+      const list = await sdssInstalledAround(DSO_SDSS_URL, m.ra, m.dec, m.radiusDeg);
+      post({
+        id: m.id,
+        ok: true,
+        results: list.map(sdssEntry),
+        galaxiesLoaded,
+        size: entries.length,
+      });
+      return;
+    }
     if (m.type === 'browse') {
       if (['PGC', 'UGC', 'ESO'].includes(m.badge)) await loadGalaxies();
       const results = browse(entries, m.badge).map(strip);
@@ -166,10 +248,21 @@ self.onmessage = async (e: MessageEvent<SearchRequest>) => {
       await loadGalaxies();
       hits = search(entries, m.q, m.limit ?? 40);
     }
+    const named = await sdssNameResults(m.q);
+    const local = hits.map((h) => strip(h.entry));
+    // A famous SDSS object (smiley lens…) comes first; the same galaxy found by name is dropped.
+    const famous = local.filter((e) => e.kind === 'notable' && e.badges.includes('SDSS'));
+    const sameAs = (n: ResultEntry) =>
+      famous.some((f) => f.label.split(' · ')[0] === n.label.split(' · ')[0]) ||
+      local.some((e) => e.label === n.label);
     post({
       id: m.id,
       ok: true,
-      results: hits.map((h) => strip(h.entry)),
+      results: [
+        ...famous,
+        ...named.filter((n) => !sameAs(n)),
+        ...local.filter((e) => !famous.includes(e)),
+      ],
       galaxiesLoaded,
       size: entries.length,
     });

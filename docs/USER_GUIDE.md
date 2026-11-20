@@ -199,7 +199,12 @@ Ctrl K (⌘ K), or the magnifier. It finds:
 - **Stars**: 8,924 bright and named stars (names, Bayer and Flamsteed letters, HD, HIP).
 - **Planets**, the Sun and Moon; **constellations**; **84 notable objects** (quasars, doubles,
   variables, exoplanet hosts).
-- **SDSS galaxies and quasars** around the view (type "sdss"), from VizieR.
+- **SDSS galaxies, installed in the app**: the 2.6 million SDSS DR17 galaxies with spectra that
+  the 3D sky draws. Type **sdss** to list those around the view centre (brightest first, with r
+  magnitude and redshift), then the famous SDSS objects; type a name, full ("SDSS
+  J103843.59+484917.7") or short ("SDSS J1038+4849"); or a nickname: **smiley** / **Cheshire Cat**
+  lens, **Hanny's Voorwerp**, **Cosmic Horseshoe**, **Teacup**, **Green Bean**, the five-image lensed
+  quasar. SDSS covers about a third of the sky (Ursa Major, Leo, Virgo, Coma…), far from the Milky Way.
 - **Anything else** (SDSS J…, 2MASS J…, Mrk, MCG, UGCA, HD…) is looked up in SIMBAD automatically.
 - **Coordinates** ("10h45m −59°40′"), **catalogs** ("messier" lists all 110) and **sky surveys**.
 

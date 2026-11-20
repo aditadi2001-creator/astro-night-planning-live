@@ -368,6 +368,9 @@
   <section>
     <h4>What is this?</h4>
     <p>{summary()}</p>
+    {#if cat?.kind === 'notable' && cat.badges.includes('SDSS')}
+      <p><strong>{cat.label.split(' · ')[1] ?? ''}</strong>: {cat.sub.replace(/ · SDSS$/, '')}.</p>
+    {/if}
     {#if wiki}
       <p class="wiki">
         {wiki.extract.slice(0, expert ? 600 : 280)}{wiki.extract.length > (expert ? 600 : 280)

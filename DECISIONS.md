@@ -313,3 +313,9 @@ go through the bridge (browsers cannot open TCP sockets); the bridge answers onl
 app's origin and passes only allow-listed commands and INDI properties. Where a maker's network
 protocol is not documented or verified (Celestron Wi-Fi, Sky-Watcher Wi-Fi, iOptron), the picker
 routes through ASCOM or INDI instead of guessing.
+
+**D65. SDSS objects come from the app's own deep-sky layer, not VizieR.** The 2.6 million SDSS DR17
+spectroscopic galaxies are already in R2 (/hips/dso2) and drawn in the sky; search reads the same
+eph tiles around the view (descending only below full tiles, so no request is made for a missing
+one), parses positions from SDSS names, and finds famous SDSS objects by nickname. VizieR remains a
+fallback only where there is no data Worker (local development).
