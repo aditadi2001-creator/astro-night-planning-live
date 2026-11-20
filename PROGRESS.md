@@ -499,3 +499,13 @@ OpenAQ air quality missing. Cause: that work lived on a parallel branch never me
   updated service worker had cached the HTML page as the new script during the deploy (D70).
   Fixed (HTML guard in the worker, `404.html`) and published again.
 - Gates: check, lint, format, 59 test files / 495 tests, build, check:budget all pass.
+
+## Old rig removed everywhere; elevation for each place ✅ (2026-11-20, owner's request)
+
+- The C9.25 + ATR585M no longer appears in the camera frame, the Telescope tab or the header: a
+  one-time clean-up removes the old shipped rigs from each browser's saved setups (D71). Tested
+  with the owner's old storage: the frame and equipment show the 80 mm starter rig, the saved
+  place is kept.
+- Location picker: elevation of the current place (type it, or "From terrain map", then Set),
+  shown on every built-in observatory and editable on every saved place (D72). Tested: set 935 m,
+  terrain map 914 m, saved place 800 → 850 m; phone width without sideways scrolling.

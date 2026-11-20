@@ -140,6 +140,82 @@
     saveSavedPlaces(saved);
   }
 
+  // ---- elevation of each place (ground height, metres above sea level) ----
+  /** Lowest and highest ground on Earth, rounded out: anything else is a typo. */
+  const ELEV_MIN = -450;
+  const ELEV_MAX = 8900;
+  const validElev = (v: number) => Number.isFinite(v) && v >= ELEV_MIN && v <= ELEV_MAX;
+  /** The field's number (Svelte binds number inputs as numbers; empty = null). */
+  let elevInput = $state<number | null>(null);
+  let elevMsg = $state('');
+  let elevBusy = $state(false);
+  // Follow the current place; the message is cleared only when another place is picked.
+  let elevFor = '';
+  $effect(() => {
+    elevInput = place.needsElevation ? null : Math.round(place.elevation);
+    const key = `${place.lat},${place.lon}`;
+    if (key !== elevFor) {
+      elevFor = key;
+      elevMsg = '';
+    }
+  });
+  const elevValue = $derived(elevInput == null ? Number.NaN : Number(elevInput));
+  const elevChanged = $derived(
+    validElev(elevValue) &&
+      (place.needsElevation || Math.round(elevValue) !== Math.round(place.elevation)),
+  );
+
+  /** The same place with a new elevation. A built-in place becomes the visitor's own copy. */
+  function withElevation(p: Place, m: number): Place {
+    const next: Place = { ...p, elevation: Math.round(m), needsElevation: false };
+    delete next.id;
+    return next;
+  }
+
+  function applyElevation() {
+    if (!validElev(elevValue)) {
+      elevMsg = `Enter a height between ${ELEV_MIN} and ${ELEV_MAX} m.`;
+      return;
+    }
+    const next = withElevation(place, elevValue);
+    // Keep a saved copy of this place in step.
+    if (saved.some((s) => same(s, place))) {
+      saved = saved.map((s) => (same(s, place) ? withElevation(s, elevValue) : s));
+      saveSavedPlaces(saved);
+    }
+    onplace(next);
+    elevMsg = `Elevation set to ${Math.round(elevValue)} m: the sky, refraction, terrain horizon and forecasts use it.`;
+  }
+
+  async function elevationFromMap() {
+    elevBusy = true;
+    elevMsg = 'Looking up the ground height…';
+    const sig = new AbortController();
+    const timer = setTimeout(() => sig.abort(), 6000);
+    try {
+      const m = await elevationAt(place.lat, place.lon, sig.signal);
+      if (m == null) elevMsg = 'The terrain map has no height here (n/a). Type it in instead.';
+      else {
+        elevInput = Math.round(m);
+        elevMsg = `Terrain map: ${Math.round(m)} m. Press Set to use it.`;
+      }
+    } catch {
+      elevMsg = 'The terrain map is unavailable right now. Type the height in instead.';
+    } finally {
+      clearTimeout(timer);
+      elevBusy = false;
+    }
+  }
+
+  /** Edit the elevation of a saved place in the list (and of the current place if it is that one). */
+  function setSavedElevation(p: Place, text: string) {
+    const v = Number(text);
+    if (!validElev(v)) return;
+    saved = saved.map((s) => (same(s, p) ? withElevation(s, v) : s));
+    saveSavedPlaces(saved);
+    if (same(p, place)) onplace(withElevation(place, v));
+  }
+
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape') onclose();
   }
@@ -176,6 +252,36 @@
     </button>
   </div>
 
+  <section class="here" aria-label="Elevation of this place">
+    <p class="here-name">
+      <strong>{place.name}</strong>
+      <span class="coords">{place.lat.toFixed(4)}°, {place.lon.toFixed(4)}°</span>
+    </p>
+    <form
+      class="elev-form"
+      onsubmit={(e) => {
+        e.preventDefault();
+        applyElevation();
+      }}
+    >
+      <label>
+        Elevation (m above sea level)
+        <input
+          type="number"
+          inputmode="numeric"
+          step="1"
+          min={ELEV_MIN}
+          max={ELEV_MAX}
+          bind:value={elevInput}
+          placeholder="n/a"
+        />
+      </label>
+      <button type="submit" disabled={!elevChanged}>Set</button>
+      <button type="button" onclick={elevationFromMap} disabled={elevBusy}>From terrain map</button>
+    </form>
+    {#if elevMsg}<p class="msg" role="status">{elevMsg}</p>{/if}
+  </section>
+
   <div class="presets" role="group" aria-label="Built-in places">
     {#each PRESETS as p (p.id)}
       <button
@@ -188,6 +294,7 @@
       >
         <strong>{p.name}</strong>
         <span>{p.detail}</span>
+        <span class="coords">{Math.round(p.elevation)} m</span>
       </button>
     {/each}
   </div>
@@ -303,6 +410,20 @@
             <strong>{p.name}</strong>
             {#if p.detail}<span>{p.detail}</span>{/if}
           </button>
+          <label class="saved-elev">
+            <span class="visually-hidden">Elevation of {p.name} in metres</span>
+            <input
+              type="number"
+              inputmode="numeric"
+              step="1"
+              min={ELEV_MIN}
+              max={ELEV_MAX}
+              value={p.needsElevation ? '' : Math.round(p.elevation)}
+              placeholder="n/a"
+              onchange={(e) => setSavedElevation(p, (e.currentTarget as HTMLInputElement).value)}
+            />
+            <span aria-hidden="true">m</span>
+          </label>
           <button class="rm" onclick={() => remove(p)} aria-label={`Remove ${p.name}`}>×</button>
         </li>
       {/each}
@@ -403,6 +524,57 @@
   }
   .rm {
     flex: none;
+  }
+  .saved .item {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .saved-elev {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: var(--fs-12);
+    color: var(--text-2);
+  }
+  .saved-elev input {
+    width: 5.5em;
+  }
+  .here {
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .here-name {
+    margin: 0 0 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    align-items: baseline;
+  }
+  .elev-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 6px;
+    align-items: end;
+  }
+  .elev-form label {
+    display: grid;
+    gap: 2px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .elev-form input {
+    min-width: 0;
+  }
+  @media (max-width: 420px) {
+    .elev-form {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .elev-form label {
+      grid-column: 1 / -1;
+    }
   }
   h3 {
     font-size: 13px;

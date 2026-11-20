@@ -6,6 +6,10 @@ import '@fontsource/spectral/latin-600-italic.css';
 import './styles/tokens.css';
 import './app.css';
 import App from './App.svelte';
+import { removeOwnerRigs } from './lib/migrate';
+
+// Before the app reads its settings: drop equipment that older builds shipped (D71).
+removeOwnerRigs();
 
 const target = document.getElementById('app');
 if (!target) throw new Error('#app element missing');

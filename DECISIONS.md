@@ -360,3 +360,16 @@ now fetches each file itself and fails (keeping the old version, retried on the 
 HTML answer for anything but the page; a stored HTML copy of a script is dropped and fetched
 again; and `404.html` makes Pages answer unknown paths with a 404 (routing is hash-based, so
 nothing relied on the fallback). Tested in tests/sw-html-guard.test.ts.
+
+**D71. The owner's old rigs are removed from browsers once.** Builds before D67 copied the C9.25 +
+ATR585M into every visitor's deep-sky setup on the first visit, so it kept drawing in the camera
+frame (and became "My setup"). The owner asked for it to go. On start, once per browser
+(`anp.migrate.ownerRig.v1`), setups, My setup and the active profile that match those rigs (C9.25,
+Angeleyes, ATR585M, a6100 + 11 mm) are dropped and the generic defaults take their place. Places
+and everything else are kept; equipment entered afterwards is never touched.
+
+**D72. Each place has an editable elevation.** The location picker shows the current place's
+elevation with a field to change it and a "From terrain map" lookup (Open-Meteo elevation, as the
+picker already used), and each saved place has its own elevation box. A built-in observatory with
+a changed height becomes the visitor's own copy (its preset id and precomputed horizon no longer
+apply). Heights outside −450 to 8,900 m are refused.
