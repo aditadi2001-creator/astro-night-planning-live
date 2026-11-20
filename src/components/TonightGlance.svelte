@@ -30,13 +30,18 @@
     nodark: 'No darkness',
     unknown: 'Waiting',
   };
+  /** Year of the light-pollution map behind the modelled sky brightness. */
+  const LP_YEAR = 2025;
   const t = (ms: number | null | undefined) => (ms == null ? 'n/a' : fmtTime(ms, tz));
   const hours = (a: number, b: number) => ((b - a) / 3600_000).toFixed(1);
 </script>
 
 <div class="glance" data-level={v.level} aria-live="polite">
   <p class="verdict">
-    <span class="tag"><span aria-hidden="true">{GLYPH[v.level]}</span> {WORD[v.level]}</span>
+    <span class="tag"
+      ><span aria-hidden="true">{GLYPH[v.level]}</span>
+      {v.headline === 'No forecast for this night' ? 'No forecast' : WORD[v.level]}</span
+    >
     <span class="head">{v.headline}</span>
   </p>
   <dl class="facts">
@@ -85,7 +90,9 @@
     </div>
     <div>
       <dt>Dew</dt>
-      <dd>{v.dewHours ? `${v.dewHours} h high risk` : 'low risk'}</dd>
+      <dd>
+        {v.dewHours == null ? 'n/a' : v.dewHours ? `${v.dewHours} h high risk` : 'low risk'}
+      </dd>
     </div>
     <div>
       <dt>Sky brightness</dt>
@@ -95,7 +102,7 @@
           {sqm.source === 'measured'
             ? 'your measurement'
             : sqm.source === 'model'
-              ? 'light-pollution model'
+              ? `light-pollution model (${LP_YEAR} lights)`
               : 'no data'}{sqm.bortle ? `, Bortle ${sqm.bortle}` : ''}
         </span>
       </dd>

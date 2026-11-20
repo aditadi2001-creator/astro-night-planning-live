@@ -454,3 +454,19 @@ OpenAQ air quality missing. Cause: that work lived on a parallel branch never me
   "cheshire cat", "hanny's voorwerp", "teacup"… find their objects, pinned with an Info panel that
   describes them. Read from the same R2 tiles the sky draws (src/lib/search/eph.ts, sdss.ts), at most
   about a dozen cached Worker requests per listing, none for missing tiles.
+
+## Equatorial-view shake and an expert bug sweep ✅ (2026-11-20, owner's request)
+
+- **EQ view shake fixed** (D66): measured at 1.2′ field of view, the view centre now moves at most
+  0.004″ per frame, the roll at most 0.7″ per frame (also at the pole), and "Now" lands within
+  0.01 s of real time after playing centuries and scrubbing.
+- **Bugs found and fixed:**
+  - a night outside the forecast (e.g. 1726) said "Waiting for the forecast" forever: now "No
+    forecast for this night", pointing to Trips for its clear-night history;
+  - dew showed "low risk" without any weather data: now "n/a" (no invented values);
+  - modelled sky brightness now says it uses the 2025 lights (it applied to 1726 too);
+  - above 72.5° latitude the app asked for satellite cloud tiles that do not exist (16 failed
+    requests at Svalbard): now skipped.
+- **Checked and fine:** extreme places and dates (21 new edge-case tests: Svalbard, South Pole,
+  equator, Sydney, date line; 1539–2999), night mode red-only for all new controls, axe clean on
+  Sky, Telescope, Layers and Search, no Svelte warnings, timeline + EQ + frame stress run.

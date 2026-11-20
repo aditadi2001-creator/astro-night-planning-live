@@ -1015,7 +1015,14 @@
     const e = effectiveSqm(siteLight?.sqm ?? null, siteSky);
     return { value: e.sqm, source: e.source, bortle: e.sqm == null ? null : bortle(e.sqm) };
   });
-  const tonightVerdict = $derived(verdict(timeline, tw, moon.illumination, (t) => fmtTime(t, tz)));
+  /** Times the loaded weather covers (null until it loads). */
+  const weatherCoverage = $derived.by(() => {
+    const h = sources?.weather.data?.hours;
+    return h?.length ? { from: h[0]?.t ?? 0, to: (h[h.length - 1]?.t ?? 0) + 3600_000 } : null;
+  });
+  const tonightVerdict = $derived(
+    verdict(timeline, tw, moon.illumination, (t) => fmtTime(t, tz), weatherCoverage),
+  );
 
   // Cloud factor per forecast hour (the same factor the hourly score uses) for target ranking.
   const clearByHour = $derived<[number, number][]>(

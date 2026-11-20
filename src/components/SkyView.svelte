@@ -336,11 +336,30 @@
   });
 
   // Keep the engine's observer in step with the place and time. The engine runs
-  // the clock itself between updates (live: real time; otherwise the chosen rate).
+  // the clock itself between updates (live: real time; otherwise the chosen rate), so the
+  // page's periodic clock updates (every second live, every 0.1–0.25 s while playing) must not
+  // reset it: the two clocks differ by a few hundredths of a second, and each reset made the
+  // stars jump by the sky's rotation in that time. Invisible at wide fields, but several pixels
+  // when zoomed in (the "shaking" in the equatorial view). Only real jumps are applied.
   $effect(() => {
     if (!stel) return;
-    stel.core.time_speed = live ? 1 : rate;
-    setObserver(stel, place, time);
+    const s = stel;
+    const speed = live ? 1 : rate;
+    const o = s.core.observer;
+    const target = s.date2MJD(time.getTime());
+    const cur = clock.t0 ? clockNow() : o.utc;
+    const tolDays = Math.max(1.5, Math.abs(speed) * 0.6) / 86400;
+    const moved =
+      Math.abs(o.latitude - place.lat * s.D2R) > 1e-9 ||
+      Math.abs(o.longitude - place.lon * s.D2R) > 1e-9 ||
+      o.elevation !== place.elevation;
+    if (moved || !(Math.abs(cur - target) <= tolDays)) {
+      setObserver(s, place, time);
+      clock = { utc0: target, t0: performance.now(), speed };
+    } else if (speed !== clock.speed) clock = { utc0: cur, t0: performance.now(), speed };
+    // While the view tracks the stars (equatorial view, or after a go-to), mountStep runs the
+    // clock itself so time and pointing change together; otherwise the engine runs it.
+    s.core.time_speed = mountRaf ? 0 : speed;
   });
   // A new place: the selection belonged to the old sky, and its info is stale.
   let lastPlace = '';
@@ -413,6 +432,14 @@
    * than the sky's own rotation, the new centre is adopted as the tracked one.
    */
   let mountRaf = 0;
+  /**
+   * The sky's clock: MJD at a moment (performance.now()) and its rate. The engine runs it itself
+   * normally; while tracking, mountStep advances it in the same step that re-points the view,
+   * because the engine draws before our frame callback and a one-frame lag that varies with the
+   * frame time made the view shake at high zoom.
+   */
+  let clock = { utc0: 0, t0: 0, speed: 1 };
+  const clockNow = () => clock.utc0 + ((performance.now() - clock.t0) / 86_400_000) * clock.speed;
   /** Follow the stars after a go-to by coordinates (no object to lock on), until a drag. */
   let trackOnly = false;
   let tracked: number[] | null = null;
@@ -427,19 +454,31 @@
     const d = (a[0] ?? 0) * (b[0] ?? 0) + (a[1] ?? 0) * (b[1] ?? 0) + (a[2] ?? 0) * (b[2] ?? 0);
     return Math.acos(Math.max(-1, Math.min(1, d)));
   }
+  /** Hand the clock back to the engine when tracking stops. */
+  function releaseClock(s: Stel) {
+    if (clock.t0) s.core.observer.utc = clockNow();
+    s.core.time_speed = clock.speed;
+  }
   function mountStep() {
     const s = stel;
     if (!s || (!view.eqMount && !trackOnly)) {
       mountRaf = 0;
+      if (s) releaseClock(s);
       return;
     }
     // In the alt-azimuth view, dragging or panning ends the coordinate tracking.
     if (!view.eqMount && (dragging || held.size)) {
       trackOnly = false;
       mountRaf = 0;
+      releaseClock(s);
       return;
     }
     const o = s.core.observer;
+    // Our clock, in step with the pointing below (see `clock`).
+    if (clock.t0) {
+      s.core.time_speed = 0;
+      o.utc = clockNow();
+    }
     const now = centreIcrf(s);
     if (now) {
       const utc = o.utc;
@@ -463,7 +502,9 @@
       // Roll so that celestial north is up at the centre.
       const c = tracked;
       const [ra, dec] = s.c2s(c);
-      const step = Math.min(0.5, (s.core.fov * s.R2D) / 40) * s.D2R;
+      // A fixed 0.5° step towards north: tiny steps at high zoom made the screen angle noisy
+      // (float precision in the projection) and the view twitched in roll.
+      const step = 0.5 * s.D2R;
       const nDec = Math.min(Math.PI / 2 - 1e-6, dec + step);
       const pn = icrfToScreen(s, s.s2c(ra, nDec));
       if (pn) {
@@ -473,7 +514,10 @@
         // roll +x turns north's screen angle by −x; target angle −90° (up).
         let err = a + Math.PI / 2;
         err = Math.atan2(Math.sin(err), Math.cos(err));
-        if (Math.abs(err) > 1e-4) o.roll = (o.roll ?? 0) + err;
+        // A quarter of the error per frame: averages the measurement noise away (smooth roll)
+        // and eases into place when the view first turns north-up.
+        if (Math.abs(err) > 1e-5)
+          o.roll = (o.roll ?? 0) + (Math.abs(err) > 0.05 ? err : err * 0.25);
       }
     }
     mountRaf = requestAnimationFrame(mountStep);
@@ -489,11 +533,17 @@
       if (!trackOnly) {
         cancelAnimationFrame(mountRaf);
         mountRaf = 0;
+        releaseClock(s);
       }
       (s.core.observer as unknown as { roll: number }).roll = 0;
     }
   }
   onMount(() => () => cancelAnimationFrame(mountRaf));
+  // Before the first time sync, start the clock from the engine's own time.
+  $effect(() => {
+    if (stel && !clock.t0)
+      clock = { utc0: stel.core.observer.utc, t0: performance.now(), speed: live ? 1 : rate };
+  });
 
   // Field of view in degrees, polled (zoom animations run every frame).
   let fovDeg = $state(120);

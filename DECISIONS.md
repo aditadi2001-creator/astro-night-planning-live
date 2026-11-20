@@ -319,3 +319,11 @@ spectroscopic galaxies are already in R2 (/hips/dso2) and drawn in the sky; sear
 eph tiles around the view (descending only below full tiles, so no request is made for a missing
 one), parses positions from SDSS names, and finds famous SDSS objects by nickname. VizieR remains a
 fallback only where there is no data Worker (local development).
+
+**D66. While the view tracks the stars, the app runs the sky's clock.** The engine draws before
+our frame callback, so re-pointing after it left each frame one frame behind the sky's rotation,
+and the page's once-a-second clock resets made the stars jump by a few hundredths of a second of
+rotation. Both were invisible at wide fields and several pixels at high zoom (the equatorial-view
+shake). Now the clock is reset only for real jumps (more than 1.5 s, or a deliberate time change),
+and in the equatorial view (or after a go-to) mountStep advances time and pointing together. The
+north-up roll is measured over a fixed 0.5° step and damped.

@@ -31,7 +31,8 @@ export interface Verdict {
   transparency: number | null;
   moonIllum: number | null;
   moonUpHours: number;
-  dewHours: number;
+  /** Hours of high dew risk; null when there is no weather data to judge it. */
+  dewHours: number | null;
   agreementLow: boolean;
 }
 
@@ -52,6 +53,8 @@ export function verdict(
   tw: TwilightTimes,
   moonIllum: number | null,
   fmt: (t: number) => string,
+  /** Times the weather data covers (ms); a night outside it has no forecast at all. */
+  coverage: { from: number; to: number } | null = null,
 ): Verdict {
   const dark = darkWindow(tw);
   const base = {
@@ -63,7 +66,7 @@ export function verdict(
     transparency: null,
     moonIllum,
     moonUpHours: 0,
-    dewHours: 0,
+    dewHours: null,
     agreementLow: false,
   };
   if (!dark) {
@@ -79,6 +82,16 @@ export function verdict(
   // Hours that overlap the dark window (rows start on the hour, local grid).
   const hours = rows.filter((r) => r.t + 3600_000 > dark.start && r.t < dark.end);
   const scored = hours.filter((r) => r.score);
+  if (!scored.length && coverage && (dark.end <= coverage.from || dark.start >= coverage.to)) {
+    return {
+      ...base,
+      level: 'unknown',
+      headline: 'No forecast for this night',
+      reasons: [
+        'Weather forecasts reach from a few days back to about 16 days ahead, and this night is outside them. Darkness and the Moon are still exact; Plan → Trips shows how often nights at this time of year are clear here.',
+      ],
+    };
+  }
   if (!scored.length) {
     return {
       ...base,
@@ -96,7 +109,9 @@ export function verdict(
   const seeing = mean(hours.map((r) => r.seeing?.arcsec).filter((x): x is number => x != null));
   const transparency = mean(scored.map((r) => r.score?.transparency ?? 0));
   const moonUpHours = hours.filter((r) => r.moonAlt > 0).length;
-  const dewHours = hours.filter((r) => r.dew?.risk === 'high').length;
+  const dewHours = hours.some((r) => r.dew)
+    ? hours.filter((r) => r.dew?.risk === 'high').length
+    : null;
   const agreementLow =
     hours.filter((r) => r.agreement === 'low').length >= Math.ceil(hours.length / 2);
   const usableHours = usable.length;
@@ -148,7 +163,8 @@ export function verdict(
   }
   if (transparency != null && transparency < 0.6)
     reasons.push('Hazy (fine particles in the air): faint targets lose contrast.');
-  if (dewHours >= 2) reasons.push(`Dew likely for ${dewHours} hours: use a dew heater.`);
+  if (dewHours != null && dewHours >= 2)
+    reasons.push(`Dew likely for ${dewHours} hours: use a dew heater.`);
   if (agreementLow)
     reasons.push('The weather models disagree tonight: treat the cloud forecast with caution.');
 

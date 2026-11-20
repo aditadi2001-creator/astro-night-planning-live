@@ -19,6 +19,9 @@ export interface GmgsiIndex {
   maxzoom: number;
 }
 
+/** The mosaic has data only within this latitude (no tiles beyond: they would be 404s). */
+export const GMGSI_LAT_MAX = 72.5;
+
 export const GMGSI_INDEX_URL = DATA_BASE ? `${DATA_BASE}/data/clouds-latest.json` : '';
 
 export const gmgsiTiles = (hour: string): string =>
@@ -49,6 +52,7 @@ export async function samplePlaces(
   const n = 2 ** z;
   return Promise.all(
     places.map(async ({ lat, lon }) => {
+      if (Math.abs(lat) > GMGSI_LAT_MAX) return [];
       const c = pixelFor(lat, lon, z);
       const out: number[] = [];
       for (let dy = -r; dy <= r; dy++) {

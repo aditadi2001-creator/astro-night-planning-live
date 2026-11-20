@@ -7,7 +7,7 @@
  * line of sight meets that height (clouds.ts, `fieldCover`).
  */
 import { decodeTile, pixelFor } from '../data/tiles';
-import { gmgsiTiles } from './gmgsi';
+import { GMGSI_LAT_MAX, gmgsiTiles } from './gmgsi';
 import { kelvinFromGrey } from './ir';
 
 export const FIELD_RADIUS_KM = 300;
@@ -45,7 +45,8 @@ export async function loadCloudField(
   const byTile = new Map<string, { tx: number; ty: number; cells: number[] }>();
   for (let iy = 0; iy < n; iy++) {
     const la = lat + ((iy - c) * FIELD_STEP_KM) / KM_PER_DEG;
-    if (la <= -85 || la >= 85) continue;
+    // No data (and no tiles) beyond the mosaic's latitude band.
+    if (Math.abs(la) > GMGSI_LAT_MAX) continue;
     for (let ix = 0; ix < n; ix++) {
       const lo = lon + ((ix - c) * FIELD_STEP_KM) / (KM_PER_DEG * cosLat);
       const p = pixelFor(la, ((((lo + 180) % 360) + 360) % 360) - 180, z);

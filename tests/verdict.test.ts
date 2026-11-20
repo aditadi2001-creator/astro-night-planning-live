@@ -115,3 +115,16 @@ describe('tonight verdict', () => {
     expect(verdict([], tw, 0, fmt).level).toBe('unknown');
   });
 });
+
+describe('nights without a forecast', () => {
+  it('says there is no forecast for a night outside the weather data, not "waiting"', () => {
+    const v = verdict([], tw, 0.5, fmt, { from: t0 + 400 * H, to: t0 + 784 * H });
+    expect(v.level).toBe('unknown');
+    expect(v.headline).toBe('No forecast for this night');
+    expect(verdict([], tw, 0.5, fmt, null).headline).toBe('Waiting for the forecast');
+  });
+  it('leaves dew unknown without weather (no invented "low risk")', () => {
+    const v = verdict([row(0, 60, 5), row(1, 60, 5), row(2, 60, 5)], tw, 0.1, fmt);
+    expect(v.dewHours).toBeNull();
+  });
+});
