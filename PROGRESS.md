@@ -390,3 +390,11 @@ OpenAQ air quality missing. Cause: that work lived on a parallel branch never me
 - **Not verified on hardware:** a real NINA (sequence JSON shape, centring), a real LX200/NexStar
   hand controller, Web Serial on Android. The NINA target list relies on the plugin's reflected
   `Target` field; when it is not found, the container number can be typed.
+
+### Deploys (2026-11-20, owner's "Deploy both")
+
+- Data Worker redeployed from `redesign` (version a2585d02): `/aq` reads up to 8 monitors, keeps
+  those with a recent PM2.5 hour; Bangalore now returns 4 current PM2.5 stations instead of 1.
+  `Timing-Allow-Origin` header live.
+- Pages project `astro-night-planning-live` created (production branch `main`, still empty);
+  first deployment is a **preview** of `redesign`: https://redesign.astro-night-planning-live.pages.dev
