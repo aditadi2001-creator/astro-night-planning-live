@@ -185,14 +185,28 @@ const CORE_CREDITS: Credit[] = [
     status: 'live',
   },
   {
+    id: 'openaq',
+    name: 'OpenAQ air-quality measurements',
+    url: 'https://openaq.org',
+    license: 'Open data (licences of the originating agencies, mostly public domain / CC BY)',
+    attribution:
+      'Measured air quality: OpenAQ (openaq.org), from government monitoring stations (e.g. CPCB, US EPA, EEA).',
+    shortCredit: 'Air quality: OpenAQ',
+    usage:
+      'Nearest reference monitors within 25 km (up to five): last 12 hours of PM2.5 and PM10 for the EPA NowCast, read through the data Worker and cached 20 minutes per place.',
+    kind: 'data',
+    status: 'live',
+  },
+  {
     id: 'noaa-swpc',
-    name: 'NOAA SWPC OVATION aurora forecast and Kp index',
+    name: 'NOAA SWPC OVATION aurora forecast, Kp index and 10.7 cm solar flux',
     url: 'https://www.swpc.noaa.gov/products/aurora-30-minute-forecast',
     license: 'Public domain (U.S. Government work)',
-    attribution: 'Aurora forecast and planetary K-index: NOAA Space Weather Prediction Center.',
-    shortCredit: 'Aurora: NOAA SWPC',
+    attribution:
+      'Aurora forecast, planetary K-index and 10.7 cm solar radio flux: NOAA Space Weather Prediction Center.',
+    shortCredit: 'Aurora, solar flux: NOAA SWPC',
     usage:
-      'Kp index (observed and 3-day forecast) for everyone; the OVATION aurora map (about 0.9 MB) only for sites 40° or more from the equator, reduced to the chance overhead and in view.',
+      'Kp index (observed and 3-day forecast) for everyone; the OVATION aurora map (about 0.9 MB) only for sites 40° or more from the equator, reduced to the chance overhead and in view; the recent daily 10.7 cm solar flux (about 22 kB, twice a day) sets how bright the natural sky (airglow) is, after Krisciunas et al. (2007, PASP 119, 687).',
     kind: 'data',
     status: 'live',
   },

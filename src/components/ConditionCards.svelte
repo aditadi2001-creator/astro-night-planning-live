@@ -15,6 +15,8 @@
   import { BORTLE_LABELS, SECTORS, type SiteLight } from '../lib/lp/lightpollution';
   import { limitingMagnitude } from '../lib/physics/skybrightness';
   import { magToNl } from '../lib/physics/moonlight';
+  import { aqiCategory } from '../lib/air/aqi';
+  import type { siteAqi } from '../lib/data/stationair';
 
   interface Props {
     row: HourRow | null;
@@ -34,6 +36,14 @@
     /** Light pollution at the site from the yearly map (null = none). */
     light?: SiteLight | null;
     lightStatus?: string;
+    /** Today's natural zenith sky from the solar cycle (mag/arcsec²). */
+    naturalSky?: number;
+    /** Measured AQI near the site (only passed for times near now), or null. */
+    measured?: ReturnType<typeof siteAqi>;
+    /** Why there is no measured AQI ('' when there is one). */
+    stationNote?: string;
+    /** Recent 10.7 cm solar flux (sfu) behind it, or null while unknown. */
+    solarFlux?: number | null;
     loading: boolean;
   }
   let {
@@ -45,8 +55,17 @@
     sevenTimer = null,
     light = null,
     lightStatus = 'off',
+    naturalSky = 22.0,
+    solarFlux = null,
+    measured = null,
+    stationNote = '',
     loading,
   }: Props = $props();
+  const naturalNote = $derived(
+    solarFlux != null
+      ? `solar flux ${Math.round(solarFlux)} sfu`
+      : 'solar flux unknown: long-run average assumed',
+  );
 
   /** The two brightest light-dome directions, e.g. "NE, E". */
   const domeDirs = (domes: readonly number[]) => {
@@ -249,17 +268,31 @@
             ? `${(row.seeing.shearMs * 3.6).toFixed(0)} km/h shear`
             : 'no shear data'} → {row.seeing.parts.lower.toFixed(2)}″
         </dd>
-        <dt>Ground layer</dt>
-        <dd>{row.seeing.parts.ground.toFixed(1)}″ assumed (local, not forecastable)</dd>
+        <dt>Near ground</dt>
+        <dd>
+          {#if row.seeing.ground}
+            {@const g = row.seeing.ground}
+            {(g.windMs * 3.6).toFixed(0)} km/h wind, {Math.round(g.cloud * 100)}% cloud{g.regime ===
+            'urban'
+              ? ', city heat'
+              : g.regime === 'convective'
+                ? ', sun-heated ground'
+                : ', ground cooling'} → {row.seeing.parts.ground.toFixed(2)}″
+            <span class="sub">(×{g.factor.toFixed(1)} a typical night's turbulence)</span>
+          {:else}
+            {row.seeing.parts.ground.toFixed(1)}″ assumed
+          {/if}
+        </dd>
         <dt>7Timer!</dt>
         <dd>
           {st?.seeing ? `${seeingClassText(st.seeing)} (class ${st.seeing}/8)` : 'not loaded'}
         </dd>
       </dl>
       <p class="muted small">
-        {#if row.sunAlt > -6}Daytime: ground heating makes real seeing worse than this night-time
-          model.
-        {/if}No free source measures live seeing; both values are forecasts from model winds.
+        Forecast, not a measurement: free atmosphere from model winds; the near-ground layer from
+        wind, cloud and the built-up surroundings (telescope 1.5 m above the ground), calibrated on
+        measured observatory seeing. Your own surroundings (roofs, valleys, tube currents) can
+        change it a lot.
       </p>
     {:else}
       <p class="muted">{loading ? 'Loading upper-air winds…' : 'Upper-air winds unavailable.'}</p>
@@ -285,6 +318,21 @@
             ? 'none detectable'
             : `${light.brightening.toFixed(2)} mag brighter than a natural sky`}
         </dd>
+        {#if light.haze != null && light.hazeAod != null && light.brightening >= 0.05}
+          <dt>Haze</dt>
+          <dd>
+            light pollution ×{light.haze.toFixed(light.haze < 0.95 || light.haze > 1.05 ? 1 : 2)} vs a
+            typical night (AOD {light.hazeAod.toFixed(2)}): {light.haze > 1.05
+              ? 'haze scatters nearby lights back down'
+              : light.haze < 0.95
+                ? 'haze dims the light from distant towns'
+                : 'about normal'}
+          </dd>
+        {/if}
+        <dt>Natural sky</dt>
+        <dd>
+          {naturalSky.toFixed(2)} mag/arcsec² now (airglow follows the solar cycle; {naturalNote})
+        </dd>
         <dt>Naked eye</dt>
         <dd>
           stars to about mag {limitingMagnitude(magToNl(light.sqm)).toFixed(1)} overhead on a clear, moonless
@@ -296,29 +344,67 @@
         {/if}
       </dl>
       <p class="muted small">
-        Yearly map ({light.year}), not live. Satellites under-count blue and white LED light, so the
-        real sky may be brighter.{#if light.typicalErrorMag != null}
+        Yearly map ({light.year}), adjusted for the hour's haze (CAMS forecast; clouds, which
+        brighten city skies far more, are not included). Satellites under-count blue and white LED
+        light, so the real sky may be brighter.{#if light.typicalErrorMag != null}
           Typical model error ±{light.typicalErrorMag.toFixed(1)} mag against {light.validationN?.toLocaleString(
             'en',
           )} real SQM readings.{/if}
       </p>
     {:else if lightStatus === 'off'}
       <p class="muted">
-        Light-pollution layer is off: the natural sky (22.0 mag/arcsec²) is assumed.
+        Light-pollution layer is off: a natural sky ({naturalSky.toFixed(2)} mag/arcsec² at today's solar
+        activity) is assumed.
       </p>
     {:else if lightStatus === 'loading'}
       <p class="muted">Loading the light-pollution map…</p>
     {:else}
       <p class="muted">
-        The light-pollution map isn't available right now; the natural sky (22.0 mag/arcsec²) is
-        assumed. It is a yearly model from NASA Black Marble night lights; satellites under-count
-        blue and white LED light.
+        The light-pollution map isn't available right now; a natural sky ({naturalSky.toFixed(2)}
+        mag/arcsec² at today's solar activity) is assumed. It is a yearly model from NASA Black Marble
+        night lights; satellites under-count blue and white LED light.
       </p>
     {/if}
   </Card>
 
-  <Card title="Air quality" tag="forecast" credit="CAMS ENSEMBLE data provider · Open-Meteo.com">
-    {#if row?.air}
+  <Card
+    title="Air quality"
+    tag={measured ? 'measured' : 'forecast'}
+    credit={measured
+      ? `Measured: ${measured.station.provider ?? 'government monitor'} via OpenAQ (openaq.org) · model: CAMS ENSEMBLE · Open-Meteo.com`
+      : 'CAMS ENSEMBLE data provider · Open-Meteo.com'}
+  >
+    {#if measured}
+      {@const s = measured.station}
+      <p class="big">
+        {measured.aqi} <span class="sub">US AQI · {aqiCategory(measured.aqi)?.label ?? ''}</span>
+      </p>
+      <dl>
+        <dt>Station</dt>
+        <dd>
+          {s.name}, {s.km.toFixed(1)} km{#if s.time}
+            · {Math.max(0, Math.round((Date.now() - s.time) / 60_000))} min ago{/if}{#if !s.monitor}
+            <span class="sub">(low-cost sensor)</span>{/if}
+        </dd>
+        <dt>PM2.5 / PM10</dt>
+        <dd>{n(s.pm25, 0)} / {n(s.pm10, 0, ' µg/m³')} <span class="sub">(NowCast)</span></dd>
+        {#if measured.others.length}
+          <dt>Nearby</dt>
+          <dd>
+            {measured.others.length} more station{measured.others.length > 1 ? 's' : ''}: AQI {Math.min(
+              ...measured.others,
+            )}{measured.others.length > 1 ? `–${Math.max(...measured.others)}` : ''}
+          </dd>
+        {/if}
+        {#if row?.air}
+          <dt>Model</dt>
+          <dd>
+            CAMS forecast AQI {n(row.air.usAqi)}
+            <span class="sub">(global model; used for later hours)</span>
+          </dd>
+        {/if}
+      </dl>
+    {:else if row?.air}
       {@const a = row.air}
       <dl>
         <dt>US AQI</dt>
@@ -330,6 +416,10 @@
         <dt>Dust</dt>
         <dd>{n(a.dust, 0, ' µg/m³')}</dd>
       </dl>
+      <p class="muted small">
+        Global model (CAMS, ~45 km grid): it can badly underestimate city pollution, e.g. in north
+        India in winter. {stationNote}
+      </p>
     {:else}
       <p class="muted">{loading ? 'Loading…' : 'Air-quality data unavailable.'}</p>
     {/if}

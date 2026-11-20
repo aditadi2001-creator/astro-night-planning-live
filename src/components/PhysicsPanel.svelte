@@ -14,6 +14,10 @@
     pressure: number | null;
     temperature: number | null;
     horizonSource: string;
+    /** Today's natural zenith sky from the solar cycle (mag/arcsec²). */
+    naturalSky?: number;
+    /** Recent 10.7 cm solar flux (sfu), or null while unknown. */
+    solarFlux?: number | null;
     /** Offered when terrain was skipped to save data. */
     onloadterrain?: (() => void) | undefined;
   }
@@ -26,6 +30,8 @@
     pressure,
     temperature,
     horizonSource,
+    naturalSky = 22.0,
+    solarFlux = null,
     onloadterrain,
   }: Props = $props();
 
@@ -85,9 +91,11 @@
     </dd>
   </dl>
   <p class="note">
-    Sky brightness starts from the yearly light-pollution model at the site (natural 22.0
-    mag/arcsec² when the layer is off or the map is unavailable). Methods: Kasten &amp; Young
-    airmass, Hansen &amp; Travis Rayleigh + CAMS aerosol, Krisciunas &amp; Schaefer moonlight,
+    Sky brightness starts from the yearly light-pollution model at the site plus today's natural
+    sky, {naturalSky.toFixed(2)} mag/arcsec² ({solarFlux != null
+      ? `airglow at a solar flux of ${Math.round(solarFlux)} sfu`
+      : 'solar flux unknown, long-run average'}; Krisciunas et al. 2007). Methods: Kasten &amp;
+    Young airmass, Hansen &amp; Travis Rayleigh + CAMS aerosol, Krisciunas &amp; Schaefer moonlight,
     Schaefer twilight and limiting magnitude.
   </p>
 </Card>

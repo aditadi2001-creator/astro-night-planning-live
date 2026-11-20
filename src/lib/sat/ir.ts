@@ -24,6 +24,58 @@ export const RAMP_K = 12;
 /** Cloud tops colder than this are high cloud (cirrus, deep convection). */
 export const HIGH_TOP_K = 240;
 
+// ---- how thick is the cloud? ----------------------------------------------------
+//
+// A cloud with infrared emissivity ε at temperature T_c over a surface at T_s
+// shows the satellite the radiance  I = ε·B(T_c) + (1 − ε)·B(T_s)  (B = Planck
+// radiance in the 10.8 µm window). Solving for ε gives how opaque the cloud is
+// in the infrared, the standard "effective emissivity" of cirrus retrievals.
+// For ice clouds the visible optical depth is about twice the infrared
+// absorption optical depth (τ_vis ≈ 2 τ_ir, e.g. Minnis et al. 1993), so the
+// fraction of sky light a cloud blocks is 1 − e^(−τ_vis) = 1 − (1 − ε)².
+//
+// So a thin cirrus veil (ε ≈ 0.2–0.4) blocks 35–65 %, and a thick deck that
+// reads near its own temperature (ε → 1) is opaque: an overcast sky.
+
+/** Planck radiance at 10.8 µm, relative units (only ratios are used). */
+export function planck11(tK: number): number {
+  const c2 = 14387.77; // µm·K
+  const lam = 10.8;
+  return 1 / (lam ** 5 * (Math.exp(c2 / (lam * tK)) - 1));
+}
+
+/**
+ * Infrared effective emissivity (0–1) of the cloud in a pixel with brightness
+ * temperature `btK`, over a surface at `surfaceK`, for a cloud at `cloudK`.
+ * Null when cloud and surface are too close in temperature to tell.
+ */
+export function irEmissivity(btK: number, surfaceK: number, cloudK: number): number | null {
+  if (![btK, surfaceK, cloudK].every(Number.isFinite) || surfaceK - cloudK < 10) return null;
+  const bs = planck11(surfaceK);
+  const e = (bs - planck11(btK)) / (bs - planck11(cloudK));
+  return Math.min(1, Math.max(0, e));
+}
+
+/** Share of sky light blocked by an ice cloud of infrared emissivity ε (τ_vis ≈ 2 τ_ir). */
+export const visibleOpacity = (emissivity: number): number => 1 - (1 - emissivity) ** 2;
+
+/**
+ * Temperature (K) of high (ice) cloud: the forecast 250 hPa temperature (~10 km),
+ * or the standard lapse rate from the surface when it is missing.
+ */
+export const highCloudK = (surfaceK: number, t250C: number | null): number =>
+  t250C != null && Number.isFinite(t250C) ? t250C + 273.15 : surfaceK - 6.5 * 10.4;
+
+/** Without a satellite: typical opacity of high cloud (thin cirrus to cirrostratus). */
+export const HIGH_OPACITY_PRIOR = 0.5;
+
+/**
+ * IR sees cloud tops, so a warm (clear-looking) pixel is no proof that there is
+ * no low cloud: stratus and fog are as warm as the ground. The satellite may
+ * therefore remove at most this share of the model's low cloud (× its weight).
+ */
+export const LOW_DENY = 0.3;
+
 /** Cloud fraction 0–1 of a group of IR pixels; null without pixels. */
 export function irCloudFraction(btK: readonly number[], surfaceK: number): number | null {
   if (!btK.length || !Number.isFinite(surfaceK)) return null;
@@ -86,7 +138,8 @@ export function blendLayers(
   if (t > 0.05) {
     const s = target / t;
     return {
-      low: Math.min(100, l * s * 100),
+      // The satellite can't see low cloud under a warm top, so it may only thin it a little.
+      low: Math.min(100, Math.max(l * s, l * (1 - LOW_DENY * w)) * 100),
       mid: Math.min(100, m * s * 100),
       high: Math.min(100, h * s * 100),
     };

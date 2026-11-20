@@ -76,10 +76,10 @@ describe('seeing estimate', () => {
     expect(high?.arcsec ?? 0).toBeGreaterThan(low?.arcsec ?? 9);
   });
 
-  it('gives a ±20 % range and needs upper winds', () => {
+  it('gives a ±30 % range and needs upper winds', () => {
     const s = estimateSeeing({ ...base, upper: calm(20), elevation: 500 });
-    expect(s?.range[0]).toBeCloseTo((s?.arcsec ?? 0) * 0.8, 1);
-    expect(s?.range[1]).toBeCloseTo((s?.arcsec ?? 0) * 1.2, 1);
+    expect(s?.range[0]).toBeCloseTo((s?.arcsec ?? 0) * 0.7, 1);
+    expect(s?.range[1]).toBeCloseTo((s?.arcsec ?? 0) * 1.3, 1);
     expect(estimateSeeing({ ...base, upper: [], elevation: 0 })).toBeNull();
   });
 

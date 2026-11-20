@@ -29,14 +29,17 @@
     type SiteLight,
   } from '../lib/lp/lightpollution';
   import { bortle, LEGEND, paletteTable, recolor, sqmFromGrey } from '../lib/lp/lpmap';
+  import { skyFromReference } from '../lib/physics/airglow';
 
   interface Props {
     place: Place;
     /** Light pollution at the current site (marker readout), or null. */
     site: SiteLight | null;
+    /** Today's natural zenith sky (mag/arcsec²); readouts add it, colours stay at the 22.0 reference. */
+    naturalSky?: number;
     onplace: (p: Place) => void;
   }
-  let { place, site, onplace }: Props = $props();
+  let { place, site, naturalSky = 22.0, onplace }: Props = $props();
 
   let wrap: HTMLElement;
   let container = $state<HTMLDivElement>();
@@ -437,6 +440,10 @@
             <li><span class="sw" style:background={l.color}></span>{l.sqm} · {l.bortle}</li>
           {/each}
         </ul>
+        <p class="lg-note">
+          Colours: light pollution against a solar-minimum natural sky (22.0). Readouts add today's
+          natural sky ({naturalSky.toFixed(2)}).
+        </p>
         {#if histOn && histDiff}
           <p class="lg-title">Change since {histYears[0]}</p>
           <p class="chg">
@@ -459,7 +466,9 @@
             <p>Reading…</p>
           {:else if point.sqm != null && pointBortle != null}
             <p>
-              <strong>{point.sqm.toFixed(2)}</strong> mag/arcsec² · Bortle {pointBortle}
+              <strong>{skyFromReference(point.sqm, naturalSky).toFixed(2)}</strong> mag/arcsec² ·
+              Bortle
+              {pointBortle}
             </p>
             <p class="muted small">{BORTLE_LABELS[pointBortle]} (model, moonless zenith)</p>
           {:else}
@@ -619,6 +628,12 @@
   }
   .lg-title {
     margin: 0 0 4px;
+    color: var(--muted);
+  }
+  .lg-note {
+    margin: 4px 0 0;
+    max-width: 22ch;
+    font-size: 11px;
     color: var(--muted);
   }
   .legend ul {

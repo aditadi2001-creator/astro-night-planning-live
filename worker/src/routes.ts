@@ -136,6 +136,79 @@ export function parse7timer(path: string): { lat: string; lon: string } | null {
   return { lat: lat.toFixed(1), lon: lon.toFixed(1) };
 }
 
+/** /aq/12.97/77.59 — measured air quality near a point; coordinates rounded to 0.01°. */
+export function parseAq(path: string): { lat: number; lon: number } | null {
+  const m = /^\/aq\/(-?\d{1,2}(?:\.\d{1,2})?)\/(-?\d{1,3}(?:\.\d{1,2})?)$/.exec(path);
+  if (!m) return null;
+  const lat = Number(m[1]);
+  const lon = Number(m[2]);
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { lat: Math.round(lat * 100) / 100, lon: Math.round(lon * 100) / 100 };
+}
+
+/**
+ * EPA NowCast concentration for PM (AirNow Technical Document, 2019): hourly
+ * values newest first (null = missing). Weight factor w = min/max over the last
+ * 12 hours, floored at 0.5; NowCast = Σ wⁱcᵢ / Σ wⁱ. Needs at least two of the
+ * three most recent hours, else null.
+ */
+export function nowCast(hours: readonly (number | null)[]): number | null {
+  const c = hours.slice(0, 12);
+  const recent = c.slice(0, 3).filter((v) => v != null && Number.isFinite(v));
+  if (recent.length < 2) return null;
+  const vals = c.filter((v): v is number => v != null && Number.isFinite(v) && v >= 0);
+  const max = Math.max(...vals);
+  const min = Math.min(...vals);
+  const w = max > 0 ? Math.max(0.5, min / max) : 1;
+  let num = 0;
+  let den = 0;
+  c.forEach((v, i) => {
+    if (v == null || !Number.isFinite(v) || v < 0) return;
+    num += w ** i * v;
+    den += w ** i;
+  });
+  return den > 0 ? num / den : null;
+}
+
+/** Great-circle distance in km. */
+export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const r = Math.PI / 180;
+  const a =
+    Math.sin(((lat2 - lat1) * r) / 2) ** 2 +
+    Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(((lon2 - lon1) * r) / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/**
+ * Hourly values (any order; `end` = end of the hour, ms) → a newest-first series
+ * of 12 hours counted back from the newest hour reported, plus that hour's end.
+ */
+export function hourlySeries(rows: readonly { value: number | null; end: number }[]): {
+  series: (number | null)[];
+  newest: number | null;
+} {
+  const valid = rows.filter(
+    (r): r is { value: number; end: number } =>
+      r.value != null && Number.isFinite(r.value) && r.value >= 0 && Number.isFinite(r.end),
+  );
+  if (!valid.length) return { series: [], newest: null };
+  const newest = Math.max(...valid.map((r) => r.end));
+  const series = new Array<number | null>(12).fill(null);
+  for (const r of valid) {
+    const i = Math.round((newest - r.end) / 3600_000);
+    if (i >= 0 && i < 12 && series[i] == null) series[i] = r.value;
+  }
+  return { series, newest };
+}
+
+export const OPENAQ = 'https://api.openaq.org/v3';
+/** Stations further than this are not "at the site". */
+export const AQ_RADIUS_M = 25_000;
+/** Readings older than this are not current. */
+export const AQ_MAX_AGE_MS = 3 * 3600_000;
+/** Monitors read per place (some report only PM10, or nothing in the last hours). */
+export const AQ_STATIONS = 5;
+
 /** GitHub repository whose workflows the Worker's cron starts. */
 export const GH_REPO = 'aditadi2001-creator/astro-night-planning-live';
 

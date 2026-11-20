@@ -80,7 +80,7 @@
     type ModelClouds,
     type Weather,
   } from './lib/data/openmeteo';
-  import { buildRow, buildTimeline, moonEvents, twilight } from './lib/conditions';
+  import { buildRow, buildTimeline, moonEvents, twilight, type SiteGround } from './lib/conditions';
   import {
     estimateClouds,
     nowcastWeight,
@@ -104,13 +104,36 @@
   import { GMGSI_INDEX_URL } from './lib/sat/gmgsi';
   import { loadSatellite, type SatelliteSample } from './lib/sat/satellite';
   import { SEVEN_TIMER_ENABLED, loadSevenTimer, type SevenTimer } from './lib/data/seventimer';
-  import { LP_INFO_URL, loadSiteLight, type SiteLight } from './lib/lp/lightpollution';
+  import {
+    LP_INFO_URL,
+    loadSiteLight,
+    withHaze,
+    withNaturalSky,
+    type SiteLight,
+  } from './lib/lp/lightpollution';
+  import { roughnessFromLight, urbanFromLight } from './lib/physics/surfacelayer';
+  import {
+    STATION_AIR_ENABLED,
+    loadStationAir,
+    siteAqi,
+    type StationAir,
+  } from './lib/data/stationair';
+  import {
+    loadSolarFlux,
+    naturalSkyMag,
+    TYPICAL_FLUX,
+    type SolarFlux,
+  } from './lib/physics/airglow';
   import {
     blendLayers,
     blendSamples,
     cloudsNow,
+    HIGH_OPACITY_PRIOR,
+    highCloudK,
     irCloudFraction,
+    irEmissivity,
     satelliteWeight,
+    visibleOpacity,
     type SatPoint,
   } from './lib/sat/ir';
 
@@ -460,6 +483,8 @@
     light: LiveSource<SiteLight> | null;
     /** OVATION aurora chance (only 40° or more from the equator: the feed is ~0.9 MB). */
     aurora: LiveSource<AuroraSite> | null;
+    /** Measured air quality from nearby monitors (OpenAQ via the data Worker). */
+    stationAir: LiveSource<StationAir | null> | null;
   };
   let sources = $state<Sources | null>(null);
 
@@ -510,6 +535,15 @@
               3 * 3600_000,
             )
           : null,
+      // Monitors report hourly; the Worker caches each place for 20 minutes.
+      stationAir: STATION_AIR_ENABLED
+        ? new LiveSource(
+            'stationAir',
+            (sig, f) => loadStationAir(lat, lon, sig, f),
+            20 * 60_000,
+            3 * 3600_000,
+          )
+        : null,
     };
     sources = s;
     // Loaders answer from the cache when it is fresh, and fall back to the last
@@ -519,6 +553,7 @@
     if (s.sevenTimer) stops.push(s.sevenTimer.start());
     if (s.light) stops.push(s.light.start());
     if (s.aurora) stops.push(s.aurora.start());
+    if (s.stationAir) stops.push(s.stationAir.start());
     return () => stops.forEach((stop) => stop());
   });
 
@@ -528,6 +563,13 @@
     (sig, f) => loadKp(sig, f),
     3 * 3600_000,
     12 * 3600_000,
+  );
+  // 10.7 cm solar flux for the natural-sky brightness (daily readings; slow).
+  const solarSource = new LiveSource<SolarFlux>(
+    'f107',
+    (sig, f) => loadSolarFlux(sig, f),
+    12 * 3600_000,
+    60 * 24 * 3600_000,
   );
   // Orbits come from our own R2 copy (refreshed every 6 h by the hourly job).
   const orbitSource = ORBITS_URL
@@ -547,7 +589,7 @@
     if (orbitSource && !orbitStop) orbitStop = orbitSource.start();
   }
   onMount(() => {
-    const stops = [kpSource.start()];
+    const stops = [kpSource.start(), solarSource.start()];
     return () => {
       stops.forEach((stop) => stop());
       orbitStop?.();
@@ -560,9 +602,48 @@
   const ring = $derived(sources?.ring.data ?? null);
   const satellite = $derived(sources?.satellite?.data ?? null);
   const sevenTimer = $derived(sources?.sevenTimer?.data ?? null);
-  /** Light pollution at the site, or null (layer off, not published yet, or no Worker). */
-  const siteLight = $derived(layers.lightpollution ? (sources?.light?.data ?? null) : null);
-  const darkSkyMag = $derived(siteLight?.sqm);
+  /** Today's natural sky from the solar cycle (airglow), or the long-run mean while unknown. */
+  const solarFlux = $derived(solarSource.data?.flux ?? null);
+  const naturalSky = $derived(naturalSkyMag(solarFlux ?? TYPICAL_FLUX));
+  /** Yearly light pollution at the site as loaded, or null (layer off, not published yet, or no Worker). */
+  const baseLight = $derived(layers.lightpollution ? (sources?.light?.data ?? null) : null);
+  /**
+   * The site's surroundings for the seeing's ground layer: roughness and how built-up it is,
+   * from the yearly light-pollution model (loaded even when that layer is hidden).
+   */
+  const siteGround = $derived.by<SiteGround>(() => {
+    const l = sources?.light?.data ?? null;
+    return {
+      z0: roughnessFromLight(l?.brightening ?? null),
+      urban: urbanFromLight(l?.ratio ?? null),
+    };
+  });
+  /** The site's light pollution on a night with this haze (AOD), under today's natural sky. */
+  const lightFor = $derived((aod: number | null) =>
+    baseLight ? withNaturalSky(withHaze(baseLight, aod), naturalSky) : null,
+  );
+  /** Moonless zenith sky (SQM) for an hour's haze: drives each timeline hour's score. */
+  const darkSkyAt = $derived((aod: number | null) => lightFor(aod)?.sqm ?? naturalSky);
+  /** Haze (CAMS AOD at 550 nm) for the time shown. */
+  const aodShown = $derived.by(() => (air ? (hourAt(air.hours, minute)?.aod ?? null) : null));
+  /** Light pollution at the site for the time shown (haze and natural sky included), or null. */
+  const siteLight = $derived(lightFor(aodShown));
+  const darkSkyMag = $derived(siteLight?.sqm ?? naturalSky);
+  /** Measured AQI, shown only for times within 90 minutes of now (it is an observation). */
+  const measured = $derived.by(() =>
+    Math.abs(shown.getTime() - now.getTime()) <= 90 * 60_000
+      ? siteAqi(sources?.stationAir?.data ?? null)
+      : null,
+  );
+  const stationNote = $derived(
+    !STATION_AIR_ENABLED || !sources?.stationAir
+      ? ''
+      : sources.stationAir.data == null
+        ? 'Measured station data is not available right now.'
+        : (sources.stationAir.data.stations.length ?? 0) === 0
+          ? 'No monitoring station has reported within 25 km in the last 3 hours.'
+          : 'Measured values are shown for the present hour only.',
+  );
 
   // ---- terrain horizon (Copernicus DEM, cached per site) ----------------------------
   let siteHorizon = $state<SiteHorizon | null>(null);
@@ -689,7 +770,16 @@
   const hourStart = (t: number) =>
     Math.floor((t + utcOff * 1000) / 3600_000) * 3600_000 - utcOff * 1000;
   const row = $derived(
-    buildRow(minute, place, weather, models, air, darkSkyMag, cloudAt(hourStart(minute))),
+    buildRow(
+      minute,
+      place,
+      weather,
+      models,
+      air,
+      darkSkyMag,
+      cloudAt(hourStart(minute)),
+      siteGround,
+    ),
   );
   const tw = $derived(twilight(place, new Date(minute)));
   // ---- satellite + model "clouds now" ---------------------------------------------
@@ -758,6 +848,28 @@
   const satWeightField = $derived(
     satellite?.field && Number.isFinite(surfaceK) ? nowcastWeight(minute, satellite.field.time) : 0,
   );
+  // ---- how thick the high cloud is (sat/ir.ts) ----------------------------------------
+  const highK = $derived(highCloudK(surfaceK, row.weather?.upper[250]?.temp ?? null));
+  /** Opacity of the high cloud the satellite sees over the site (mean of its cloudy pixels), or null. */
+  const satHighOpacity = $derived.by(() => {
+    if (!satellite || !Number.isFinite(surfaceK)) return null;
+    const ops = satellite.site
+      .filter((bt) => (irCloudFraction([bt], surfaceK) ?? 0) > 0.05)
+      .map((bt) => irEmissivity(bt, surfaceK, highK))
+      .filter((e): e is number => e != null)
+      .map(visibleOpacity);
+    return ops.length ? ops.reduce((a, b) => a + b, 0) / ops.length : null;
+  });
+  /**
+   * High-cloud opacity for the time shown: what the satellite measured, handed over to a
+   * typical value with a 12 h time constant (the kind of cloud deck lasts longer than the
+   * exact place of each cloud, which the 3 h nowcast weight follows).
+   */
+  const highOpacity = $derived.by(() => {
+    if (satHighOpacity == null || !satellite) return HIGH_OPACITY_PRIOR;
+    const w = Math.exp(-Math.abs(minute - satellite.time) / (12 * 3600_000));
+    return w * satHighOpacity + (1 - w) * HIGH_OPACITY_PRIOR;
+  });
   // Sky glow from the light-pollution ratio (artificial / natural zenith brightness):
   // opacity 0.065·ln(1 + ratio): 0.05 rural (SQM ~21), 0.14 suburban (~19.5), 0.29 inner
   // city (~17). Over a dark screen that gives roughly the dim brown-grey of a city sky
@@ -817,8 +929,10 @@
               surfaceK: surfaceK,
               weight: satWeightField,
               ageS: Math.round((driftT * 1000 - satellite.field.time) / 1000),
+              highK,
             }
           : null,
+      highOpacity,
       // Light-pollution sky glow (yearly model) behind the clouds, at night only.
       glow: skyGlow,
       // City glow lights clouds from below (orange), scaled by the light pollution.
@@ -855,8 +969,9 @@
       weather,
       models,
       air,
-      darkSkyMag,
+      darkSkyAt,
       cloudAt,
+      siteGround,
     ),
   );
 
@@ -1435,6 +1550,10 @@
               satellite={satSummary}
               {sevenTimer}
               light={siteLight}
+              {naturalSky}
+              {solarFlux}
+              {measured}
+              {stationNote}
               lightStatus={layers.lightpollution ? (sources?.light?.status ?? 'off') : 'off'}
               loading={sources?.weather.status === 'loading'}
             />
@@ -1448,6 +1567,8 @@
                 {pressure}
                 {temperature}
                 {horizonSource}
+                {naturalSky}
+                {solarFlux}
                 onloadterrain={horizonState === 'saved' ? () => (forceTerrain = true) : undefined}
               />
             </div>
@@ -1583,7 +1704,7 @@
             <div class="night-filter" use:nearView={() => (mapsNear = true)}>
               {#if mapsNear}
                 {#await import('./components/LightPollutionMap.svelte') then { default: LightPollutionMap }}
-                  <LightPollutionMap {place} site={siteLight} onplace={setPlace} />
+                  <LightPollutionMap {place} site={siteLight} {naturalSky} onplace={setPlace} />
                 {:catch}
                   <p class="note">
                     The light-pollution map could not be loaded. Check the connection.

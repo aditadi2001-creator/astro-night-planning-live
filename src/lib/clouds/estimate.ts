@@ -11,7 +11,20 @@
  * - Observed: hours already past use the satellite's measurement for that hour.
  */
 import { CONSENSUS_MODELS, hourAt, type ModelClouds, type Weather } from '../data/openmeteo';
-import { HIGH_TOP_K } from '../sat/ir';
+import { HIGH_TOP_K, LOW_DENY } from '../sat/ir';
+
+/**
+ * Keep the model's low cloud when the satellite reads less cloud than the model:
+ * infrared can't see stratus or fog under a warm top, so it may thin low cloud
+ * by at most LOW_DENY × its weight.
+ */
+function keepLow(
+  layers: { low: number; mid: number; high: number },
+  modelLow: number,
+  w: number,
+): { low: number; mid: number; high: number } {
+  return { ...layers, low: Math.max(layers.low, modelLow * (1 - LOW_DENY * w)) };
+}
 
 export type CloudKind = 'observed' | 'nowcast' | 'forecast';
 
@@ -156,13 +169,12 @@ export function estimateClouds(
       (x) => Math.abs(x.time - mid) <= 40 * 60_000 || Math.abs(x.time - t) <= 40 * 60_000,
     );
     if (o) {
-      const total = clamp(o.frac * 100);
       const layers = base
-        ? scaleLayers(base, total, o.meanK)
-        : scaleLayers({ low: 0, mid: 0, high: 0 }, total, o.meanK);
+        ? keepLow(scaleLayers(base, clamp(o.frac * 100), o.meanK), base.low, 1)
+        : scaleLayers({ low: 0, mid: 0, high: 0 }, clamp(o.frac * 100), o.meanK);
       return {
         ...layers,
-        total,
+        total: overlap(layers.low, layers.mid, layers.high),
         min: base?.min ?? null,
         max: base?.max ?? null,
         models: base?.models ?? 0,
@@ -179,7 +191,7 @@ export function estimateClouds(
     const sw = nowcastWeight(mid, newest.time);
     if (sw > 0.01) {
       const total = sw * newest.frac * 100 + (1 - sw) * base.total;
-      const layers = scaleLayers(base, total, newest.meanK);
+      const layers = keepLow(scaleLayers(base, total, newest.meanK), base.low, sw);
       return {
         ...layers,
         total: overlap(layers.low, layers.mid, layers.high),

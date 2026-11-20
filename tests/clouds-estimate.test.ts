@@ -73,10 +73,12 @@ describe('satellite correction', () => {
       { time: NOW - 2 * H, frac: 0.05, meanK: 294.5 },
     ];
     const at = (dh: number) => estimateClouds(NOW + dh * H - 1800_000, NOW, mc, null, obs);
-    // Hours already past come from the satellite record.
+    // Hours already past come from the satellite record (its 5 %), plus the model's
+    // 5 % low cloud, which infrared can't rule out (only thinned to 3.5 %).
     const past = at(-2);
     expect(past?.kind).toBe('observed');
-    expect(past?.total).toBeCloseTo(5, 5);
+    expect(past?.low).toBeCloseTo(3.5, 5);
+    expect(past?.total).toBeCloseTo(8.1, 1);
     // Next hour: mostly the satellite.
     const next = at(1);
     expect(next?.kind).toBe('nowcast');

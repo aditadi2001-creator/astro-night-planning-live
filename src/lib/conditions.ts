@@ -42,7 +42,22 @@ export interface HourRow {
 const KMH = 1 / 3.6;
 
 /** Seeing estimate from the hour's model winds (Open-Meteo gives km/h). */
-export function seeingForHour(w: WeatherHour | null, elevation: number): SeeingEstimate | null {
+/** The site's surroundings for the near-ground part of the seeing (physics/surfacelayer.ts). */
+export interface SiteGround {
+  /** Roughness length of the surroundings, m. */
+  z0: number;
+  /** How built-up the spot is, 0–1. */
+  urban: number;
+  /** Telescope height above the ground, m. */
+  telescopeM?: number;
+}
+
+export function seeingForHour(
+  w: WeatherHour | null,
+  elevation: number,
+  sunAlt = -30,
+  ground: SiteGround | null = null,
+): SeeingEstimate | null {
   if (!w) return null;
   const at = (speed: number | null, dir: number | null): WindAt | null =>
     speed == null || dir == null ? null : { speed: speed * KMH, dir };
@@ -54,6 +69,19 @@ export function seeingForHour(w: WeatherHour | null, elevation: number): SeeingE
     w850: at(w.upper[850].speed, w.upper[850].dir),
     w10: at(w.wind, w.windDir),
     elevation,
+    surface:
+      w.temperature != null && w.pressure != null && w.wind != null
+        ? {
+            windMs: w.wind * KMH,
+            tempK: w.temperature + 273.15,
+            pressureHpa: w.pressure,
+            cloud: (w.cloud ?? 30) / 100,
+            sunAlt,
+            z0: ground?.z0 ?? 0.1,
+            urban: ground?.urban ?? 0,
+            heightM: ground?.telescopeM ?? 1.5,
+          }
+        : null,
   });
 }
 
@@ -62,16 +90,24 @@ function altitude(body: Astronomy.Body, obs: Astronomy.Observer, date: Date): nu
   return Astronomy.Horizon(date, obs, eq.ra, eq.dec, 'normal').altitude;
 }
 
+/** A site's moonless sky (SQM), fixed or as a function of the hour's AOD. */
+export type DarkSky = number | ((aod: number | null) => number);
+
 export function buildRow(
   t: number,
   place: Place,
   weather: Weather | null,
   models: ModelClouds | null,
   air: Air | null,
-  /** Moonless zenith brightness at the site (SQM) from the light-pollution map. */
-  darkSkyMag?: number,
+  /**
+   * Moonless zenith brightness at the site (SQM) from the light-pollution map,
+   * or a function of the hour's haze (AOD 550 nm) giving it.
+   */
+  darkSky?: DarkSky,
   /** Cloud estimate replacing the single-model cloud cover (clouds/estimate.ts). */
   cloud?: CloudEstimate | null,
+  /** The site's surroundings, for the ground layer of the seeing. */
+  ground?: SiteGround | null,
 ): HourRow {
   const date = new Date(t);
   const obs = new Astronomy.Observer(place.lat, place.lon, place.elevation);
@@ -98,6 +134,7 @@ export function buildRow(
   const { agreement, spread } = modelAgreement(Object.values(modelClouds));
 
   const aod = a?.aod ?? null;
+  const darkSkyMag = typeof darkSky === 'function' ? darkSky(aod) : darkSky;
   // Station pressure from the forecast; fall back to the barometric formula for the site.
   const pressure = w?.pressure ?? 1013.25 * Math.exp(-place.elevation / 8434);
   const extinction = aod != null ? zenithExtinction(pressure, aod) : null;
@@ -107,7 +144,7 @@ export function buildRow(
       ? dewRisk(w.temperature, w.dewPoint, w.cloud ?? 0, w.wind ?? 0)
       : null;
 
-  const seeing = seeingForHour(w, place.elevation);
+  const seeing = seeingForHour(w, place.elevation, sunAlt, ground ?? null);
 
   const score =
     w && w.cloudLow != null && w.cloudMid != null && w.cloudHigh != null
@@ -174,9 +211,10 @@ export function buildTimeline(
   weather: Weather | null,
   models: ModelClouds | null,
   air: Air | null,
-  darkSkyMag?: number,
+  darkSkyMag?: DarkSky,
   /** Cloud estimate per hour start (clouds/estimate.ts); single-model cover without it. */
   cloudAt?: (hourStart: number) => CloudEstimate | null,
+  ground?: SiteGround | null,
 ): HourRow[] {
   const rows: HourRow[] = [];
   // Align to the site's local hours (e.g. :30 UTC in India), which is also the
@@ -186,7 +224,16 @@ export function buildTimeline(
   for (let t = first; t < win.end && rows.length < 36; t += 3600_000) {
     // Evaluate astronomy at the middle of the hour (or the window edges).
     const mid = Math.min(Math.max(t + 1800_000, win.start), win.end);
-    const row = buildRow(mid, place, weather, models, air, darkSkyMag, cloudAt?.(t) ?? null);
+    const row = buildRow(
+      mid,
+      place,
+      weather,
+      models,
+      air,
+      darkSkyMag,
+      cloudAt?.(t) ?? null,
+      ground,
+    );
     rows.push({ ...row, t });
   }
   return rows;
