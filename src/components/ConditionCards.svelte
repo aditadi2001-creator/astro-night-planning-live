@@ -278,7 +278,7 @@
               : g.regime === 'convective'
                 ? ', sun-heated ground'
                 : ', ground cooling'} → {row.seeing.parts.ground.toFixed(2)}″
-            <span class="sub">(×{g.factor.toFixed(1)} a typical night's turbulence)</span>
+            <span class="sub">(×{g.factor.toFixed(1)} a typical rural night at this height)</span>
           {:else}
             {row.seeing.parts.ground.toFixed(1)}″ assumed
           {/if}
@@ -380,14 +380,21 @@
         {measured.aqi} <span class="sub">US AQI · {aqiCategory(measured.aqi)?.label ?? ''}</span>
       </p>
       <dl>
-        <dt>Station</dt>
+        <dt>{measured.used > 1 ? 'Nearest station' : 'Station'}</dt>
         <dd>
           {s.name}, {s.km.toFixed(1)} km{#if s.time}
             · {Math.max(0, Math.round((Date.now() - s.time) / 60_000))} min ago{/if}{#if !s.monitor}
             <span class="sub">(low-cost sensor)</span>{/if}
         </dd>
         <dt>PM2.5 / PM10</dt>
-        <dd>{n(s.pm25, 0)} / {n(s.pm10, 0, ' µg/m³')} <span class="sub">(NowCast)</span></dd>
+        <dd>
+          {n(measured.pm25, 0)} / {n(measured.pm10, 0, ' µg/m³')}
+          <span class="sub"
+            >(NowCast{measured.used > 1
+              ? `, ${measured.used} stations weighted by distance`
+              : ', one station'})</span
+          >
+        </dd>
         {#if measured.others.length}
           <dt>Nearby</dt>
           <dd>

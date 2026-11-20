@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { aqiCategory, aqiPm10, aqiPm25 } from '../src/lib/air/aqi';
-import { parseStationAir, siteAqi } from '../src/lib/data/stationair';
+import { parseStationAir, siteAqi, stationWeight } from '../src/lib/data/stationair';
 import { haversineKm, hourlySeries, nowCast, parseAq } from '../worker/src/routes';
 
 describe('US EPA AQI (2024 breakpoints)', () => {
@@ -88,11 +88,58 @@ describe('station AQI at the site', () => {
     expect(sa.stations[0]?.aqi).toBe(Math.max(aqiPm25(60) ?? 0, aqiPm10(120) ?? 0));
   });
 
-  it('reports the nearest station and the spread of the others', () => {
+  it('blends stations by inverse distance squared and lists the others', () => {
     const s = siteAqi(parseStationAir(raw));
     expect(s?.station.name).toBe('A');
     expect(s?.others).toEqual([aqiPm25(250)]);
+    const wA = stationWeight(2.1);
+    const wB = stationWeight(5);
+    expect(s?.pm25).toBeCloseTo((60 * wA + 250 * wB) / (wA + wB), 9);
+    expect(s?.used).toBe(2);
+    expect(s?.aqi).toBe(Math.max(aqiPm25(s?.pm25 ?? 0) ?? 0, aqiPm10(120) ?? 0));
     expect(siteAqi(null)).toBeNull();
+  });
+
+  it('one high station no longer sets the headline (Bangalore, 20 Nov 2026 05:30)', () => {
+    // OpenAQ gave Jayanagar 89.6 µg/m³ (AQI 175); other monitors were far lower
+    // (IQAir city 112, WAQI BTM 138 / Peenya 121 at 04:00).
+    const s = siteAqi(
+      parseStationAir({
+        fetched: 0,
+        stations: [
+          {
+            name: 'Jayanagar',
+            provider: 'CPCB',
+            monitor: true,
+            km: 5.5,
+            time: 1,
+            pm25: 89.6,
+            pm10: null,
+          },
+          {
+            name: 'BTM Layout',
+            provider: 'CPCB',
+            monitor: true,
+            km: 6.3,
+            time: 1,
+            pm25: 50.1,
+            pm10: null,
+          },
+          {
+            name: 'Peenya',
+            provider: 'CPCB',
+            monitor: true,
+            km: 9.8,
+            time: 1,
+            pm25: 43.5,
+            pm10: null,
+          },
+        ],
+      }),
+    );
+    expect(s?.used).toBe(3);
+    expect(s?.aqi).toBeLessThan(aqiPm25(89.6) ?? 0);
+    expect(s?.aqi).toBeGreaterThan(aqiPm25(43.5) ?? 0);
   });
 
   it('prefers the nearest station with PM2.5 over a closer PM10-only one (Bangalore, 19 Nov)', () => {
@@ -122,6 +169,8 @@ describe('station AQI at the site', () => {
       }),
     );
     expect(s?.station.name).toBe('Jayanagar');
+    // PM2.5 from Jayanagar alone (the only one with it); PM10 from both, by distance.
+    expect(s?.pm25).toBeCloseTo(81.0, 9);
     expect(s?.aqi).toBe(169);
     expect(s?.others).toEqual([aqiPm10(138.5)]);
   });

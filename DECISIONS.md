@@ -220,3 +220,30 @@ button (WCAG / ARIA); the star stays as a mouse shortcut and the option's name s
 
 **D45. Night-mode secondary text is full red (#ff0000):** #f00000 on the #200000 panels is 4.4:1,
 under AA. Hierarchy at night comes from size and weight, as DESIGN.md already says.
+
+## Accuracy pass (2026-11-20)
+
+**D46. The parallel accuracy branch is merged into `redesign`.** OpenAQ measured air quality, the
+calibrated seeing model, satellite cloud thickness, haze-dependent light pollution and airglow
+were built on `claude/session-status-check-280608` while the redesign started from older `main`,
+so the redesign never had them. Merged (one App.svelte conflict, resolved by keeping the redesign
+template and passing the new props).
+
+**D47. Seeing is calibrated on real nights,** not on hand-picked typical weather: archived
+forecasts replayed through the model against measured medians at four land sites. The
+stable-night surface physics is no longer used at night (it collapses at low wind); a mild
+cloud/wind factor and a city term replace it. Sea-level values rest on the fit (one site < 1 km).
+
+**D48. GEM and CMA leave the cloud median** (kept in the spread and the model list): verified dry
+bias of 19–55 points at every site; the six-model median beat the eight-model median and the mean
+everywhere tested.
+
+**D49. The measured AQI blends nearby stations by distance**, and the Worker reads up to eight
+monitors keeping those with PM2.5. One station is not the site: on 20 Nov 2026 it read 175 while
+the city read 112–138 elsewhere. The eight-monitor read needs a Worker deploy.
+
+**D50. "Tonight" rolls over at sunrise, not noon.** Morning planning is for the coming night.
+
+**D51. Transparency stays on the CAMS aerosol forecast.** It is the only free aerosol forecast; the
+extinction formula was checked step by step and METAR visibility (5 km haze) is consistent with the
+forecast optical depths. 7Timer! remains the second opinion.

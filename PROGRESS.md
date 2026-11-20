@@ -339,3 +339,31 @@ docs/RESEARCH.md, this file.
   "prepare a forecast for a date" beyond loading the site before leaving.
 - Lighthouse was run locally against `vite preview`; the deployed site (CDN, HTTP/2) should do
   at least as well but is not measured.
+
+## Accuracy pass ✅ (2026-11-20, after Phase 6, at the owner's request)
+
+**Why:** the owner saw 0.8–1″ seeing for Bangalore (observers there get 2–3″) and the measured
+OpenAQ air quality missing. Cause: that work lived on a parallel branch never merged into
+`redesign` (D46). Merged, then checked against outside sources and fixed what was still off.
+
+- **Seeing** (D47): replaying about 80 real nights showed even the calibrated model about 2x too
+  optimistic (Kavalur 0.91″ vs 1.85″, Hanle 0.44″ vs 1.27″, Bangalore 1.6″). Recalibrated on real
+  nights: Kavalur 1.76″, Sutherland 1.44″, Devasthal 1.25″, Hanle 1.21″ (all within 15 % of
+  measured); Bangalore centre about 2.45″ clear / 2.05″ cloudy; tonight 2.4–2.5″ vs meteoblue
+  2.05–2.57″.
+- **Clouds** (D48): six-model median (GEM, CMA out): error down at Bangalore, Coorg and Hanle on
+  800 night hours each. Tonight's early-evening cloud (24 % → 0 %) now shows, closer to meteoblue.
+  Last night's "0 %" agreed with the airport METARs (VOBL, VOBG: no significant cloud, haze).
+- **Air quality** (D49): distance-weighted blend of stations; the Worker change (read 8 monitors,
+  keep PM2.5 ones) is written and type-checked but **not deployed** (needs the owner's OK). Until
+  then Bangalore still has only one PM2.5 station in the reply, so it still reads high.
+- **Bug fixes:** "Tonight at a glance" described the past night until noon (Moon "down" though it
+  sets at 02:51); it now rolls over at sunrise (D50). The haze reason no longer says "dust or
+  smoke" for Bangalore's fine-particle haze; card headings read "Clouds, forecast" to screen
+  readers.
+- **Transparency:** checked, unchanged (D51). Tonight 0.51–0.78 mag/airmass follows CAMS's rising
+  aerosol forecast (optical depth 0.29 → 0.58).
+- Tests: 412 pass (new real-night seeing fixture, cloud-median and AQI-blend tests, sunrise
+  rollover). Sources: meteoblue astronomy seeing, IQAir, WAQI, aviationweather.gov METARs,
+  Open-Meteo historical forecasts and ERA5, RAA 2019 (Kavalur), Parihar et al. 2015 via arXiv
+  1802.00372 (Hanle).

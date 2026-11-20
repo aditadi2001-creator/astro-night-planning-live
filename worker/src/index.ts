@@ -40,6 +40,7 @@ import {
   OPENAQ,
   AQ_RADIUS_M,
   AQ_MAX_AGE_MS,
+  AQ_READ,
   AQ_STATIONS,
 } from './routes';
 
@@ -295,8 +296,8 @@ async function serveAq(env: Env, path: string): Promise<Response> {
     .filter((x) => Number.isFinite(x.km) && now - x.last <= AQ_MAX_AGE_MS)
     .sort((a, b) => a.km - b.km);
   const monitors = fresh.filter((x) => x.l.isMonitor);
-  const pick = (monitors.length ? monitors : fresh).slice(0, AQ_STATIONS);
-  const stations = await Promise.all(
+  const pick = (monitors.length ? monitors : fresh).slice(0, AQ_READ);
+  const read = await Promise.all(
     pick.map(async ({ l, km }) => {
       const sensor = (name: string) => l.sensors?.find((s) => s.parameter?.name === name)?.id;
       const pm25Id = sensor('pm25');
@@ -318,6 +319,13 @@ async function serveAq(env: Env, path: string): Promise<Response> {
         pm10: pm10?.nowcast ?? null,
       };
     }),
+  );
+  // Stations with a recent PM2.5 hour first (nearest first), then the rest; at most AQ_STATIONS.
+  const recent = (s: (typeof read)[number]) =>
+    s.pm25 != null && s.time != null && now - s.time <= AQ_MAX_AGE_MS;
+  const stations = [...read.filter(recent), ...read.filter((s) => !recent(s))].slice(
+    0,
+    AQ_STATIONS,
   );
   return respond(JSON.stringify({ source: 'openaq', fetched: now, stations }), 200, {
     'Content-Type': 'application/json',

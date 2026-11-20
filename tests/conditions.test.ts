@@ -40,6 +40,17 @@ describe('tonight', () => {
     near(tw.sunrise, '2026-11-13T07:15:00Z');
   });
 
+  it('after sunrise "tonight" is the coming night, not the one that just ended', () => {
+    // Bangalore, 20 Nov 2026 07:00 IST (01:30 UTC): sunrise was 06:19.
+    const blr = { name: 'Bangalore', lat: 12.97, lon: 77.59, elevation: 920 };
+    const morning = twilight(blr, new Date('2026-11-20T01:30:00Z'));
+    expect(morning.sunset?.toISOString().slice(0, 10)).toBe('2026-11-20');
+    // At 03:00 IST the night in progress is still "tonight".
+    const lateNight = twilight(blr, new Date('2026-11-19T21:30:00Z'));
+    expect(lateNight.sunset?.toISOString().slice(0, 10)).toBe('2026-11-19');
+    expect((lateNight.sunrise?.getTime() ?? 0) > Date.parse('2026-11-19T21:30:00Z')).toBe(true);
+  });
+
   it('builds one row per hour of the night with scores', () => {
     const from = new Date('2026-11-12T12:00:00Z');
     const win = nightWindow(greenwich, from);
@@ -50,17 +61,16 @@ describe('tonight', () => {
     // Civil dusk ~16:53 to civil dawn ~06:36 → 14–15 hourly rows.
     expect(rows.length).toBeGreaterThanOrEqual(14);
     expect(rows.length).toBeLessThanOrEqual(15);
-    // Clear sky in the middle of the night with a crescent Moon down: high score.
-    // Calm upper winds at a sea-level site: the near-ground layer of a low site
-    // (calibrated on measured observatory seeing) makes it average-to-good, which
-    // costs some points (SNR ∝ 1/FWHM).
+    // Clear sky in the middle of the night with a crescent Moon down: a good score.
+    // Calm upper winds, but a sea-level site on a clear night has a strong ground layer
+    // (calibrated on real nights at measured sites, seeing.ts typicalGroundJ): ~3″,
+    // which costs about half of the SNR (SNR ∝ 1/FWHM).
     const midnight = rows.find((r) => new Date(r.t).getUTCHours() === 0);
-    expect(midnight?.seeing?.rating).toBeGreaterThanOrEqual(3);
-    expect(midnight?.seeing?.rating).toBeLessThanOrEqual(4);
-    expect(midnight?.score?.seeing).toBeGreaterThan(0.6); // ~2″ at sea level → 0.69
-    expect(midnight?.score?.seeing).toBeLessThan(1);
-    // Clear, dark and moonless, but ~2″ low-site seeing costs ~30 % of the SNR.
-    expect(midnight?.score?.score).toBeGreaterThan(55);
+    expect(midnight?.seeing?.arcsec).toBeGreaterThan(2.4);
+    expect(midnight?.seeing?.arcsec).toBeLessThan(3.6);
+    expect(midnight?.score?.seeing).toBeGreaterThan(0.4);
+    expect(midnight?.score?.seeing).toBeLessThan(0.7);
+    expect(midnight?.score?.score).toBeGreaterThan(35);
     // Overcast night scores 0.
     const cloudy = buildTimeline(
       greenwich,

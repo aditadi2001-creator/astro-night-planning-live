@@ -55,23 +55,55 @@ export function parseStationAir(raw: Raw): StationAir {
   };
 }
 
+/** Distance weight for station blending: inverse square, softened over the first 2 km. */
+export const stationWeight = (km: number) => 1 / (Math.max(0, km) + 2) ** 2;
+
+/** Distance-weighted mean of one pollutant over the stations that report it, or null. */
+function blend(st: Station[], key: 'pm25' | 'pm10'): number | null {
+  let sw = 0;
+  let sc = 0;
+  for (const s of st) {
+    const c = s[key];
+    if (c == null) continue;
+    const w = stationWeight(s.km);
+    sw += w;
+    sc += w * c;
+  }
+  return sw > 0 ? sc / sw : null;
+}
+
 /**
- * The site's measured AQI: the nearest station that reports PM2.5 (the pollutant
- * that sets the AQI almost everywhere; a PM10-only station would read low), else
- * the nearest station; with the spread of the others.
+ * The site's measured AQI: PM2.5 and PM10 each averaged over the nearby stations that
+ * report them, weighted by inverse distance squared (the usual way a point's value is
+ * estimated from a monitoring network), then the larger US AQI of the two. One station can
+ * be unrepresentative (Bangalore, 20 Nov 2026 05:30: Jayanagar alone gave 175 while the city
+ * read 112–138 on IQAir and WAQI), so the blend is the headline and the stations are listed.
  */
 export function siteAqi(sa: StationAir | null): {
   aqi: number;
+  /** Nearest station that reports PM2.5 (else the nearest station). */
   station: Station;
+  /** AQI of the other stations. */
   others: number[];
+  /** Blended concentrations (µg/m³) and how many stations went into the PM2.5 blend. */
+  pm25: number | null;
+  pm10: number | null;
+  used: number;
 } | null {
   const st = sa?.stations ?? [];
   const pick = st.find((s) => s.pm25 != null) ?? st[0];
-  if (!pick || pick.aqi == null) return null;
+  if (!pick) return null;
+  const pm25 = blend(st, 'pm25');
+  const pm10 = blend(st, 'pm10');
+  const a = [aqiPm25(pm25), aqiPm10(pm10)].filter((v): v is number => v != null);
+  if (!a.length) return null;
   return {
-    aqi: pick.aqi,
+    aqi: Math.max(...a),
     station: pick,
     others: st.filter((s) => s !== pick).map((s) => s.aqi ?? 0),
+    pm25,
+    pm10,
+    used: st.filter((s) => s.pm25 != null).length,
   };
 }
 

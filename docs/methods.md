@@ -124,29 +124,36 @@ For a telescope standing on the ground most of the seeing comes from the lowest 
 Mauna Kea and La Palma). The old fixed 0.7″ made low sites far too optimistic (Bangalore 0.7–1″
 against the 2–3″ amateurs see).
 
-- **Typical level, calibrated on measured site medians:** the HV 5/7 ground term (1.7·10⁻¹², 1.75″
-  at sea level) × e^(−H/1500 m). With typical weather for each site the full model gives Kavalur
-  725 m 1.68″ (measured 1.85″), Sutherland 1760 m 1.34″ (1.32″), Devasthal 2450 m 1.21″ (1.1″),
-  Mauna Kea 0.65″ (0.6–0.7″), Paranal 1.05″ (0.8″; summit flow not modelled); mean error 0.11″
-  against 0.32″ for the old model (`tests/seeing-sites.test.ts`).
-- **Hour-by-hour factor from physics** (`src/lib/physics/surfacelayer.ts`), the ratio of this hour's
-  near-ground ∫C_n² to a reference night (rural, 3 m/s, 30 % cloud, same air), bounded 0.25–6:
-  - surface fluxes exactly as the US EPA AERMET/AERMOD meteorology (Formulation document
-    EPA-454/B-24-010, 2024): night θ* = 0.09(1 − 0.5n²) (eq. 16), u* from eq. 15 (low-wind form
-    below the critical speed), L (eq. 11), boundary layer 2400 u*^1.5 (eq. 24); day: Holtslag–van
-    Ulden net radiation, H = 0.9Rₙ/(1 + 1/B₀), u* and L by iteration (eqs. 2–8);
-  - city heat at night (AERMOD §5.10, Oke): ΔT up to 12 °C, H_u = 0.03 ρc_pΔT u* (≤ 50 W/m²),
-    added to the rural turbulence; how built-up the spot is comes from its light pollution,
-    log10(1 + R)/2, and the roughness of the surroundings (0.05–1 m) likewise;
-  - C_T² from Wyngaard et al. (1971): 4.9(1 + 2.4(z/L)^(2/3)) stable, 4.9(1 − 7z/L)^(−2/3)
-    convective, with Nieuwstadt's (1984) local scaling at night; C_n² = (79·10⁻⁶P/T²)²C_T²,
-    integrated from the telescope (1.5 m) through the surface layer (lowest 10 % of the boundary
-    layer; the free-atmosphere terms cover the rest).
-- What it captures: clear skies cool the ground and worsen seeing, cloud steadies it, cities and
-  rough surroundings are worse, sunny days are convective and much worse, a telescope higher up
-  sees less of it. Limits: the observer's own surroundings (a hot roof, a valley's cold pool, a
-  summit's clean flow) and tube currents; AERMOD's original low-wind u* is known to run low
-  (EPA's ADJ_U* option is not used), so very calm nights may read slightly too good.
+**Recalibrated 20 Nov 2026 on real nights.** The earlier version was calibrated with hand-picked
+"typical" weather for each site. Replaying ECMWF forecasts for 25 Aug - 12 Nov 2026 through it
+showed it about 2x too optimistic on real nights (Kavalur median 0.91″ vs 1.85″ measured, Hanle
+0.44″ vs 1.27″, Bangalore 1.6″): the AERMOD stable-night scheme collapses to almost no turbulence
+at the low winds typical of these nights, which measured medians contradict. Now:
+
+- **Typical level:** ε_g^(5/3) = 1 + 4.45·e^(−H/600 m) (in units of a 1″ layer): about 2.8″ at
+  sea level, 1.66″ at 725 m, about 1″ above 2 km. Solved so the median over each site's dark
+  hours of that period matches its measured median (`tests/seeing-sites.test.ts`, real-night
+  fixture `tests/fixtures/seeing-nights.json`):
+
+  | Site (height)       | Model median | Measured                                    |
+  | ------------------- | ------------ | ------------------------------------------- |
+  | Kavalur (725 m)     | 1.76″        | 1.85″ (RAA 2019, 1.3 m short exposures)     |
+  | Sutherland (1760 m) | 1.44″        | 1.32″ (MASS-DIMM, Catala et al. 2013)       |
+  | Devasthal (2450 m)  | 1.25″        | 1.1″ (DIMM, ARIES)                          |
+  | Hanle (4500 m)      | 1.21″        | 1.27″ (DIMM, Parihar et al. 2015; IAO: <1″) |
+  | Mauna Kea, Paranal  | 1.05″, 1.43″ | 0.65″, 0.8″ (laminar summits: read high)    |
+
+- **Night weather factor** (mild, about 1 on a typical night): × (0.8 + 0.4·clear fraction) for
+  ground cooling under clear skies, × (1 + ((wind − 6 m/s)/6)²) ≤ 2 above 6 m/s at 10 m.
+- **City heat:** × (1 + 0.8·urban), urban 0–1 from the light-pollution model. Calibrated so
+  central Bangalore (920 m, Bortle 9) reads about 2.45″ on clear nights and 2.05″ on cloudy ones:
+  observers there report 2–3″, and meteoblue gave 2.05–2.57″ for the night of 20 Nov 2026 (it has
+  no city term, so a city centre should read a little worse).
+- **By day** (Sun above the horizon) the convective physics of `surfacelayer.ts` (AERMOD day
+  fluxes, Wyngaard C_T²) still sets the factor, at least 1.
+- Limits: one measured site below 1 km (Kavalur), so the sea-level end (about 2.8″ rural) rests on
+  the fit; the observer's own surroundings (a hot roof, a cold-air pool), tube currents and dome
+  seeing are not included. Night-to-night changes come mostly from the free-atmosphere terms.
 
 Second opinion: 7Timer! ASTRO (GFS-based, every 3 h, 72 h ahead) through the data Worker, which
 caches each 0.1° location for 3 h. Its classes 1–8 are shown in arcseconds as documented by 7Timer!:
@@ -160,12 +167,16 @@ model behind the forecast AQI (~45 km grid) badly underestimates city particle p
 on 15 Nov 2026 it gave Delhi 46 µg/m³ PM2.5 (US AQI 155) while stations read several times that. For
 the present hour the site therefore uses measured data: the nearest OpenAQ reference monitors
 (government stations such as India's CPCB/DPCC, the US EPA, the EEA; low-cost sensors only if no
-monitor is in range) within 25 km that reported in the last 3 h, up to five. The Worker turns
+monitor is in range) within 25 km that reported in the last 3 h: the Worker reads up to eight
+and keeps those with a recent PM2.5 hour first, up to five (since 20 Nov 2026). The Worker turns
 each monitor's last 12 hourly PM2.5 and PM10 values into EPA NowCast concentrations (weight
 w = min/max floored at 0.5; at least two of the last three hours); the site turns those into the US
 AQI with the February 2024 breakpoints (PM2.5 Good to 9.0 µg/m³), taking the larger of the PM2.5
-and PM10 indices, and shows the nearest station that reports PM2.5 (PM10-only stations read low; used only when no
-station has PM2.5) with the range of the others. CAMS remains for
+and PM10 indices. **Since 20 Nov 2026 the headline blends the stations:** PM2.5 and PM10 are
+each averaged over the stations that report them with weights 1/(d + 2 km)², the usual way to
+estimate a point from a monitoring network, before the AQI is taken (one station alone gave
+Bangalore 175 on 20 Nov 05:30 while IQAir showed the city at 112 and WAQI's 04:00 stations
+121–138). The nearest PM2.5 station and the others' AQIs are listed. CAMS remains for
 forecast hours and where no station is near. Needs a free OpenAQ key as the Worker secret
 `OPENAQ_KEY`; the Worker caches each 0.01° cell for 20 minutes.
 
@@ -190,6 +201,23 @@ handled explicitly:
   doesn't prove a clear sky. The satellite may add cloud anywhere but remove at most 30 % × its
   weight of the models' low cloud (cards, timeline and the 3D sky alike).
 - A full overcast is drawn without holes (the noise threshold drops below its soft edge above 97 %).
+
+## Cloud forecast: which models make the median (20 Nov 2026)
+
+The hourly cloud figure is the per-layer median of six models: ECMWF, GFS, ICON, JMA, Météo-France
+and UK Met Office. GEM and CMA are still fetched and shown, and count in the spread (min–max),
+but not in the median. Scored on 800 night hours per site (25 Aug - 12 Nov 2026, Open-Meteo's
+archived forecasts against ERA5 reanalysis cloud cover; MAE and bias in percentage points):
+
+| Site      | Median of 8 | Median of 6 | GEM / CMA bias |
+| --------- | ----------- | ----------- | -------------- |
+| Bangalore | 13.0, −0.5  | 12.0, +5.3  | −28 / −44      |
+| Coorg     | 11.9, −4.6  | 9.9, +1.8   | −28 / −55      |
+| Hanle     | 20.8, −17.4 | 19.5, −13.1 | −19 / −24      |
+
+The mean of the models was worse than the median at Bangalore and Coorg (19.1 and 18.1). Caveat:
+ERA5 is an ECMWF product, so ECMWF itself is favoured somewhat; the GEM/CMA dry bias is far larger
+than that effect. All models read Hanle clearer than ERA5 (unresolved).
 
 ## Model agreement
 
@@ -306,6 +334,9 @@ light pollution itself.
   replaces the smaller one); no type takes more than a quarter of the list.
 
 ## Tonight verdict
+
+"Tonight" rolls over to the coming night at sunrise (before 20 Nov 2026 it did so at noon,
+so mornings described the night that had just ended).
 
 `src/lib/plan/verdict.ts`, tests in `tests/verdict.test.ts`. Go = ≥ 3 dark hours with an hourly
 imaging score ≥ 40/100; marginal = 1–3 such hours or a best hour of 25–40; no-go otherwise;

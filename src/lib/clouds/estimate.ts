@@ -1,16 +1,23 @@
 /**
  * The cloud figure the site shows for any hour.
  *
- * - Forecast: the median of eight global models, layer by layer (low, mid, high).
+ * - Forecast: the median of six global models, layer by layer (low, mid, high).
  *   One model alone can be badly wrong for a place; the median of several is a
- *   standard, more robust ensemble estimate. The spread (min–max of the models'
- *   totals) is kept as the uncertainty.
+ *   standard, more robust ensemble estimate. GEM and CMA are left out of the median
+ *   (verified dry bias, see MEDIAN_MODELS) but kept in the spread (min–max of all eight
+ *   models' totals), which is the uncertainty.
  * - Nowcast: the newest satellite infrared image pulls the forecast towards what
  *   is really overhead, with a weight that fades with the image's age
  *   (0.85 · e^(−Δt / 3 h)), the usual persistence-to-forecast hand-over.
  * - Observed: hours already past use the satellite's measurement for that hour.
  */
-import { CONSENSUS_MODELS, hourAt, type ModelClouds, type Weather } from '../data/openmeteo';
+import {
+  CONSENSUS_MODELS,
+  MEDIAN_MODELS,
+  hourAt,
+  type ModelClouds,
+  type Weather,
+} from '../data/openmeteo';
 import { HIGH_TOP_K, LOW_DENY } from '../sat/ir';
 
 /**
@@ -70,7 +77,7 @@ const clamp = (v: number) => Math.min(100, Math.max(0, v));
 export const overlap = (l: number, m: number, h: number): number =>
   100 * (1 - (1 - l / 100) * (1 - m / 100) * (1 - h / 100));
 
-/** Median of the models, per layer, at time t (null if no model covers it). */
+/** Median of the models (MEDIAN_MODELS), per layer, at time t (null if none covers it). */
 export function consensusAt(models: ModelClouds | null, t: number) {
   const h = models ? hourAt(models.hours, t) : null;
   if (!h) return null;
@@ -80,7 +87,7 @@ export function consensusAt(models: ModelClouds | null, t: number) {
   const totals: number[] = [];
   for (const m of CONSENSUS_MODELS) {
     const L = h.layers?.[m];
-    if (L && L.low != null && L.mid != null && L.high != null) {
+    if (MEDIAN_MODELS.includes(m) && L && L.low != null && L.mid != null && L.high != null) {
       lows.push(L.low);
       mids.push(L.mid);
       highs.push(L.high);

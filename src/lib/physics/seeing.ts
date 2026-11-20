@@ -74,14 +74,43 @@ export const HV57_GROUND_J = 1.7e-14 * 100;
 export const GROUND_ARCSEC = 0.7;
 
 /**
- * Ground layer on a typical night: the HV 5/7 ground term (1.75″ at sea level),
- * thinning with the site's height as e^(−H/1500 m). Calibrated against measured
- * site medians: Kavalur 725 m 1.85″, Sutherland 1760 m 1.32″, Devasthal 2450 m
- * 1.1″ (2 m above ground), Mauna Kea 4200 m ~0.65″, Paranal 2635 m ~0.8″.
+ * Ground layer on a typical night, as J: ε_g^(5/3) = 1 + 4.45·e^(−H/600 m) in units of a
+ * 1″ layer, i.e. about 2.8″ at sea level, 1.66″ at 725 m and close to 1″ above 2 km.
+ *
+ * Calibrated (Nov 2026) on REAL nights, not on hand-picked "typical" weather: ECMWF
+ * forecasts for 25 Aug – 12 Nov 2026 were replayed through the model (jet stream and lower
+ * air from the forecast winds) and the ground layer was solved so that the median over each
+ * site's dark hours matches its measured median seeing: Kavalur 725 m 1.85″ (RAA 2019),
+ * Sutherland 1760 m 1.32″, Devasthal 2450 m 1.1″, Hanle 4500 m 1.27″ (DIMM, Parihar et al.
+ * 2015). Ocean-facing summits with laminar inflow (Mauna Kea, Paranal) are better than this
+ * and are read high (tests/seeing-sites.test.ts, tests/fixtures/seeing-nights.json).
  */
 export function typicalGroundJ(elevation: number): number {
-  return HV57_GROUND_J * Math.exp(-Math.max(0, elevation) / 1500);
+  return jFromSeeing(1) * (1 + 4.45 * Math.exp(-Math.max(0, elevation) / 600));
 }
+
+/**
+ * Night-time change of the ground layer with the weather, about 1 on a typical night:
+ * clear skies cool the ground and strengthen the surface inversion (×1.2 clear, ×0.8
+ * overcast); wind above 6 m/s at 10 m adds mechanical turbulence (×2 at most). Mild on
+ * purpose: the stable-layer physics in surfacelayer.ts collapses to almost no turbulence at
+ * low wind, which measured site medians contradict (see typicalGroundJ).
+ */
+export function nightGroundFactor(windMs: number, cloud: number): number {
+  const c = Math.min(1, Math.max(0, cloud));
+  const fCloud = 0.8 + 0.4 * (1 - c);
+  const fWind = Math.min(2, 1 + Math.max(0, (windMs - 6) / 6) ** 2);
+  return fCloud * fWind;
+}
+
+/**
+ * City heat keeps the air near the ground stirred all night: the ground layer's J grows by
+ * 1 + 0.8·urban (urban 0–1 from the light-pollution model, surfacelayer.ts). Calibrated so
+ * inner-city Bangalore (920 m) reads about 2.45″ on a clear night and 2.05″ on a cloudy one,
+ * matching observers' 2–3″ there and meteoblue's 2.05–2.57″ for 20 Nov 2026 (meteoblue has no
+ * city term, so it should read slightly better than a city centre).
+ */
+export const URBAN_GROUND_GAIN = 0.8;
 
 /** The reference night the ground calibration stands for (same air, rural, 3 m/s, 30 % cloud). */
 export function referenceSurface(s: SurfaceInput): SurfaceInput {
@@ -183,24 +212,24 @@ export function estimateSeeing(input: SeeingInput): SeeingEstimate | null {
   const shearFactor = Math.min(4, 1 + ((s ?? 0) / 12) ** 2);
   const jLower = HV_MID_J * Math.exp(-Math.max(0, input.elevation) / 1500) * shearFactor;
 
-  // Ground layer: calibrated typical level × how this hour's near-ground weather compares
-  // with a typical night (surfacelayer.ts: wind, cloud, ground cooling, city heat, sun).
+  // Ground layer: the site's calibrated typical level (height, city) × this hour's weather.
+  // By day the sun-driven convection (surfacelayer.ts physics) takes over.
   let jGround = jFromSeeing(GROUND_ARCSEC);
   let ground: SeeingEstimate['ground'];
   if (input.surface) {
-    const now = surfaceLayer(input.surface);
-    const ref = surfaceLayer(referenceSurface(input.surface));
-    const factor = Math.min(
-      GROUND_FACTOR_MAX,
-      Math.max(GROUND_FACTOR_MIN, ref.J > 0 ? now.J / ref.J : 1),
-    );
+    const sf = input.surface;
+    const urban = Math.min(1, Math.max(0, sf.urban ?? 0));
+    let factor = nightGroundFactor(sf.windMs, sf.cloud);
+    let regime: 'stable' | 'urban' | 'convective' = urban > 0.3 ? 'urban' : 'stable';
+    if (sf.sunAlt > 0) {
+      const now = surfaceLayer(sf);
+      const ref = surfaceLayer(referenceSurface(sf));
+      factor = Math.min(GROUND_FACTOR_MAX, Math.max(1, ref.J > 0 ? now.J / ref.J : 1));
+      regime = 'convective';
+    }
+    factor *= 1 + URBAN_GROUND_GAIN * urban;
     jGround = typicalGroundJ(input.elevation) * factor;
-    ground = {
-      factor,
-      regime: now.stable ? 'stable' : now.urbanHeat ? 'urban' : 'convective',
-      windMs: input.surface.windMs,
-      cloud: input.surface.cloud,
-    };
+    ground = { factor, regime, windMs: sf.windMs, cloud: sf.cloud };
   }
 
   const arcsec = seeingFromJ(jJet + jLower + jGround);

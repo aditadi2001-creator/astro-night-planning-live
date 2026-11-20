@@ -33,6 +33,16 @@ export const CONSENSUS_MODELS = [
   'gem_seamless',
   'cma_grapes_global',
 ] as const;
+/**
+ * Models in the cloud median. GEM and CMA are fetched and shown but left out: scored on
+ * 800 night hours per site (25 Aug – 12 Nov 2026, archived forecasts vs ERA5) they are
+ * strongly biased towards clear skies (Bangalore −28 and −44 points), and without them the
+ * median's error drops at every site tested (Bangalore 13.0 → 12.0, Coorg 11.9 → 9.9,
+ * Hanle 20.8 → 19.5 points; docs/methods.md "Cloud forecast").
+ */
+export const MEDIAN_MODELS: readonly (typeof CONSENSUS_MODELS)[number][] = CONSENSUS_MODELS.filter(
+  (m) => m !== 'gem_seamless' && m !== 'cma_grapes_global',
+);
 /** @deprecated kept for older imports; same list as CONSENSUS_MODELS. */
 export const AGREEMENT_MODELS = CONSENSUS_MODELS;
 export const MODEL_LABELS: Record<string, string> = {

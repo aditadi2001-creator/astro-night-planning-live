@@ -147,7 +147,7 @@ export function verdict(
     );
   }
   if (transparency != null && transparency < 0.6)
-    reasons.push('Hazy: dust or smoke dims faint targets.');
+    reasons.push('Hazy (fine particles in the air): faint targets lose contrast.');
   if (dewHours >= 2) reasons.push(`Dew likely for ${dewHours} hours: use a dew heater.`);
   if (agreementLow)
     reasons.push('The weather models disagree tonight: treat the cloud forecast with caution.');

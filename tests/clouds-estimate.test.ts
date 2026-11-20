@@ -43,10 +43,19 @@ describe('model consensus', () => {
     expect(median([])).toBeNull();
     const mc = models(NOW, 1, (k) => [k * 10, 0, k === 7 ? 100 : 0]);
     const c = consensusAt(mc, NOW);
-    expect(c?.low).toBe(35); // median of 0..70
-    expect(c?.high).toBe(0); // one model's 100 % cirrus is outvoted
-    expect(c?.models).toBe(8);
+    // Six models in the median (GEM and CMA, models 6 and 7, are left out): 0..50 → 25.
+    expect(c?.low).toBe(25);
+    expect(c?.high).toBe(0);
+    expect(c?.models).toBe(6);
+    // The spread still includes all eight (CMA's 100 % high cloud).
     expect(c?.max).toBe(100);
+  });
+
+  it('GEM and CMA cannot pull the median to clear (their verified dry bias)', () => {
+    // Six models forecast 40 % low cloud, GEM and CMA forecast clear.
+    const mc = models(NOW, 1, (k) => [k >= 6 ? 0 : 40, 0, 0]);
+    expect(consensusAt(mc, NOW)?.low).toBe(40);
+    expect(consensusAt(mc, NOW)?.min).toBe(0);
   });
 });
 

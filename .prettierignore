@@ -13,3 +13,4 @@ public/catalog/
 public/horizons/
 public/data/
 tests/fixtures/*.xml
+tests/fixtures/seeing-nights.json

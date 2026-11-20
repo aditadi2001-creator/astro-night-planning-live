@@ -208,6 +208,12 @@ export const AQ_RADIUS_M = 25_000;
 export const AQ_MAX_AGE_MS = 3 * 3600_000;
 /** Monitors read per place (some report only PM10, or nothing in the last hours). */
 export const AQ_STATIONS = 5;
+/**
+ * Monitors read per request: the nearest ones often report only PM10 or have a stale PM2.5
+ * sensor (Bangalore 20 Nov 2026: 1 of the 5 nearest had PM2.5), so more are read and those
+ * with a recent PM2.5 hour are kept first. 8 × 2 sensor reads per 20-minute cache miss.
+ */
+export const AQ_READ = 8;
 
 /** GitHub repository whose workflows the Worker's cron starts. */
 export const GH_REPO = 'aditadi2001-creator/astro-night-planning-live';

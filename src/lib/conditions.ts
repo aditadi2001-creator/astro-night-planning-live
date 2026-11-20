@@ -267,7 +267,22 @@ export interface TwilightTimes {
 }
 
 /** Twilight milestones for the evening/morning around `from` (searching forward from noon). */
+/**
+ * Tonight's sun times. "Tonight" stays the same night from noon through the dark hours and
+ * rolls over to the coming night at sunrise: at 7 AM the night ahead is the one to plan
+ * (before 20 Nov 2026 it rolled over only at noon, so mornings described the past night).
+ */
 export function twilight(place: Place, from: Date): TwilightTimes {
+  const t = nightFrom(place, from);
+  if (t.sunrise && from >= t.sunrise) {
+    const obs = new Astronomy.Observer(place.lat, place.lon, place.elevation);
+    const noon = Astronomy.SearchHourAngle(Astronomy.Body.Sun, obs, 0, from).time.date;
+    return nightFrom(place, new Date(noon.getTime() + 60_000));
+  }
+  return t;
+}
+
+function nightFrom(place: Place, from: Date): TwilightTimes {
   const obs = new Astronomy.Observer(place.lat, place.lon, place.elevation);
   // Start from the most recent local solar noon so "tonight" stays stable through the night.
   const noon = Astronomy.SearchHourAngle(
