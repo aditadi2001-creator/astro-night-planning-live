@@ -404,10 +404,18 @@
           };
     gotoSky(e.ra, e.dec, fov, e.engineId, pin);
   }
-  /** A shared link (#/sky?t=M%2042) opens the sky on that object once, at load. */
+  /**
+   * A shared link (#/sky?t=M%2042) opens the sky on that object: at load, and when the address
+   * changes to another object while the page is open. `linkT` is the object the address names
+   * now (our own go-tos set it too, so they do not trigger a second lookup).
+   */
+  let linkT = '';
   onMount(() => {
     const t = firstRoute.page === 'sky' ? firstRoute.params.t : undefined;
-    if (!t) return;
+    if (t) openLink(t);
+  });
+  function openLink(t: string) {
+    linkT = t;
     const name = t.replace(/^NAME /, '');
     void import('./lib/search/client').then(async ({ searchCatalogs }) => {
       const r = await searchCatalogs(name, 8);
@@ -422,7 +430,7 @@
         ) ?? r.results[0];
       if (hit) pickResult(hit);
     });
-  });
+  }
   function pickSurvey(id: string) {
     layers = { ...layers, surveys: true, survey: id };
     goPage('sky');
@@ -1056,6 +1064,8 @@
       const pageChanged = r.page !== page;
       page = r.page;
       params = r.params;
+      // The address now names another object (a pasted or clicked link): show it.
+      if (r.page === 'sky' && r.params.t && r.params.t !== linkT) openLink(r.params.t);
       if (r.page === 'plan') {
         const id = sectionOf(r.params.s);
         activeSection = id;
@@ -1148,7 +1158,9 @@
   let gotoN = 0;
   function gotoSky(ra: number, dec: number, fovDeg: number, id?: string, pin?: Pin) {
     gotoTarget = { ra, dec, fovDeg, n: ++gotoN, ...(id ? { id } : {}), ...(pin ? { pin } : {}) };
-    goPage('sky', id ? { t: id } : pin ? { t: pin.label } : {});
+    const t = id ?? pin?.label;
+    if (t) linkT = t;
+    goPage('sky', t ? { t } : {});
   }
 
   // ---- phone camera horizon view ---------------------------------------------------

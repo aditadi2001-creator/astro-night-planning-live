@@ -324,6 +324,14 @@ export function screenToIcrf(stel: Stel, x: number, y: number): number[] | null 
 }
 
 /** ICRF direction of the selected object, or null. */
+/**
+ * Clear the engine's selection. The engine ignores `null` (the selection stays, and its info
+ * came back a second later); it clears on 0.
+ */
+export function clearEngineSelection(stel: Stel): void {
+  (stel.core as unknown as { selection: unknown }).selection = 0;
+}
+
 export function selectionIcrf(stel: Stel): number[] | null {
   const sel = stel.core.selection;
   if (!sel) return null;

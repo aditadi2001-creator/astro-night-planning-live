@@ -21,6 +21,7 @@
   import Oculars from './Oculars.svelte';
   import {
     altAzAt,
+    clearEngineSelection,
     describe,
     icrfToScreen,
     screenToIcrf,
@@ -314,7 +315,7 @@
             if (c.selection) pin = null;
             const info = c.selection ? describe(s, c.selection) : null;
             if (info && unnamed(info)) {
-              c.selection = null;
+              clearEngineSelection(s);
               selected = null;
             } else selected = info;
           }
@@ -650,7 +651,7 @@
     if (!s) return;
     pin = null;
     // Look there first: the engine loads the object's data tile once it is in view.
-    s.core.selection = null;
+    clearEngineSelection(s);
     selected = null;
     lookAtRaDec(ra, dec, fov);
     let obj = findObj(id);
@@ -791,7 +792,7 @@
     else if (pin) selected = pinInfo(pin, place, time);
   });
   function setPin(p: Pin) {
-    if (stel) stel.core.selection = null;
+    if (stel) clearEngineSelection(stel);
     pin = p;
     selected = pinInfo(p, place, time);
   }
@@ -820,7 +821,7 @@
       lookAtRaDec(g.ra, g.dec, g.fovDeg);
       if (g.pin) setPin(g.pin);
       else {
-        stel.core.selection = null;
+        clearEngineSelection(stel);
         pin = null;
         selected = null;
       }
@@ -834,7 +835,7 @@
     }
   });
   function clearSelection() {
-    if (stel) stel.core.selection = null;
+    if (stel) clearEngineSelection(stel);
     pin = null;
     selected = null;
   }

@@ -470,3 +470,13 @@ OpenAQ air quality missing. Cause: that work lived on a parallel branch never me
 - **Checked and fine:** extreme places and dates (21 new edge-case tests: Svalbard, South Pole,
   equator, Sydney, date line; 1539–2999), night mode red-only for all new controls, axe clean on
   Sky, Telescope, Layers and Search, no Svelte warnings, timeline + EQ + frame stress run.
+
+## Published to production ✅ (2026-11-20, owner's "publish the site online")
+
+- Final checks found and fixed two more bugs: the engine ignores `selection = null`, so Deselect
+  did not really deselect (the object's info came back a second later) and a pinned object could
+  not replace an engine selection; now cleared with 0 (`clearEngineSelection`). An object link
+  changed in the address bar while the page is open now opens that object too.
+- Deployed `dist` to the Pages project `astro-night-planning-live` (production branch `main`):
+  https://astro-night-planning-live.pages.dev. The main website's project (`deepskyvision`) was not
+  touched. Git `main` is not updated (nothing pushed).
