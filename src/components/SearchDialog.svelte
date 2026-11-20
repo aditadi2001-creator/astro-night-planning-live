@@ -13,11 +13,13 @@
     isFavorite,
     recents,
     resolveOnline,
+    sdssAround,
     searchCatalogs,
     toggleFavorite,
     type ResultEntry,
   } from '../lib/search/client';
   import { parseRaDec, fmtRA, fmtDMS } from '../lib/astro/skycoords';
+  import { looksLikeDesignation, norm, ONLINE_PREFIX } from '../lib/search/index';
 
   interface Props {
     onclose: () => void;
@@ -25,8 +27,10 @@
     onpick: (e: ResultEntry) => void;
     /** A sky survey was chosen: turn it on. */
     onsurvey: (id: string) => void;
+    /** Centre of the sky view and its field (degrees), for catalogs listed around the view. */
+    centre?: () => { ra: number; dec: number; fovDeg: number } | null;
   }
-  let { onclose, onpick, onsurvey }: Props = $props();
+  let { onclose, onpick, onsurvey, centre }: Props = $props();
 
   let q = $state('');
   let results = $state<ResultEntry[]>([]);
@@ -80,6 +84,7 @@
     const id = ++seq;
     browsing = null;
     online = 'idle';
+    onlineNote = '';
     active = 0;
     if (!text.trim()) {
       results = [];
@@ -91,13 +96,33 @@
       if (r.ok) {
         results = r.results;
         status = 'ready';
+        // Designations only an online service knows (SDSS J…, 2MASS J…, Mrk, MCG, UGCA, HD…):
+        // ask SIMBAD by itself once the typing stops, unless the exact name is already here.
+        const exact = r.results.some((x) => norm(x.label.split(' · ')[0] ?? '') === norm(text));
+        if (!exact && ONLINE_PREFIX.test(text) && /\d/.test(text) && text.trim().length >= 5)
+          autoT = setTimeout(() => {
+            if (id === seq && online === 'idle') void lookOnline();
+          }, 650);
       } else {
         status = 'error';
         error = r.error;
       }
     }, 40);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(autoT);
+    };
   });
+  let autoT: ReturnType<typeof setTimeout> | undefined;
+  /** Offer SIMBAD under the results too, not only when nothing local matched. */
+  const offerOnline = $derived(
+    !browsing &&
+      q.trim().length >= 3 &&
+      looksLikeDesignation(q) &&
+      !flat.some((x) => x.kind === 'online' && x.badges.includes('SIMBAD')) &&
+      !flat.some((x) => norm(x.label.split(' · ')[0] ?? '') === norm(q)),
+  );
+  let onlineNote = $state('');
 
   onMount(() => {
     input?.focus();
@@ -109,6 +134,33 @@
   });
 
   async function choose(e: ResultEntry) {
+    if (e.kind === 'catalog' && e.ref?.startsWith('online:')) {
+      const c = centre?.();
+      if (!c) {
+        onlineNote = 'Open the Sky page first: this catalog is listed around the view centre.';
+        return;
+      }
+      const id = ++seq;
+      online = 'loading';
+      onlineNote = '';
+      try {
+        const radius = Math.min(1, Math.max(0.1, c.fovDeg / 2));
+        const list = await sdssAround(c.ra, c.dec, radius);
+        if (id !== seq) return;
+        online = 'idle';
+        browsing = `${e.label} within ${radius < 1 ? `${Math.round(radius * 60)}′` : '1°'} of the view centre`;
+        results = list;
+        if (!list.length)
+          onlineNote =
+            'SDSS has no galaxies or quasars with spectra here. SDSS covers about a third of the sky, mostly far from the Milky Way: try around M 51, M 101 or the Coma cluster.';
+        active = 0;
+        await tick();
+        listEl?.scrollTo({ top: 0 });
+      } catch {
+        if (id === seq) online = 'error';
+      }
+      return;
+    }
     if (e.kind === 'catalog' && e.ref) {
       const id = ++seq;
       const r = await browseCatalog(e.ref);
@@ -201,7 +253,7 @@
       bind:value={q}
       onkeydown={key}
       type="search"
-      placeholder="M 31, Vega, North America Nebula, Sh2-129, Saturn, Messier, 2MASS, 10h45m −59°…"
+      placeholder="M 31, Vega, Sh2-129, Saturn, SDSS, Mrk 421, 2MASS J…, 10h45m −59°…"
       autocomplete="off"
       spellcheck="false"
       role="combobox"
@@ -253,11 +305,15 @@
       <span>Not in the local catalogs.</span>
       <button onclick={lookOnline}>Search SIMBAD online for “{q.trim()}”</button>
     {:else if online === 'loading'}
-      <span role="status">Asking SIMBAD (Sesame, CfA mirror)…</span>
+      <span role="status">Asking online (SIMBAD / VizieR, CfA mirror)…</span>
+    {:else if onlineNote}
+      <span role="status">{onlineNote}</span>
     {:else if online === 'none'}
       <span role="status">SIMBAD does not know “{q.trim()}” either.</span>
     {:else if online === 'error'}
-      <span role="status">SIMBAD could not be reached right now. Try again later.</span>
+      <span role="status">The online service could not be reached right now. Try again later.</span>
+    {:else if offerOnline}
+      <button onclick={lookOnline}>Also search SIMBAD online for “{q.trim()}”</button>
     {:else}
       <span class="hint">↑ ↓ to move · Enter to open · Alt+F or ★ to keep as favorite</span>
     {/if}

@@ -19,11 +19,24 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // Same lists as src/lib/telescope/allow.ts (tests/telescope.test.ts checks they agree).
-export const NINA_READ = ['/version', '/equipment/mount/info', '/equipment/rotator/info'];
+export const NINA_READ = [
+  '/version',
+  '/equipment/mount/info',
+  '/equipment/rotator/info',
+  '/sequence/json',
+  '/sequence/list-available',
+];
 export const NINA_CONTROL = [
   '/equipment/mount/slew',
   '/equipment/mount/slew/stop',
   '/equipment/mount/sync',
+  '/equipment/mount/park',
+  '/equipment/mount/unpark',
+  '/equipment/mount/tracking',
+  '/sequence/set-target',
+  '/sequence/load',
+  '/framing/set-coordinates',
+  '/framing/set-rotation',
 ];
 export const ALPACA_READ = [
   'connected',
@@ -39,7 +52,14 @@ export const ALPACA_READ = [
   'siderealtime',
   'equatorialsystem',
 ];
-export const ALPACA_CONTROL = ['slewtocoordinatesasync', 'synctocoordinates', 'abortslew'];
+export const ALPACA_CONTROL = [
+  'slewtocoordinatesasync',
+  'synctocoordinates',
+  'abortslew',
+  'park',
+  'unpark',
+  'tracking',
+];
 
 /**
  * Where a request goes, or null when it is not allowed.

@@ -13,8 +13,50 @@
     content: Snippet<[DockPanel]>;
     onsearch: () => void;
     infoAvailable: boolean;
+    /** How much of the sky the open sheet covers (px from the right / bottom edge). */
+    oninset?: (i: { right: number; bottom: number }) => void;
+    /** Quick toggles kept on the sky (supplied by the page). */
+    quick?: Snippet;
   }
-  let { active = $bindable(), content, onsearch, infoAvailable }: Props = $props();
+  let { active = $bindable(), content, onsearch, infoAvailable, oninset, quick }: Props = $props();
+
+  // The sky shrinks beside (wide screens) or above (phones) the open sheet, so the camera frame,
+  // the telescope marker and the object stay in view instead of under the panel.
+  let dockEl = $state<HTMLDivElement>();
+  let sheetEl = $state<HTMLElement>();
+  let tabsEl = $state<HTMLElement>();
+  let lastInset = '';
+  $effect(() => {
+    const d = dockEl;
+    const sh = sheetEl;
+    const tb = tabsEl;
+    if (!d) return;
+    const measure = () => {
+      const a = d.getBoundingClientRect();
+      // Wide screens: the tab column (and the drawer beside it) on the right. Phones: the tab
+      // bar is left over the sky's foot; only an open sheet shrinks the sky from below.
+      const col = tb && tb.getBoundingClientRect().height > tb.getBoundingClientRect().width;
+      const edge = sh ?? (col ? tb : null);
+      let i = { right: 0, bottom: 0 };
+      if (edge) {
+        const b = edge.getBoundingClientRect();
+        i = col
+          ? { right: Math.max(0, Math.round(a.right - b.left + 4)), bottom: 0 }
+          : { right: 0, bottom: Math.max(0, Math.round(a.bottom - b.top)) };
+      }
+      const k = `${i.right},${i.bottom}`;
+      if (k !== lastInset) {
+        lastInset = k;
+        oninset?.(i);
+      }
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(d);
+    if (sh) ro.observe(sh);
+    if (tb) ro.observe(tb);
+    return () => ro.disconnect();
+  });
 
   const TABS: { id: DockPanel; label: string; icon: string }[] = [
     {
@@ -58,7 +100,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="dock" class:open={!!active} onkeydown={key}>
+<div class="dock" class:open={!!active} onkeydown={key} bind:this={dockEl}>
   <div class="quick">
     <button class="qbtn" onclick={onsearch} aria-label="Search the sky (Ctrl K)">
       <svg viewBox="0 0 24 24" aria-hidden="true"
@@ -67,9 +109,12 @@
     </button>
     <button class="qbtn wide" onclick={() => (active = 'targets')}>Tonight's best</button>
   </div>
+  {#if quick}
+    <div class="strip">{@render quick()}</div>
+  {/if}
 
   {#if active}
-    <section class="sheet" aria-labelledby="dock-title">
+    <section class="sheet" aria-labelledby="dock-title" bind:this={sheetEl}>
       <header>
         <h2 id="dock-title">{TITLES[active]}</h2>
         <button class="close" onclick={() => (active = null)} aria-label="Close panel">×</button>
@@ -81,7 +126,7 @@
     </section>
   {/if}
 
-  <nav class="tabs" aria-label="Sky panels">
+  <nav class="tabs" aria-label="Sky panels" bind:this={tabsEl}>
     {#each TABS as t (t.id)}
       <button
         aria-pressed={active === t.id}
@@ -123,6 +168,20 @@
     background: color-mix(in srgb, var(--ink-1) 85%, transparent);
     border-color: var(--rule);
     backdrop-filter: blur(6px);
+  }
+  /* Quick toggles: a column down the left edge, always on the sky. */
+  .strip {
+    position: absolute;
+    top: calc(var(--s3) + var(--touch) + var(--s2));
+    left: var(--s3);
+    display: grid;
+    gap: 4px;
+  }
+  /* Phones: the open sheet needs the room; the strip comes back when it closes. */
+  @media (max-width: 899px) {
+    .dock.open .strip {
+      display: none;
+    }
   }
   .qbtn.wide {
     padding: 0 var(--s3);
@@ -229,7 +288,8 @@
       left: 0;
       right: 0;
       bottom: calc(var(--touch) + 18px);
-      max-height: 62%;
+      /* Leaves the sky (and the camera frame) a usable strip above the sheet. */
+      max-height: 55%;
       border-radius: var(--r-sheet) var(--r-sheet) 0 0;
       border-bottom: 0;
     }

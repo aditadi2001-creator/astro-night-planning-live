@@ -268,6 +268,11 @@ export function surveysByBand(): { band: (typeof BANDS)[number]; surveys: Survey
   })).filter((g) => g.surveys.length > 0);
 }
 
+/** Short name for tabs and buttons: "Pan-STARRS DR1 colour", "H-alpha VTSS". */
+export function shortSurveyLabel(label: string): string {
+  return label.replace(/^H-alpha \((.+)\)$/, 'H-alpha $1').replace(/ \(.+\)$/, '');
+}
+
 export function surveyById(id: string): Survey | undefined {
   return SURVEYS.find((s) => s.id === id);
 }

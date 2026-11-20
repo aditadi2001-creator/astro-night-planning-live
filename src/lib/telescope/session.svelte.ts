@@ -5,8 +5,17 @@
  */
 import { alpacaAdapter } from './alpaca';
 import { ninaAdapter } from './nina';
+import { serialAdapter, SerialLink, type SerialProtocol } from './serial';
 import { simulatorAdapter } from './simulator';
-import { TelescopeError, type AdapterKind, type MountState, type TelescopeAdapter } from './types';
+import {
+  NO_CAPS,
+  TelescopeError,
+  type AdapterKind,
+  type Capabilities,
+  type GotoOptions,
+  type MountState,
+  type TelescopeAdapter,
+} from './types';
 
 export interface TelescopeSettings {
   kind: AdapterKind;
@@ -17,10 +26,20 @@ export interface TelescopeSettings {
   device: number;
   /** Go through the bridge served by this page's own origin (tools/bridge). */
   viaBridge: boolean;
+  /** Direct (serial) connection: the hand controller's protocol. */
+  protocol: SerialProtocol;
+  /** Direct connection: the mount works in J2000 instead of the position of date. */
+  serialJ2000: boolean;
 }
 
 const KEY = 'anp.telescope.v1';
-const DEFAULT_PORT: Record<AdapterKind, number> = { simulator: 0, nina: 1888, alpaca: 11111 };
+const DEFAULT_PORT: Record<AdapterKind, number> = {
+  simulator: 0,
+  nina: 1888,
+  alpaca: 11111,
+  serial: 0,
+};
+const KINDS: AdapterKind[] = ['simulator', 'nina', 'alpaca', 'serial'];
 
 function loadSettings(): TelescopeSettings {
   const d: TelescopeSettings = {
@@ -29,15 +48,19 @@ function loadSettings(): TelescopeSettings {
     port: 1888,
     device: 0,
     viaBridge: false,
+    protocol: 'lx200',
+    serialJ2000: false,
   };
   try {
     const v = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<TelescopeSettings>;
     return {
-      kind: v.kind === 'nina' || v.kind === 'alpaca' || v.kind === 'simulator' ? v.kind : d.kind,
+      kind: v.kind && KINDS.includes(v.kind) ? v.kind : d.kind,
       host: typeof v.host === 'string' && v.host.trim() ? v.host.trim() : d.host,
       port: Number.isInteger(v.port) ? (v.port as number) : d.port,
       device: Number.isInteger(v.device) ? (v.device as number) : d.device,
       viaBridge: v.viaBridge === true,
+      protocol: v.protocol === 'nexstar' ? 'nexstar' : 'lx200',
+      serialJ2000: v.serialJ2000 === true,
     };
   } catch {
     return d;
@@ -58,6 +81,8 @@ class TelescopeSession {
   /** Off on every load (CLAUDE.md rule 8). */
   control = $state(false);
   follow = $state(false);
+  /** What the current connection can do (reactive, for the panel). */
+  caps = $state<Capabilities>(NO_CAPS);
   private adapter: TelescopeAdapter | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private abort: AbortController | null = null;
@@ -71,7 +96,7 @@ class TelescopeSession {
     }
   }
 
-  private make(site: { lat: number; lon: number }): TelescopeAdapter {
+  private async make(site: { lat: number; lon: number }): Promise<TelescopeAdapter> {
     const s = this.settings;
     const control = () => this.control;
     const hostPort = `${s.host}:${s.port}`;
@@ -88,20 +113,42 @@ class TelescopeSession {
         label: s.viaBridge ? 'Alpaca (through the bridge)' : `Alpaca at ${hostPort}`,
         control,
       });
+    if (s.kind === 'serial')
+      return serialAdapter({
+        wire: await SerialLink.pick(),
+        protocol: s.protocol,
+        j2000: s.serialJ2000,
+        site,
+        control,
+      });
     return simulatorAdapter(site);
+  }
+
+  /** The adapter, for the NINA extras (sequence, framing). */
+  get link(): TelescopeAdapter | null {
+    return this.adapter;
   }
 
   get label(): string {
     return this.adapter?.label ?? '';
   }
 
-  connect(site: { lat: number; lon: number }) {
+  /** Connect; a direct (serial) connection asks for the port, so call this from a click. */
+  async connect(site: { lat: number; lon: number }) {
     this.disconnect();
     this.save();
-    this.adapter = this.make(site);
     this.status = 'connecting';
     this.error = null;
     this.fails = 0;
+    try {
+      this.adapter = await this.make(site);
+      this.caps = this.adapter.caps;
+    } catch (e) {
+      this.status = 'error';
+      const te = e instanceof TelescopeError ? e : new TelescopeError(String(e), 'Try again.');
+      this.error = { message: te.message, hint: te.hint };
+      return;
+    }
     void this.poll();
   }
 
@@ -110,7 +157,9 @@ class TelescopeSession {
     this.timer = null;
     this.abort?.abort();
     this.abort = null;
+    void this.adapter?.close?.();
     this.adapter = null;
+    this.caps = NO_CAPS;
     this.status = 'off';
     this.state = null;
     this.follow = false;
@@ -152,14 +201,22 @@ class TelescopeSession {
   }
 
   /** Control actions; the caller has already asked for confirmation. */
-  async act(kind: 'slew' | 'sync' | 'stop', ra = 0, dec = 0) {
+  async act(
+    kind: 'slew' | 'sync' | 'stop' | 'park' | 'unpark' | 'track' | 'untrack',
+    ra = 0,
+    dec = 0,
+    opts: GotoOptions = {},
+  ) {
     const a = this.adapter;
     if (!a) throw new TelescopeError('Not connected.', 'Connect first.');
     // Read-only means read-only: even "stop" is a command to the mount.
     if (!this.control)
       throw new TelescopeError('Control is off.', 'Switch on "Enable control" first.');
-    if (kind === 'slew') await a.slew(ra, dec);
+    if (kind === 'slew') await a.slew(ra, dec, opts);
     else if (kind === 'sync') await a.sync(ra, dec);
+    else if (kind === 'park') await a.park?.();
+    else if (kind === 'unpark') await a.unpark?.();
+    else if (kind === 'track' || kind === 'untrack') await a.setTracking?.(kind === 'track');
     else await a.stop();
     // Read straight away so the HUD shows the slew starting.
     if (this.timer) clearTimeout(this.timer);

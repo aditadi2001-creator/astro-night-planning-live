@@ -9,8 +9,10 @@ import {
   catalogEntries,
   constellationEntries,
   dsoEntries,
+  engineEntries,
   norm,
   notableEntries,
+  onlineCatalogEntries,
   search,
   solarSystemEntries,
   starEntries,
@@ -87,22 +89,28 @@ function constellations(
 
 function init(): Promise<void> {
   ready ??= (async () => {
-    const [manifest, core, stars, notable, sky] = await Promise.all([
+    const [manifest, core, stars, notable, sky, ngc, nebulae] = await Promise.all([
       json<{ catalogs: Record<string, number> }>('catalog/manifest-v1.json'),
       json<Shard>('catalog/dso-core-v1.json'),
       json<Shard>('catalog/stars-v1.json'),
       json<Shard>('catalog/notable-v1.json'),
       json<Parameters<typeof constellations>[0]>('skydata/skycultures/western/index.json'),
+      // The sky engine's own object names: everything it draws must be findable.
+      json<{ rows: unknown[][] }>('skydata/dsonames.json').catch(() => null),
+      json<{ rows: unknown[][] }>('skydata/nebulae.json').catch(() => null),
     ]);
     entries = [
       ...solarSystemEntries(),
       ...constellationEntries(constellations(sky, stars)),
       ...catalogEntries(manifest.catalogs),
+      ...onlineCatalogEntries(),
       ...surveyEntries(SURVEYS),
       ...notableEntries(notable),
       ...starEntries(stars),
       ...dsoEntries(core),
     ];
+    const known = new Set(entries.flatMap((x) => x.ids));
+    entries = entries.concat(engineEntries(known, ngc, nebulae));
   })();
   return ready;
 }

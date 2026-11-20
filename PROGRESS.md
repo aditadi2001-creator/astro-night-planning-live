@@ -367,3 +367,26 @@ OpenAQ air quality missing. Cause: that work lived on a parallel branch never me
   rollover). Sources: meteoblue astronomy seeing, IQAir, WAQI, aviationweather.gov METARs,
   Open-Meteo historical forecasts and ERA5, RAA 2019 (Kavalur), Parihar et al. 2015 via arXiv
   1802.00372 (Hanle).
+
+## Sky usability, search, surveys and mount control ✅ (2026-11-20, owner's request)
+
+- **Nothing hides the sky:** the sky shrinks beside (PC) or above (phone) any open panel, so the
+  camera frame and its controls are never under the Info panel (D52). The frame carries a label
+  with telescope, camera, field, pixel scale, focal length, PA and mosaic, as in Stellarium (D53).
+  Six quick switches stay on the sky: Frame, Survey, Lines, Grid, Ground, Air.
+- **Theme:** charcoal and dark grey instead of navy (D54).
+- **Search** (D55): 1,327 objects the sky draws but search missed (NGC 3184, NGC 5907, IC 27…)
+  are now indexed; "sdss" lists SDSS DR16 galaxies/quasars around the view (176 near M 51, from
+  VizieR); SDSS J…, 2MASS, Mrk, MCG, UGCA… designations go to SIMBAD by themselves; a typo-match
+  bug that answered "Mrk 421" with Sirius is fixed.
+- **Surveys from the object's Info** (D56): the four surveys it looks best in (by type, size and
+  sky coverage), any other survey to preview, and one tap to show it in the sky.
+- **Mount control** (D57): GoTo with Sun/horizon/meridian checks, sync, stop, park, tracking; NINA
+  plate-solve centre and rotate, set a sequence target, load a sequence, framing assistant; direct
+  USB (LX200, NexStar/SynScan) in Chrome/Edge.
+- Evidence: 429+ tests (new `tests/mount-control.test.ts`, `tests/search-coverage.test.ts`);
+  browser checks at 1440, 768 and 375 px (frame with Info open, SDSS list at M 51, simulator GoTo,
+  Sun GoTo refused until the filter tick).
+- **Not verified on hardware:** a real NINA (sequence JSON shape, centring), a real LX200/NexStar
+  hand controller, Web Serial on Android. The NINA target list relies on the plugin's reflected
+  `Target` field; when it is not found, the container number can be typed.

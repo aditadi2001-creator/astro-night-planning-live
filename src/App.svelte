@@ -279,6 +279,8 @@
   // ---- search: Ctrl/Cmd-K anywhere opens the sky search ----
   // ---- the sky's dock, foreground and custom horizon -------------------------------------
   let dock = $state<DockPanel | null>(null);
+  /** Part of the sky the open dock sheet covers; the sky shrinks so nothing hides under it. */
+  let dockInset = $state({ right: 0, bottom: 0 });
   let skyRef = $state<ReturnType<typeof SkyView>>();
   let foreground = $state<ForegroundState>(loadForeground());
   let customHorizon = $state<CustomHorizon | null>(untrack(() => loadCustomHorizon(place)));
@@ -1051,7 +1053,7 @@
     // Phone status bar / browser chrome: black in night mode.
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', night ? '#000000' : '#0b1430');
+      ?.setAttribute('content', night ? '#000000' : '#0d0e10');
     try {
       localStorage.setItem('anp:night', night ? '1' : '0');
     } catch {
@@ -1284,7 +1286,12 @@
   </div>
 {/if}
 {#if searchOpen}
-  <SearchDialog onclose={() => (searchOpen = false)} onpick={pickResult} onsurvey={pickSurvey} />
+  <SearchDialog
+    onclose={() => (searchOpen = false)}
+    onpick={pickResult}
+    onsurvey={pickSurvey}
+    centre={() => skyRef?.viewCentre() ?? null}
+  />
 {/if}
 
 <div class="head" class:on-sky={page === 'sky'} bind:clientHeight={headH}>
@@ -1369,11 +1376,26 @@
                 }
               }}
               bind:this={skyRef}
+              inset={dockInset}
               onopen={(p) => (dock = dock === p ? null : p)}
               onsearch={openSearch}
             >
               {#snippet overlay()}
-                <P.SkyDock bind:active={dock} onsearch={openSearch} infoAvailable={!!selectedInfo}>
+                <P.SkyDock
+                  bind:active={dock}
+                  onsearch={openSearch}
+                  infoAvailable={!!selectedInfo}
+                  oninset={(i) => (dockInset = i)}
+                >
+                  {#snippet quick()}
+                    <P.QuickToggles
+                      frameOn={Object.values(shownFrames).some(Boolean)}
+                      ontoggleframe={() => skyRef?.frame()}
+                      bind:layers
+                      surveyLabel={surveyById(layers.survey)?.label ?? 'Survey'}
+                      {surveyStatus}
+                    />
+                  {/snippet}
                   {#snippet content(p: DockPanel)}
                     {#if p === 'targets'}
                       <TargetsPanel
@@ -1418,6 +1440,15 @@
                           ongoto={() => skyRef?.centreSelected()}
                           onframe={() => {
                             if (!Object.values(shownFrames).some(Boolean)) skyRef?.frame();
+                          }}
+                          skySurvey={layers.surveys ? layers.survey : null}
+                          onsurvey={(id) => {
+                            // From the object's own survey list: show it under the stars and
+                            // bring the object to the middle so it is in view.
+                            layers = id
+                              ? { ...layers, surveys: true, survey: id }
+                              : { ...layers, surveys: false };
+                            if (id) skyRef?.centreSelected();
                           }}
                         />
                       {:else}

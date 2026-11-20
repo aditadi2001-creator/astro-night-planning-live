@@ -178,6 +178,8 @@
   /** Mosaic panes of the active setup (true positions on the sky). */
   let panes = $state<{ n: number; d: string; x: number; y: number }[]>([]);
   let lastKey = '';
+  /** Screen corners of the active north-up frame (for its on-sky label). */
+  let activePts: [number, number][] = [];
   /** Half-extent (px) of the drawn mosaic from the screen centre, for "zoom to frame". */
   let paneExt: { x: number; y: number } | null = null;
   /** PA of the active frame's "up" side from the current screen geometry. */
@@ -240,6 +242,7 @@
         );
         if (pts.some((p) => !p)) continue;
         const xy = pts as [number, number][];
+        if (k === active) activePts = xy;
         out.push({
           id: k,
           d: `M${xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L')}Z`,
@@ -283,9 +286,11 @@
       }
       panes = out;
       paneExt = out.length ? { x: ex, y: ey } : null;
+      paneBox = out.length ? { x0: w / 2 - ex, y0: h / 2 - ey } : null;
     } else {
       if (panes.length) panes = [];
       paneExt = null;
+      paneBox = null;
     }
     if (mode === 'nightscape') nsPath = nightscapePath(s, c);
     else if (nsPath) nsPath = '';
@@ -429,6 +434,76 @@
   }
 
   // ---- drawing ------------------------------------------------------------------
+  let paneBox = $state<{ x0: number; y0: number } | null>(null);
+  /**
+   * Where the frame's label goes: just above the top-left of the drawn frame (or mosaic), kept
+   * on the screen. Stellarium's Oculars plugin labels its sensor frame the same way.
+   */
+  const label = $derived.by(() => {
+    void northA;
+    let x0: number;
+    let y0: number;
+    if (mode === 'sensor') {
+      if (paneBox) ({ x0, y0 } = paneBox);
+      else if (northUp && activePts.length) {
+        x0 = Math.min(...activePts.map((p) => p[0]));
+        y0 = Math.min(...activePts.map((p) => p[1]));
+      } else {
+        const r = rect(active);
+        const th = (r.rot * Math.PI) / 180;
+        const hx = Math.abs((r.w / 2) * Math.cos(th)) + Math.abs((r.h / 2) * Math.sin(th));
+        const hy = Math.abs((r.w / 2) * Math.sin(th)) + Math.abs((r.h / 2) * Math.cos(th));
+        x0 = cx - hx;
+        y0 = cy - hy;
+      }
+    } else if (mode === 'eyepiece') {
+      x0 = cx - epR;
+      y0 = cy - epR;
+    } else {
+      x0 = cx - 120;
+      y0 = 48;
+    }
+    return {
+      // Clear of the quick switches down the left edge.
+      x: Math.max(72, Math.min(w - 300, x0)),
+      // Below the search row and the quick switches' top.
+      y: Math.max(76, Math.min(h - 40, y0 - 26)),
+    };
+  });
+  /** Shorten a label line to the room left on the screen (about 6.6 px per character). */
+  function fit(t: string): string {
+    const n = Math.max(12, Math.floor((w - label.x - 8) / 6.6));
+    return t.length <= n ? t : `${t.slice(0, n - 1)}…`;
+  }
+  const labelLines = $derived.by((): string[] => {
+    const paTxt = `PA ${(((pa % 360) + 360) % 360).toFixed(0)}°`;
+    if (mode === 'sensor')
+      return [
+        w < 600
+          ? `${setup.telescope} + ${setup.camera}`
+          : `${SETUP_LABELS[active]} · ${setup.telescope} + ${setup.camera}`,
+        [
+          fmtFov(stats),
+          `${(stats.pixelScale * binning).toFixed(2)}″/px${binning > 1 ? ` (bin ${binning})` : ''}`,
+          `${Math.round(stats.effFocalMm)} mm f/${stats.fRatio.toFixed(1)}`,
+          `${paTxt}${northUp ? '' : ' (screen)'}`,
+          mosaic.cols * mosaic.rows > 1 ? `mosaic ${mosaic.cols}×${mosaic.rows}` : '',
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      ];
+    if (mode === 'eyepiece')
+      return [
+        `${setup.telescope} · ${epFocal} mm ${epAfov}° eyepiece`,
+        `${ep.magnification.toFixed(0)}× · true field ${fmtAngle(ep.trueFovDeg)} · exit pupil ${ep.exitPupilMm.toFixed(1)} mm`,
+      ];
+    if (mode === 'nightscape')
+      return [
+        `Nightscape · ${sensor.name}, ${nsLens} mm f/${nsF}`,
+        `${ns.fovW.toFixed(1)}° × ${ns.fovH.toFixed(1)}° · NPF ${ns.npf.toFixed(1)} s`,
+      ];
+    return [];
+  });
   const cx = $derived(w / 2);
   const cy = $derived(h / 2);
   /** Screen-aligned frame of a setup (rotation relative to the screen). */
@@ -497,6 +572,21 @@
       {#each TELRAD_RINGS as d (d)}
         <circle {cx} {cy} r={(d / 2) * pxPerDeg} class="telrad" />
       {/each}
+    {/if}
+    {#if labelLines.length}
+      <text
+        class="flabel"
+        x={label.x}
+        y={label.y}
+        fill={mode === 'nightscape'
+          ? '#c8a2ff'
+          : mode === 'eyepiece'
+            ? '#d0d0d0'
+            : FRAME_COLORS[active]}
+      >
+        <tspan x={label.x} dy="0" class="l1">{fit(labelLines[0] ?? '')}</tspan>
+        <tspan x={label.x} dy="15">{fit(labelLines[1] ?? '')}</tspan>
+      </text>
     {/if}
   </svg>
 {/if}
@@ -715,6 +805,17 @@
     stroke-width: 1.2;
     opacity: 0.9;
   }
+  .ocular .flabel {
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    paint-order: stroke;
+    stroke: rgb(0 0 0 / 0.85);
+    stroke-width: 3px;
+    stroke-linejoin: round;
+  }
+  .ocular .flabel .l1 {
+    font-weight: 600;
+  }
   .ocular .pane-n {
     font-size: 12px;
     text-anchor: middle;
@@ -849,6 +950,12 @@
   }
   .num input {
     width: 54px;
+  }
+  /* A short sky (phone with a panel open): the frame's own label is enough. */
+  @container sky-stage (max-height: 420px) {
+    .oc-info {
+      display: none;
+    }
   }
   @media (max-width: 640px) {
     .oc-info {

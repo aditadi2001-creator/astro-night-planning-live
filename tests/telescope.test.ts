@@ -32,18 +32,30 @@ describe('allow-lists (read-only by default)', () => {
     expect(ninaAllowed('/equipment/mount/info', false)).toBe(true);
     expect(ninaAllowed('/equipment/mount/slew?ra=1&dec=2', false)).toBe(false);
     expect(ninaAllowed('/equipment/mount/slew?ra=1&dec=2', true)).toBe(true);
-    // Never allowed, even with control: park, flip, connect, and the endpoint exposing API keys.
+    // Park, tracking and the sequence target are control actions now (owner's request, 20 Nov).
+    expect(ninaAllowed('/equipment/mount/park', false)).toBe(false);
+    expect(ninaAllowed('/equipment/mount/park', true)).toBe(true);
+    expect(ninaAllowed('/sequence/set-target', false)).toBe(false);
+    expect(ninaAllowed('/sequence/json', false)).toBe(true);
+    // Never allowed, even with control: flip, connect, starting a sequence, and the endpoint
+    // exposing API keys.
     for (const p of [
-      '/equipment/mount/park',
+      '/sequence/start',
       '/equipment/mount/flip',
       '/equipment/mount/connect',
       '/profile/show',
     ])
       expect(ninaAllowed(p, true)).toBe(false);
     expect(alpacaAllowed('RightAscension', false)).toBe(true);
-    expect(alpacaAllowed('slewtocoordinatesasync', false)).toBe(false);
-    expect(alpacaAllowed('slewtocoordinatesasync', true)).toBe(true);
-    expect(alpacaAllowed('park', true)).toBe(false);
+    expect(alpacaAllowed('slewtocoordinatesasync', false, 'PUT')).toBe(false);
+    expect(alpacaAllowed('slewtocoordinatesasync', true, 'PUT')).toBe(true);
+    // Every PUT is control; reads are GET only.
+    expect(alpacaAllowed('park', false, 'PUT')).toBe(false);
+    expect(alpacaAllowed('park', true, 'PUT')).toBe(true);
+    expect(alpacaAllowed('tracking', false)).toBe(true);
+    expect(alpacaAllowed('tracking', false, 'PUT')).toBe(false);
+    expect(alpacaAllowed('tracking', true, 'PUT')).toBe(true);
+    expect(alpacaAllowed('connected', true, 'PUT')).toBe(false);
   });
   it('the bridge uses the same lists and routes', () => {
     expect(bridge.NINA_READ).toEqual([...NINA_READ]);

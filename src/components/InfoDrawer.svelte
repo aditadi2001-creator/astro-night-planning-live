@@ -37,7 +37,8 @@
   import { ribbonSpan } from '../lib/ribbon';
   import { savePlan, raHms, decDms, type PlanItem } from '../lib/plan/plan';
   import { ang2pixNest, toGalactic } from '../lib/sky/healpix';
-  import { surveyById } from '../lib/sky/surveys';
+  import { shortSurveyLabel, surveyById, surveysByBand } from '../lib/sky/surveys';
+  import { bestSurveys, covers } from '../lib/sky/survey-pick';
   import { fmtTime } from '../lib/time/format';
   import AltChart from './AltChart.svelte';
 
@@ -54,6 +55,10 @@
     onclose?: () => void;
     ongoto: () => void;
     onframe: () => void;
+    /** Show this survey in the sky ('' turns the survey off). */
+    onsurvey?: (id: string) => void;
+    /** The survey the sky shows now (null when none). */
+    skySurvey?: string | null;
   }
   let {
     info,
@@ -68,6 +73,8 @@
     onclose,
     ongoto,
     onframe,
+    onsurvey,
+    skySurvey = null,
   }: Props = $props();
 
   const minute = $derived(Math.floor(time.getTime() / 60_000));
@@ -223,8 +230,14 @@
   });
 
   // ---- survey gallery -------------------------------------------------------------------
-  const GALLERY = ['dss', '2mass', 'allwise', 'panstarrs', 'halpha', 'galex'];
-  let gal_i = $state(0);
+  /** The surveys this object looks best in (by what it is, its size and the sky it is in). */
+  const picks = $derived(bestSurveys(kind, info.ra2000, info.dec2000, maj, 4));
+  /** Preview: one of the picks, or any other survey chosen from "More surveys". */
+  let galId = $state<string | null>(null);
+  $effect(() => {
+    void info.name;
+    galId = null;
+  });
   function pixAt(order: number, galactic: boolean): number {
     const { l, b } = galactic
       ? toGalactic(info.ra2000, info.dec2000)
@@ -235,7 +248,10 @@
   const gallery = $derived.by(() => {
     const sizeDeg = Math.max(0.25, ((maj ?? 6) / 60) * 4);
     const order = Math.max(3, Math.min(9, Math.round(Math.log2(58.6 / sizeDeg))));
-    return GALLERY.map((id) => surveyById(id))
+    const ids = picks.map((p) => p.survey.id);
+    if (galId && !ids.includes(galId)) ids.push(galId);
+    return ids
+      .map((id) => surveyById(id))
       .filter((s): s is NonNullable<typeof s> => !!s)
       .map((s) => {
         const base = s.servers.find((u) => !u.includes('cds.unistra.fr')) ?? s.servers[0] ?? '';
@@ -247,7 +263,14 @@
       });
   });
 
-  const galCurrent = $derived(gallery[gal_i] ?? null);
+  const galCurrent = $derived(gallery.find((g) => g.s.id === galId) ?? gallery[0] ?? null);
+  const galWhy = $derived(picks.find((p) => p.survey.id === galCurrent?.s.id)?.why ?? null);
+  const moreBands = $derived(
+    surveysByBand().map((g) => ({
+      band: g.band,
+      surveys: g.surveys.filter((x) => covers(x.id, info.ra2000, info.dec2000) && !x.fields),
+    })),
+  );
 
   // ---- notes, plan, favorite ------------------------------------------------------------
   const NOTES = 'anp.notes.v1';
@@ -368,27 +391,71 @@
   {#if !body}
     <section class="gallery">
       <h4>Survey images</h4>
+      <p class="src">Best for this {kindLabel.toLowerCase()}, best first. Tap one to preview it.</p>
       <div class="gal-switch" role="tablist" aria-label="Survey">
-        {#each gallery as g, i (g.s.id)}
-          <button role="tab" aria-selected={gal_i === i} onclick={() => (gal_i = i)}
-            >{g.s.label.replace(/ \(.+\)$/, '')}</button
+        {#each gallery as g (g.s.id)}
+          <button
+            role="tab"
+            aria-selected={galCurrent?.s.id === g.s.id}
+            onclick={() => (galId = g.s.id)}
+            >{shortSurveyLabel(g.s.label)}{skySurvey === g.s.id ? ' ●' : ''}</button
           >
         {/each}
       </div>
       {#if galCurrent}
-        <img
-          src={galCurrent.url}
-          alt={`${info.name} in ${galCurrent.s.label}`}
-          loading="lazy"
-          width="256"
-          height="256"
-          onerror={(e) => ((e.currentTarget as HTMLImageElement).style.opacity = '0.15')}
-        />
+        <button
+          class="gal-img"
+          onclick={() => onsurvey?.(galCurrent.s.id)}
+          title={`Show ${galCurrent.s.label} in the sky`}
+        >
+          {#key galCurrent.url}
+            <img
+              src={galCurrent.url}
+              alt={`${info.name} in ${galCurrent.s.label}`}
+              loading="lazy"
+              width="256"
+              height="256"
+              onerror={(e) => ((e.currentTarget as HTMLImageElement).style.opacity = '0.15')}
+            />
+          {/key}
+        </button>
+        {#if galWhy}<p class="why">{galWhy}</p>{/if}
+        <div class="actions">
+          {#if skySurvey === galCurrent.s.id}
+            <button aria-pressed="true" onclick={() => onsurvey?.('')}
+              >Shown in the sky · turn off</button
+            >
+          {:else}
+            <button class="primary" onclick={() => onsurvey?.(galCurrent.s.id)}
+              >Show {shortSurveyLabel(galCurrent.s.label)} in the sky</button
+            >
+          {/if}
+        </div>
         <p class="src">
-          One HiPS tile around the object (not centred), streamed from the survey's server. {galCurrent
-            .s.shows}
+          Preview: one HiPS tile around the object (not centred), streamed from the survey's server. {galCurrent
+            .s.shows}{galCurrent.s.coverageNote ? ` ${galCurrent.s.coverageNote}` : ''}
         </p>
       {/if}
+      <label class="more-s"
+        >More surveys
+        <select
+          value=""
+          onchange={(e) => {
+            const el = e.currentTarget as HTMLSelectElement;
+            if (el.value) galId = el.value;
+            el.value = '';
+          }}
+        >
+          <option value="">Preview another survey…</option>
+          {#each moreBands as g (g.band.id)}
+            {#if g.surveys.length}
+              <optgroup label={g.band.label}>
+                {#each g.surveys as x (x.id)}<option value={x.id}>{x.label}</option>{/each}
+              </optgroup>
+            {/if}
+          {/each}
+        </select></label
+      >
     </section>
   {/if}
 
@@ -672,6 +739,11 @@
     border: 1px solid var(--nogo);
     border-radius: var(--r-input);
   }
+  .actions .primary,
+  .actions [aria-pressed='true'] {
+    border-color: var(--brass);
+    color: var(--brass);
+  }
   .actions {
     display: flex;
     flex-wrap: wrap;
@@ -716,6 +788,34 @@
   .gal-switch button[aria-selected='true'] {
     border-color: var(--brass);
     color: var(--brass);
+  }
+  .gal-img {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: zoom-in;
+    min-height: 0;
+  }
+  .why {
+    margin: var(--s1) 0;
+    font-size: var(--fs-14);
+  }
+  .more-s {
+    display: grid;
+    gap: 4px;
+    margin-top: var(--s2);
+    font-size: var(--fs-12);
+    color: var(--text-2);
+  }
+  .more-s select {
+    font: inherit;
+    font-size: var(--fs-14);
+    color: var(--text);
+    background: var(--ink-0);
+    border: 1px solid var(--ui-line);
+    border-radius: var(--r-input);
+    padding: 6px 8px;
   }
   .gallery img {
     width: 100%;

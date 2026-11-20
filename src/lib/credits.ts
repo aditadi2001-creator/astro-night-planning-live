@@ -301,7 +301,8 @@ const CORE_CREDITS: Credit[] = [
     attribution:
       'This research has made use of the VizieR catalogue access tool, CDS, Strasbourg, France (Ochsenbein et al. 2000, A&AS 143, 23).',
     shortCredit: 'Catalog access: VizieR (CDS)',
-    usage: 'Used by the build pipeline to download the Hipparcos catalogue.',
+    usage:
+      'Used by the build pipeline to download the Hipparcos catalogue, and by search to list SDSS galaxies and quasars around the view (asked only when you choose that catalog; cached on the device for 30 days).',
     kind: 'data',
     status: 'live',
   },
@@ -447,6 +448,19 @@ const CORE_CREDITS: Credit[] = [
     shortCredit: 'Online lookup: SIMBAD via Sesame (CDS)',
     usage:
       'Positions of the curated notable objects (resolved once at build time) and the on-request online search for names not in the local catalogs (cached on the device for 30 days).',
+    kind: 'data',
+    status: 'live',
+  },
+  {
+    id: 'sdss-dr16',
+    name: 'Sloan Digital Sky Survey DR16 photometric catalogue (VizieR V/154)',
+    url: 'https://vizier.cds.unistra.fr/viz-bin/VizieR?-source=V/154',
+    license: 'SDSS data are public; acknowledgement requested',
+    attribution:
+      'SDSS DR16, Ahumada et al. 2020, ApJS 249, 3 (VizieR V/154). Funding for SDSS-IV has been provided by the Alfred P. Sloan Foundation, the U.S. Department of Energy Office of Science, and the Participating Institutions.',
+    shortCredit: 'SDSS objects: SDSS DR16 via VizieR',
+    usage:
+      'Search → "SDSS galaxies and quasars (online)": objects with SDSS spectra (redshift, r magnitude) around the view centre, fetched from the VizieR CfA mirror only when chosen.',
     kind: 'data',
     status: 'live',
   },

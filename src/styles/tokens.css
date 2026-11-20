@@ -1,7 +1,7 @@
 /*
  * Design tokens — "Atlas at the eyepiece" (DESIGN.md). Components use these
  * variables only, never raw hex values. Three themes swap values:
- *   dark (default, atlas navy) · light ("chart paper") · night (red only, G = B = 0).
+ *   dark (default, charcoal: near-black page, dark-grey panels) · light ("chart paper") · night (red only, G = B = 0).
  * Night mode wins over the light theme.
  */
 
@@ -11,13 +11,13 @@
   color-scheme: dark;
 
   /* ---- colour: dark (default) ---- */
-  --ink-0: #0b1430;
-  --ink-1: #121e44;
-  --ink-2: #1b2a5a;
-  --rule: #2b3c72;
-  --ui-line: #4a5c94;
-  --text: #e7ebf6;
-  --text-2: #a3aecd;
+  --ink-0: #0d0e10;
+  --ink-1: #17181b;
+  --ink-2: #24262a;
+  --rule: #33363c;
+  --ui-line: #6b707a;
+  --text: #ececee;
+  --text-2: #abaeb5;
   --brass: #e0ae4f;
   --brass-ink: #1a1300;
   --go: #7ed9a8;
@@ -34,11 +34,11 @@
   --obj-open: #ebcf6e;
   --obj-globular: #f2b98a;
   --obj-remnant: #c9a6f0;
-  --obj-star: #e7ebf6;
+  --obj-star: #ececee;
   --obj-planet: #e0ae4f;
 
   /* charts */
-  --chart-lo: #1b2a5a;
+  --chart-lo: #24262a;
   --chart-hi: #e0ae4f;
   --chart-cool: #8fb8f2;
   --chart-warm: #f29a8a;
@@ -107,9 +107,9 @@
   --font: var(--font-ui);
   --mono: var(--font-ui);
   --sky-filter: var(--media-filter);
-  --sky-horizon: #1a2440;
-  --sky-mid: #070a14;
-  --sky-top: #03040a;
+  --sky-horizon: #1c1d21;
+  --sky-mid: #0a0a0c;
+  --sky-top: #040405;
 }
 
 :root[data-theme='light'] {

@@ -153,3 +153,76 @@ export async function resolveOnline(
   }
   throw lastErr instanceof Error ? lastErr : new Error('online lookup failed');
 }
+
+// ---- online catalogs: SDSS DR16 around the view, from VizieR (CfA mirror, CORS open) ------
+
+const VIZIER = [
+  'https://vizier.cfa.harvard.edu/viz-bin/asu-tsv?',
+  'https://vizier.idia.ac.za/viz-bin/asu-tsv?',
+];
+
+/** VizieR TSV (SDSS16, RA, Dec, rmag, zsp, spCl) → entries, brightest first. Exported for tests. */
+export function parseSdssTsv(tsv: string): ResultEntry[] {
+  const out: ResultEntry[] = [];
+  const seen = new Set<string>();
+  for (const line of tsv.split('\n')) {
+    if (!line.startsWith('SDSS J')) continue;
+    const [name, ra, dec, r, z, cls] = line.split('\t').map((s) => s.trim());
+    if (!name || seen.has(name) || !ra || !dec) continue;
+    seen.add(name);
+    const zN = z ? Number(z) : null;
+    const kind = cls === 'QSO' ? 'Quasar' : cls === 'GALAXY' ? 'Galaxy' : (cls ?? 'Object');
+    out.push({
+      kind: 'online',
+      label: name,
+      sub: [
+        `${kind} (SDSS spectrum)`,
+        r ? `r ${Number(r).toFixed(1)}` : '',
+        zN != null && Number.isFinite(zN) ? `redshift ${zN.toFixed(4)}` : '',
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      badges: ['SDSS'],
+      ra: Number(ra),
+      dec: Number(dec),
+      mag: r ? Number(r) : null,
+      sizeDeg: 0.05,
+      type: cls === 'QSO' ? 'quasar' : 'galaxy',
+    });
+  }
+  return out;
+}
+
+/**
+ * SDSS DR16 objects with a spectrum (galaxies and quasars; stars left out) within `radiusDeg` of
+ * a point, brightest first, up to 200. Cached on the device for 30 days per 0.1° cell.
+ */
+export async function sdssAround(
+  ra: number,
+  dec: number,
+  radiusDeg: number,
+  signal?: AbortSignal,
+): Promise<ResultEntry[]> {
+  const rm = Math.round(Math.min(60, Math.max(3, radiusDeg * 60)));
+  const c = `${ra.toFixed(2)}${dec >= 0 ? '+' : ''}${dec.toFixed(2)}`;
+  const q =
+    `-source=V/154/sdss16&-c=${encodeURIComponent(c)}&-c.rm=${rm}` +
+    '&-out=SDSS16,RA_ICRS,DE_ICRS,rmag,zsp,spCl&-out.max=200&-sort=rmag&mode=1&zsp=%3E0.001';
+  let lastErr: unknown = null;
+  for (const base of VIZIER) {
+    try {
+      const r = await fetchJson<{ list: ResultEntry[] }, string>(`sdss:${c}:${rm}`, base + q, {
+        maxAgeMs: 30 * 24 * 3600_000,
+        retries: 0,
+        text: true,
+        ...(signal ? { signal } : {}),
+        transform: (raw) => ({ list: parseSdssTsv(raw) }),
+      });
+      return r.data.list;
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') throw e;
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('SDSS lookup failed');
+}

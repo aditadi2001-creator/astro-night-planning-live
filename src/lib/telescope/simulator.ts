@@ -12,7 +12,7 @@ import {
   localSiderealH,
   nowToJ2000,
 } from './coords';
-import type { MountState, PierSide, TelescopeAdapter } from './types';
+import { NO_CAPS, type MountState, type PierSide, type TelescopeAdapter } from './types';
 
 const D2R = Math.PI / 180;
 const RATE_DEG_S = 4;
@@ -53,6 +53,9 @@ export function simulatorAdapter(
   let { ra, dec } = parkAt(t0);
   let target: { ra: number; dec: number } | null = null;
   let parked = true;
+  let tracking = true;
+  /** Where tracking stopped (alt/az stay fixed: the sky drifts past). */
+  let held: { lst: number } | null = null;
   let pier: PierSide = 'unknown';
   let last = t0.getTime();
 
@@ -62,6 +65,13 @@ export function simulatorAdapter(
     if (parked) {
       ({ ra, dec } = parkAt(date));
       return;
+    }
+    if (!tracking && held) {
+      // Not tracking: the mount stays put on the ground, so its RA moves with sidereal time.
+      const lst = localSiderealH(date, site.lon);
+      const p = j2000ToNow(ra, dec, date);
+      ({ ra, dec } = nowToJ2000(p.ra + (lst - held.lst) * 15, p.dec, date));
+      held = { lst };
     }
     if (!target) return;
     const sep = slerp(ra, dec, target.ra, target.dec, 0).sepDeg;
@@ -79,6 +89,7 @@ export function simulatorAdapter(
   return {
     kind: 'simulator',
     label: 'the simulator',
+    caps: { ...NO_CAPS, park: true, tracking: true },
     read() {
       const date = now();
       step(date);
@@ -96,7 +107,7 @@ export function simulatorAdapter(
         alt,
         az,
         pier: parked ? 'unknown' : pier,
-        tracking: !parked,
+        tracking: !parked && tracking,
         slewing: target != null,
         atPark: parked,
         lstH: lst,
@@ -110,6 +121,9 @@ export function simulatorAdapter(
     slew(r, d) {
       step(now());
       parked = false;
+      // Like most mounts, a GoTo ends tracking at the sidereal rate.
+      tracking = true;
+      held = null;
       last = now().getTime();
       target = { ra: r, dec: d };
       return Promise.resolve();
@@ -123,6 +137,25 @@ export function simulatorAdapter(
     stop() {
       step(now());
       target = null;
+      return Promise.resolve();
+    },
+    park() {
+      step(now());
+      target = null;
+      parked = true;
+      return Promise.resolve();
+    },
+    unpark() {
+      step(now());
+      parked = false;
+      tracking = true;
+      held = null;
+      return Promise.resolve();
+    },
+    setTracking(on) {
+      step(now());
+      tracking = on;
+      held = on ? null : { lst: localSiderealH(now(), site.lon) };
       return Promise.resolve();
     },
   };

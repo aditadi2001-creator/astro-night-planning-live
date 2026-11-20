@@ -136,6 +136,14 @@ Not available: Gum (no machine-readable catalogue found). Curated: 15 quasars/AG
 
 Static data now 27.4 MiB in 870 files (budget 40 MiB); initial JS 164.8 KiB gzipped.
 
+**Search coverage (2026-11-20).** The search worker now also reads the sky engine's own name
+lists, `skydata/dsonames.json` (OpenNGC, 478 KB) and `skydata/nebulae.json` (148 KB), already
+shipped as Pages assets: 1,327 objects the sky draws but Stellarium's catalog lacks (795 IC,
+523 NGC, 9 LBN/LDN) became searchable. Zero R2, zero Worker requests; two more Pages requests
+the first time search opens. **SDSS objects** are listed on request from the VizieR CfA mirror
+(free, CORS open; about 20 KB per query, cached on the device for 30 days per 0.01° cell) and
+never stored by us.
+
 ## 7. Phase 6: offline cache and its effect on the Worker (2026-11-20)
 
 - The service worker answers repeat requests for Worker tiles from its data cache while their

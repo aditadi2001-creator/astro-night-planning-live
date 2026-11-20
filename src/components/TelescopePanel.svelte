@@ -25,8 +25,12 @@
     localSiderealH,
     separation,
   } from '../lib/telescope/coords';
+  import * as Astronomy from 'astronomy-engine';
+  import { j2000ToNow } from '../lib/telescope/coords';
+  import { gotoCheck, type GotoCheck } from '../lib/telescope/safety';
+  import { serialSupported } from '../lib/telescope/serial';
   import { defaultPort, telescope } from '../lib/telescope/session.svelte';
-  import { TelescopeError, type AdapterKind } from '../lib/telescope/types';
+  import { TelescopeError, type AdapterKind, type SequenceTarget } from '../lib/telescope/types';
 
   interface Props {
     place: Place;
@@ -122,7 +126,7 @@
     if (k !== 'simulator') telescope.settings.port = defaultPort(k);
   }
   function connect() {
-    telescope.connect({ lat: place.lat, lon: place.lon });
+    void telescope.connect({ lat: place.lat, lon: place.lon });
   }
   const lst = $derived(st ? (st.lstH ?? localSiderealH(new Date(st.at), place.lon)) : null);
   const ha = $derived(st && lst != null ? hourAngleH(lst, st.raNow) : null);
@@ -161,38 +165,216 @@
   const time = (ms: number) =>
     new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-  // Follow the telescope: the App turns the sky whenever a new reading arrives.
-  // Control: confirmation box for slew / sync.
-  let pending = $state<{ kind: 'slew' | 'sync'; name: string; ra: number; dec: number } | null>(
-    null,
+  // ---- control: every action goes through one confirmation (CLAUDE.md rule 8) -----------
+  const caps = $derived(telescope.caps);
+  /** How a GoTo finishes: plain slew, plate-solve centre (NINA), or centre and rotate. */
+  let finish = $state<'slew' | 'centre' | 'rotate'>('slew');
+  $effect(() => {
+    if (!caps.centre && finish !== 'slew') finish = 'slew';
+  });
+  /** The frame's position angle, for "rotate" and for NINA targets. */
+  const framePa = $derived(frameCenter ? normRotation(frameCenter.pa) : 0);
+  let solarFilter = $state(false);
+  interface Pending {
+    title: string;
+    detail: string;
+    go: string;
+    run: () => Promise<string>;
+    /** A GoTo target (J2000 degrees): checked for the Sun, the horizon and the meridian. */
+    at?: { ra: number; dec: number };
+  }
+  let pending = $state<Pending | null>(null);
+  /** Re-evaluated when the solar-filter tick changes. */
+  const check = $derived<GotoCheck | null>(
+    pending?.at ? checkFor(pending.at.ra, pending.at.dec) : null,
   );
   let actError = $state('');
-  function ask(kind: 'slew' | 'sync') {
-    if (!selected) return;
+  let busy = $state(false);
+
+  /** Safety and timing facts for a target now (J2000 degrees). */
+  function checkFor(ra: number, dec: number): GotoCheck {
+    const now = new Date();
+    const obs = new Astronomy.Observer(place.lat, place.lon, place.elevation);
+    const p = j2000ToNow(ra, dec, now);
+    const hor = Astronomy.Horizon(now, obs, p.ra / 15, p.dec, undefined);
+    const sunEq = Astronomy.Equator(Astronomy.Body.Sun, now, obs, false, true);
+    const sunHor = Astronomy.Horizon(now, obs, sunEq.ra, sunEq.dec, undefined);
+    const sep = separation(ra, dec, sunEq.ra * 15, sunEq.dec).sepDeg;
+    const lstH = localSiderealH(now, place.lon);
+    return gotoCheck({
+      alt: hor.altitude,
+      horizonAlt: horizonAt(hor.azimuth),
+      sunSepDeg: sep,
+      sunAlt: sunHor.altitude,
+      haH: hourAngleH(lstH, p.ra),
+      solarFilter,
+    });
+  }
+
+  function askGoto() {
+    const t = selected;
+    if (!t) return;
     actError = '';
-    pending = { kind, name: selected.name, ra: selected.ra2000, dec: selected.dec2000 };
+    const how =
+      finish === 'rotate'
+        ? `then NINA plate-solves, centres and turns the rotator to PA ${framePa.toFixed(0)}°`
+        : finish === 'centre'
+          ? 'then NINA plate-solves and re-slews until it is centred'
+          : 'a plain slew (the mount’s own pointing)';
+    const ra = t.ra2000;
+    const dec = t.dec2000;
+    pending = {
+      title: `Slew the mount to ${t.name}`,
+      detail: `${raHms(ra)} ${decDms(dec)} (J2000): ${how}.`,
+      go: finish === 'slew' ? 'Slew now' : 'Slew and centre now',
+      at: { ra, dec },
+      run: async () => {
+        await telescope.act('slew', ra, dec, {
+          centre: finish !== 'slew',
+          rotatePa: finish === 'rotate' ? framePa : null,
+        });
+        return finish === 'slew'
+          ? `Slewing to ${t.name}.`
+          : `Slewing to ${t.name}; NINA will plate-solve and centre it (watch NINA for progress).`;
+      },
+    };
+  }
+
+  function askSync() {
+    const t = selected;
+    if (!t) return;
+    actError = '';
+    pending = {
+      title: `Sync the mount on ${t.name}`,
+      detail:
+        'Only sync when the telescope is really centred on it (after a plate solve, or by eye in a crosshair eyepiece): a wrong sync spoils every later GoTo.',
+      go: 'Sync now',
+      run: async () => {
+        await telescope.act('sync', t.ra2000, t.dec2000);
+        return `Synced on ${t.name}.`;
+      },
+    };
+  }
+  function askSimple(kind: 'park' | 'unpark' | 'track' | 'untrack') {
+    actError = '';
+    const WORDS: Record<typeof kind, [string, string, string]> = {
+      park: ['Park the mount', 'It slews to its park position and stops tracking.', 'Park now'],
+      unpark: ['Unpark the mount', 'It can then slew and track again.', 'Unpark now'],
+      track: ['Start tracking', 'The mount follows the sky at the sidereal rate.', 'Track'],
+      untrack: ['Stop tracking', 'Stars will drift out of the field.', 'Stop tracking'],
+    };
+    const words = WORDS[kind];
+    pending = {
+      title: words[0],
+      detail: words[1],
+      go: words[2],
+      run: async () => {
+        await telescope.act(kind);
+        return `${words[0]}: sent.`;
+      },
+    };
   }
   async function confirmAct() {
     const p = pending;
+    if (!p || check?.blocked) return;
     pending = null;
-    if (!p) return;
+    busy = true;
     try {
-      await telescope.act(p.kind, p.ra, p.dec);
-      msg = p.kind === 'slew' ? `Slewing to ${p.name}.` : `Synced on ${p.name}.`;
+      msg = await p.run();
     } catch (e) {
       actError = e instanceof TelescopeError ? `${e.message} ${e.hint}` : String(e);
+    } finally {
+      busy = false;
     }
   }
   async function stop() {
+    pending = null;
     try {
       await telescope.act('stop');
+      msg = 'Stop sent.';
     } catch (e) {
       actError = e instanceof TelescopeError ? `${e.message} ${e.hint}` : String(e);
     }
   }
-  const belowHorizon = $derived(
-    pending && selected ? selected.alt < horizonAt(selected.az) : false,
-  );
+
+  // ---- NINA: the loaded sequence, saved sequences, framing assistant -------------------
+  let seqTargets = $state<SequenceTarget[] | null>(null);
+  let seqIndex = $state(0);
+  let seqNames = $state<string[] | null>(null);
+  let seqPick = $state('');
+  let seqNote = $state('');
+  async function readSequence() {
+    seqNote = '';
+    try {
+      seqTargets = (await telescope.link?.sequenceTargets?.()) ?? [];
+      if (!seqTargets.length)
+        seqNote =
+          'No target containers found in the loaded sequence. Load a sequence (or add a "Deep Sky Object" container in NINA\'s Advanced Sequencer), then read it again; or type the container number below.';
+      seqIndex = Math.min(seqIndex, Math.max(0, seqTargets.length - 1));
+    } catch (e) {
+      seqTargets = [];
+      seqNote = e instanceof TelescopeError ? `${e.message} ${e.hint}` : String(e);
+    }
+  }
+  async function readSaved() {
+    seqNote = '';
+    try {
+      seqNames = (await telescope.link?.listSequences?.()) ?? [];
+      seqPick = seqNames[0] ?? '';
+    } catch (e) {
+      seqNote = e instanceof TelescopeError ? `${e.message} ${e.hint}` : String(e);
+    }
+  }
+  function askSetTarget() {
+    const t = selected;
+    const link = telescope.link;
+    if (!t || !link?.setSequenceTarget) return;
+    actError = '';
+    const idx = seqIndex;
+    const into = seqTargets?.find((x) => x.index === idx)?.name ?? `container ${idx + 1}`;
+    const name = t.name;
+    pending = {
+      title: `Put ${name} into NINA's sequence`,
+      detail: `Replaces the target of "${into}" with ${name}, ${raHms(t.ra2000)} ${decDms(t.dec2000)} (J2000), position angle ${framePa.toFixed(0)}°${frameCenter ? ' (the frame on the sky)' : ''}. The mount does not move.`,
+      go: 'Set target',
+      run: async () => {
+        await link.setSequenceTarget?.(idx, name, t.ra2000, t.dec2000, framePa);
+        await readSequence();
+        return `${name} is now the target of "${into}" in NINA. Start the sequence in NINA when ready.`;
+      },
+    };
+  }
+  function askLoad() {
+    const link = telescope.link;
+    const n = seqPick;
+    if (!n || !link?.loadSequence) return;
+    actError = '';
+    pending = {
+      title: `Load "${n}" in NINA`,
+      detail: 'It replaces the sequence open in NINA (only when no sequence is running).',
+      go: 'Load',
+      run: async () => {
+        await link.loadSequence?.(n);
+        await readSequence();
+        return `Loaded "${n}" in NINA.`;
+      },
+    };
+  }
+  function askFraming() {
+    const t = selected;
+    const link = telescope.link;
+    if (!t || !link?.toFraming) return;
+    actError = '';
+    pending = {
+      title: `Send ${t.name} to NINA's framing assistant`,
+      detail: `${raHms(t.ra2000)} ${decDms(t.dec2000)}, rotation ${framePa.toFixed(0)}°. NINA's framing assistant must have been opened once this session.`,
+      go: 'Send',
+      run: async () => {
+        await link.toFraming?.(t.ra2000, t.dec2000, framePa);
+        return `Sent ${t.name} to NINA's framing assistant.`;
+      },
+    };
+  }
 </script>
 
 <div class="tp">
@@ -262,14 +444,38 @@
     <h3 id="tp-scope">Live telescope</h3>
     {#if telescope.status === 'off'}
       <div class="row" role="group" aria-label="Connect to">
-        {#each [['simulator', 'Simulator'], ['nina', 'NINA'], ['alpaca', 'ASCOM Alpaca']] as [k, l] (k)}
+        {#each [['simulator', 'Simulator'], ['nina', 'NINA'], ['alpaca', 'ASCOM Alpaca'], ['serial', 'USB cable']] as [k, l] (k)}
           <button
             aria-pressed={telescope.settings.kind === k}
             onclick={() => setKind(k as AdapterKind)}>{l}</button
           >
         {/each}
       </div>
-      {#if telescope.settings.kind !== 'simulator'}
+      {#if telescope.settings.kind === 'serial'}
+        <div class="row">
+          <label class="num"
+            >Hand controller <select bind:value={telescope.settings.protocol}>
+              <option value="lx200">LX200 (Meade, OnStep, iOptron in LX200 mode…)</option>
+              <option value="nexstar">NexStar / SynScan (Celestron, Sky-Watcher)</option>
+            </select></label
+          >
+        </div>
+        <label class="chk"
+          ><input type="checkbox" bind:checked={telescope.settings.serialJ2000} /> The mount is set to
+          J2000 (most hand controllers use the position of date; leave this off)</label
+        >
+        {#if !serialSupported()}
+          <p class="warn">
+            This browser cannot open USB/serial ports. Use Chrome or Edge on a computer, or connect
+            through NINA or ASCOM Alpaca.
+          </p>
+        {:else}
+          <p class="note">
+            Plug the mount's USB (or USB-serial) cable into this computer; Connect asks which port.
+            Close other programs using the port first.
+          </p>
+        {/if}
+      {:else if telescope.settings.kind !== 'simulator'}
         <label class="chk"
           ><input type="checkbox" bind:checked={telescope.settings.viaBridge} /> Through the bridge (this
           page is served by the bridge on your mini PC)</label
@@ -399,41 +605,151 @@
       <div class="ctl" class:on={telescope.control}>
         <label class="chk"
           ><input type="checkbox" bind:checked={telescope.control} disabled={!live} />
-          <span><strong>Enable control</strong> (slew and sync; off again on every visit)</span
+          <span
+            ><strong>Enable control</strong> (GoTo, sync, park, tracking{caps.sequence
+              ? ', NINA sequence'
+              : ''}; off again on every visit)</span
           ></label
         >
         {#if telescope.control}
           <p class="note">
             Before every slew, check that cables, dew heaters and people are clear of the telescope.
           </p>
+          <button class="stop big" onclick={stop} disabled={!live}>Stop the mount</button>
+
+          <h4>GoTo {selected ? selected.name : ''}</h4>
+          {#if !selected}
+            <p class="note">Tap an object in the sky (or search for one) to choose the target.</p>
+          {/if}
+          {#if caps.centre}
+            <div class="seg" role="radiogroup" aria-label="How the GoTo finishes">
+              <label><input type="radio" bind:group={finish} value="slew" /> Slew only</label>
+              <label
+                ><input type="radio" bind:group={finish} value="centre" /> Slew and centre (plate solve)</label
+              >
+              <label
+                ><input type="radio" bind:group={finish} value="rotate" disabled={!caps.rotate} />
+                Centre and rotate to the frame (PA {framePa.toFixed(0)}°)</label
+              >
+            </div>
+            <p class="note">
+              Centring uses NINA's own plate solver and camera, repeating until the target is within
+              NINA's centring tolerance: the most exact way to land on an object.
+            </p>
+          {:else if telescope.settings.kind !== 'simulator'}
+            <p class="note">
+              Plate-solve centring needs NINA. Here: slew, then use "Off {selected?.name ??
+                'target'}" below and sync once it is centred.
+            </p>
+          {/if}
           <div class="row">
-            <button onclick={() => ask('slew')} disabled={!selected || !live}
-              >Slew to {selected?.name ?? 'selected'}</button
+            <button class="primary" onclick={askGoto} disabled={!selected || !live || busy}
+              >GoTo {selected?.name ?? 'selected'}</button
             >
-            <button onclick={() => ask('sync')} disabled={!selected || !live}
+            <button onclick={askSync} disabled={!selected || !live || busy}
               >Sync on {selected?.name ?? 'selected'}</button
             >
-            <button class="stop" onclick={stop} disabled={!live}>Stop</button>
           </div>
+          {#if caps.park || caps.tracking}
+            <div class="row">
+              {#if caps.park}
+                <button onclick={() => askSimple(st?.atPark ? 'unpark' : 'park')} disabled={!live}
+                  >{st?.atPark ? 'Unpark' : 'Park'}</button
+                >
+              {/if}
+              {#if caps.tracking}
+                <button
+                  onclick={() => askSimple(st?.tracking ? 'untrack' : 'track')}
+                  disabled={!live || st?.atPark === true}
+                  >{st?.tracking ? 'Stop tracking' : 'Start tracking'}</button
+                >
+              {/if}
+            </div>
+          {/if}
+
+          {#if caps.sequence}
+            <h4>NINA sequence</h4>
+            <p class="note">
+              Put the selected object into a target container of the sequence open in NINA's
+              Advanced Sequencer (with the frame's position angle), load a saved sequence, or send
+              it to the framing assistant. The mount does not move.
+            </p>
+            <div class="row">
+              <button onclick={readSequence}>Read NINA's sequence</button>
+              <button onclick={readSaved}>Saved sequences</button>
+            </div>
+            {#if seqNames}
+              {#if seqNames.length}
+                <div class="row">
+                  <label class="num"
+                    >Sequence <select bind:value={seqPick}>
+                      {#each seqNames as n (n)}<option value={n}>{n}</option>{/each}
+                    </select></label
+                  >
+                  <button onclick={askLoad} disabled={!seqPick}>Load in NINA</button>
+                </div>
+              {:else}
+                <p class="note">NINA lists no saved sequences in its default sequence folder.</p>
+              {/if}
+            {/if}
+            {#if seqTargets}
+              <div class="row">
+                {#if seqTargets.length}
+                  <label class="num"
+                    >Container <select bind:value={seqIndex}>
+                      {#each seqTargets as t (t.index)}<option value={t.index}
+                          >{t.index + 1}. {t.name}{t.ra != null && t.dec != null
+                            ? ` (${raHms(t.ra)} ${decDms(t.dec)})`
+                            : ''}</option
+                        >{/each}
+                    </select></label
+                  >
+                {:else}
+                  <label class="num"
+                    >Container number <input
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={seqIndex + 1}
+                      oninput={(e) =>
+                        (seqIndex = Math.max(
+                          0,
+                          Number((e.currentTarget as HTMLInputElement).value) - 1,
+                        ))}
+                    /></label
+                  >
+                {/if}
+              </div>
+            {/if}
+            <div class="row">
+              <button onclick={askSetTarget} disabled={!selected || seqTargets == null}
+                >Set {selected?.name ?? 'selected'} as the target</button
+              >
+              <button onclick={askFraming} disabled={!selected}>Send to framing assistant</button>
+            </div>
+            {#if seqNote}<p class="note" role="status">{seqNote}</p>{/if}
+          {/if}
         {/if}
         {#if pending}
           <div class="confirm" role="alertdialog" aria-labelledby="tp-confirm">
-            <p id="tp-confirm">
-              {pending.kind === 'slew' ? 'Slew the mount to' : 'Sync the mount on'}
-              <strong>{pending.name}</strong> ({raHms(pending.ra)}
-              {decDms(pending.dec)})?
-            </p>
-            {#if pending.kind === 'slew' && belowHorizon}
-              <p class="warn">It is below your horizon right now.</p>
-            {/if}
-            {#if pending.kind === 'sync'}
-              <p class="note">
-                Only sync when the telescope is really centred on it (after a plate solve).
-              </p>
+            <p id="tp-confirm"><strong>{pending.title}?</strong></p>
+            <p class="note">{pending.detail}</p>
+            {#if check}
+              {#if check.needsSolarFilter}
+                <p class="warn">
+                  Never observe or image the Sun without a certified full-aperture solar filter.
+                </p>
+                <label class="chk"
+                  ><input type="checkbox" bind:checked={solarFilter} /> A certified full-aperture solar
+                  filter is fitted on the front of the telescope (and the finder is capped)</label
+                >
+              {/if}
+              {#if check.blocked}<p class="warn">{check.blocked}</p>{/if}
+              {#each check.warnings as w (w)}<p class="warn soft">{w}</p>{/each}
             {/if}
             <div class="row">
-              <button class="primary" onclick={confirmAct}
-                >{pending.kind === 'slew' ? 'Slew now' : 'Sync now'}</button
+              <button class="primary" onclick={confirmAct} disabled={!!check?.blocked}
+                >{pending.go}</button
               >
               <button onclick={() => (pending = null)}>Cancel</button>
             </div>
@@ -522,6 +838,29 @@
   .stop {
     border-color: var(--nogo);
     color: var(--nogo);
+  }
+  .stop.big {
+    width: 100%;
+    min-height: var(--touch);
+    font-weight: 700;
+  }
+  .warn.soft {
+    color: var(--maybe);
+  }
+  h4 {
+    margin: var(--s2) 0 0;
+    font-size: var(--fs-14);
+  }
+  .seg {
+    display: grid;
+    gap: 4px;
+    font-size: var(--fs-14);
+  }
+  .seg label {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    min-height: 32px;
   }
   .status {
     display: flex;

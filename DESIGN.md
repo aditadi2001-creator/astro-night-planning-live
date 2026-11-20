@@ -11,13 +11,14 @@
 
 ## Art direction
 
-The vernacular of this world is the **printed deep-sky atlas** (deep navy charts, white stars,
+The vernacular of this world is the **printed deep-sky atlas** (dark charts, white stars,
 italic serif object labels, a small symbol per object type) and the **brass setting circles** of a
 telescope mount. The app should feel like a modern atlas you can operate, not a weather dashboard
 with a space background.
 
-- **Navy, not black.** Pages sit on atlas navy. Pure black is reserved for night mode and the sky
-  canvas.
+- **Charcoal, not navy.** Pages sit on a near-black charcoal with dark-grey panels (changed from
+  atlas navy on 20 Nov 2026 at the owner's request: grey keeps the eye on the sky's own colours).
+  Pure black is reserved for night mode and the sky canvas.
 - **Atlas symbols carry meaning.** Every object type has the symbol printed atlases use (ellipse =
   galaxy, square = bright nebula, dashed square = dark nebula, dotted circle = open cluster, circle
   with cross = globular, circle with four rays = planetary nebula, ring = remnant). Symbols appear
@@ -43,17 +44,17 @@ Defined once in `src/styles/tokens.css` as CSS custom properties; three themes s
 
 | Token         | Hex       | Use                                                                           |
 | ------------- | --------- | ----------------------------------------------------------------------------- |
-| `--ink-0`     | `#0B1430` | page (atlas navy)                                                             |
-| `--ink-1`     | `#121E44` | raised surface (sections, dock)                                               |
-| `--ink-2`     | `#1B2A5A` | hover / selected row / inputs                                                 |
-| `--rule`      | `#2B3C72` | hairlines, chart grid                                                         |
-| `--text`      | `#E7EBF6` | primary text (star white, 15.2:1 on ink-0)                                    |
-| `--text-2`    | `#A3AECD` | secondary text (7.3:1 on ink-1)                                               |
-| `--brass`     | `#E0AE4F` | the accent: primary buttons, focus ring, best window, needle (8.9:1 on ink-0) |
+| `--ink-0`     | `#0D0E10` | page (charcoal, near black)                                                   |
+| `--ink-1`     | `#17181B` | raised surface (sections, dock)                                               |
+| `--ink-2`     | `#24262A` | hover / selected row / inputs                                                 |
+| `--rule`      | `#33363C` | hairlines, chart grid                                                         |
+| `--text`      | `#ECECEE` | primary text (star white, 16.4:1 on ink-0)                                    |
+| `--text-2`    | `#ABAEB5` | secondary text (8.0:1 on ink-1)                                               |
+| `--brass`     | `#E0AE4F` | the accent: primary buttons, focus ring, best window, needle (9.5:1 on ink-0) |
 | `--brass-ink` | `#1A1300` | text on brass (9.1:1)                                                         |
-| `--go`        | `#7ED9A8` | verdict "go" (always with ● glyph + word; 9.6:1 on ink-1)                     |
+| `--go`        | `#7ED9A8` | verdict "go" (always with ● glyph + word; 10.5:1 on ink-1)                    |
 | `--maybe`     | `#E0AE4F` | verdict "marginal" (◐)                                                        |
-| `--nogo`      | `#F08A7E` | verdict "no-go" (○; 6.7:1 on ink-1)                                           |
+| `--nogo`      | `#F08A7E` | verdict "no-go" (○; 7.3:1 on ink-1)                                           |
 | `--sky`       | `#000000` | sky canvas background only                                                    |
 
 Object types (atlas convention, checked for deuteranopia/protanopia with shapes as the primary
@@ -61,7 +62,7 @@ code): galaxy `#F29A8A`, bright/emission nebula `#7ED9A8`, reflection nebula `#8
 nebula `#8C93AD`, planetary `#9FD0F5`, open cluster `#EBCF6E`, globular `#F2B98A`, remnant
 `#C9A6F0`, star `#E7EBF6`, planet `#E0AE4F`.
 
-Charts: sequential = navy → brass (`#1B2A5A → #E0AE4F`), cloud cover = white at opacity (0 → 0.85)
+Charts: sequential = grey → brass (`#24262A → #E0AE4F`), cloud cover = white at opacity (0 → 0.85)
 on the ribbon; diverging (model agreement) = `#8FB8F2 ↔ #F29A8A`. Never red/green pairs alone.
 
 ### Colour — light (optional, "chart paper")

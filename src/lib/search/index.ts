@@ -196,8 +196,10 @@ export function search(entries: readonly Entry[], query: string, limit = 40): Hi
     const seen = new Set(hits.map((h) => h.entry));
     for (const e of entries) {
       if (seen.has(e)) continue;
+      // At least one real word (4+ letters) must be close: short words alone ("mrk", "421")
+      // used to accept every entry in the index.
       const fuzzy =
-        qWords.length > 0 &&
+        qWords.some((w) => w.length >= 4) &&
         qWords.every(
           (w) =>
             w.length < 4 ||
@@ -535,5 +537,130 @@ export function constellationEntries(list: readonly Constellation[]): Entry[] {
     sizeDeg: 30,
     engineId: `CON western ${c.iau}`,
     rank: 1,
+  }));
+}
+
+// ---- the sky engine's own object lists (so everything drawn in the sky can be found) ------
+
+/** OpenNGC type codes (public/skydata/dsonames.json) and nebula types → our kinds. */
+const ENGINE_KIND: Record<string, string> = {
+  G: 'galaxy',
+  PaG: 'galaxy-pair',
+  GrG: 'galaxy-group',
+  OpC: 'open',
+  GlC: 'globular',
+  'As*': 'association',
+  PN: 'planetary',
+  SNR: 'remnant',
+  HII: 'emission',
+  RNe: 'reflection',
+  ISM: 'nebula',
+  DNe: 'dark',
+};
+
+/**
+ * OpenNGC-style names to the catalog style used elsewhere: "ESO056-115" → "ESO 56-115",
+ * "PGC088608" → "PGC 88608", "UGC05470" → "UGC 5470", "Mel071" → "Mel 71". Exported for tests.
+ */
+export function tidyDesignation(n: string): string {
+  const m = /^(ESO|PGC|UGC|Mel|Cr|MWSC|H|Cl)0*(\d.*)$/.exec(n.trim());
+  return m ? `${m[1]} ${m[2]}` : n.trim();
+}
+
+/**
+ * Objects the sky engine draws (OpenNGC names, Sharpless/Lynds/Barnard/vdB nebulae) that the
+ * catalog shards lack: Stellarium's catalog leaves out about 1,400 OpenNGC objects (NGC 3184,
+ * NGC 5907, IC 27…). Only names not already indexed become new entries.
+ */
+export function engineEntries(
+  known: ReadonlySet<string>,
+  ngc: { rows: unknown[][] } | null,
+  nebulae: { rows: unknown[][] } | null,
+): Entry[] {
+  const out: Entry[] = [];
+  const add = (name: string, common: string, ra: number, dec: number, size: number, t: string) => {
+    // The name field lists designations and common names joined by "|"
+    // ("M 31|NGC 224|Andromeda Galaxy"): designations carry a number.
+    const parts = name
+      .split('|')
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const desig = parts.filter((x) => /\d/.test(x)).map(tidyDesignation);
+    const label0 = desig[0] ?? parts[0] ?? name;
+    const ids = [...new Set([...parts.filter((x) => /\d/.test(x)), ...desig].map(norm))];
+    if (!ids.length || ids.some((i) => known.has(i))) return;
+    const kind = ENGINE_KIND[t] ?? 'other';
+    const names = [
+      ...new Set([...parts.filter((x) => !/\d/.test(x)), ...(common ? [common] : [])]),
+    ];
+    out.push({
+      kind: 'dso',
+      label: names[0] ? `${label0} · ${names[0]}` : label0,
+      sub: `${KIND_LABEL[kind] ?? 'Object'} · from the sky's own catalog`,
+      ids,
+      words: names.flatMap(nameWords),
+      names: names.map(norm),
+      badges: [BADGE_OF(label0)],
+      ra,
+      dec,
+      sizeDeg: size ? size / 60 : undefined,
+      mag: null,
+      type: kind,
+      engineId: /^(M|NGC|IC) \d+$/.test(label0) ? label0 : undefined,
+      rank: 8,
+      info: {
+        designations: desig.length ? desig : [label0],
+        common: names,
+        min: null,
+        pa: null,
+        z: null,
+        distKpc: null,
+        morph: null,
+      },
+    });
+    for (const i of ids) (known as Set<string>).add(i);
+  };
+  for (const r of ngc?.rows ?? []) {
+    const [n, c, ra, dec, size, t] = r as [string, string, number, number, number, string];
+    add(n, c, ra, dec, size, t);
+  }
+  for (const r of nebulae?.rows ?? []) {
+    const [n, ra, dec, size, t] = r as [string, number, number, number, string];
+    add(n, '', ra, dec, size, t);
+  }
+  return out;
+}
+
+// ---- designations only an online service knows ------------------------------------------
+
+/** Catalog prefixes that are not in the local shards: a query starting with one goes online. */
+export const ONLINE_PREFIX =
+  /^\s*(sdss|2mass|2masx|gaia|tyc|tycho|ucac|wise|allwise|mrk|markarian|mcg|ugca|kug|cgcg|3c|4c|pks|qso|psr|hr|hd|hip|gsc|ngc\s*\d+[a-z]|lbqs|ton|pg|kids|des|ps1|ztf|sn\s*\d|at\s*\d)\b/i;
+
+/** Does this query look like a designation (letters then digits) rather than a name? */
+export const looksLikeDesignation = (q: string) =>
+  /[a-z]\s*[+-]?\d/i.test(q) || ONLINE_PREFIX.test(q);
+
+/** Catalogs too big to ship, listed around the view from VizieR (CfA mirror) when chosen. */
+export const ONLINE_CATALOGS = [
+  {
+    ref: 'online:sdss',
+    name: 'SDSS galaxies and quasars (online)',
+    aka: ['sdss', 'sloan', 'sloan digital sky survey'],
+    sub: 'Sloan Digital Sky Survey DR16 objects with spectra, listed around the view centre · from VizieR',
+  },
+] as const;
+
+export function onlineCatalogEntries(): Entry[] {
+  return ONLINE_CATALOGS.map((c, i) => ({
+    kind: 'catalog' as const,
+    label: c.name,
+    sub: c.sub,
+    ids: [norm(c.name), ...c.aka.map(norm)],
+    words: [...nameWords(c.name), ...c.aka.flatMap(nameWords)],
+    badges: ['Catalog', 'Online'],
+    ref: c.ref,
+    // Above the survey of the same name: someone typing "sdss" most likely wants objects.
+    rank: 0.5 + i * 0.05,
   }));
 }

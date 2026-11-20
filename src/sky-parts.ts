@@ -10,3 +10,4 @@ export { default as HorizonPanel } from './components/HorizonPanel.svelte';
 export { default as InfoDrawer } from './components/InfoDrawer.svelte';
 export { default as TelescopePanel } from './components/TelescopePanel.svelte';
 export { default as TimeControls } from './components/TimeControls.svelte';
+export { default as QuickToggles } from './components/QuickToggles.svelte';

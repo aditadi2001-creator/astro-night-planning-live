@@ -247,3 +247,35 @@ the city read 112–138 elsewhere. The eight-monitor read needs a Worker deploy.
 **D51. Transparency stays on the CAMS aerosol forecast.** It is the only free aerosol forecast; the
 extinction formula was checked step by step and METAR visibility (5 km haze) is consistent with the
 forecast optical depths. 7Timer! remains the second opinion.
+
+## Sky usability, search, surveys and mount control (2026-11-20)
+
+**D52. The sky shrinks beside an open panel** (right on wide screens, above the sheet on phones)
+instead of the panel covering it, so the camera frame, the telescope marker and the selected
+object stay visible; the frame's controls move with it. Costs a canvas resize when a panel opens.
+
+**D53. The camera frame carries its own label** (telescope, camera, field, pixel scale, focal
+length, position angle, mosaic), as Stellarium's Oculars plugin does, and six quick switches
+(frame, survey, lines, grid, ground, atmosphere) stay on the sky. The rest remains in Layers.
+
+**D54. Charcoal instead of navy** for the dark theme (owner's request): near-black page, dark-grey
+panels; contrast re-checked (text 16.4:1, secondary 8.0:1, control borders 3.6:1).
+
+**D55. Search indexes everything the sky draws** (the engine's OpenNGC and nebula lists) and
+sends designations only an online service knows (SDSS J…, 2MASS, Mrk, MCG, UGCA, HD…) to SIMBAD
+by itself; "SDSS" lists SDSS DR16 galaxies and quasars with spectra around the view from VizieR
+rather than shipping a catalogue of millions of objects. The typo-tolerant match no longer accepts
+queries made only of short words (it returned Sirius for "Mrk 421").
+
+**D56. Surveys are recommended per object** (by type, size and footprint) and shown in the sky with
+one tap from the object's Info. Footprints are approximate rules, tested on M 31, M 51, the North
+America and Carina nebulae; a survey that turns out empty shows a faded preview.
+
+**D57. Full mount control, still opt-in each visit.** Park, unpark and tracking join slew/sync/stop
+behind "Enable control" and a confirmation; NINA adds plate-solve centring and rotation, sequence
+targets, loading saved sequences and the framing assistant (Advanced API 2.2.15, checked against
+its OpenAPI spec and Sequence.cs: J2000 degrees, 0-based container index, rotation =
+PositionAngle). A direct USB connection (Web Serial, LX200 and NexStar/SynScan) works with no
+other software. A GoTo is refused near the Sun without a confirmed solar filter, and below the
+horizon. Never sent: flip, connect, starting a sequence, the NINA profile endpoint, LX200 site/time
+or NexStar setup commands.

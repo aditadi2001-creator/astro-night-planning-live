@@ -6,7 +6,13 @@
 import { alpacaAllowed } from './allow';
 import { j2000ToNow, nowToJ2000 } from './coords';
 import { localFetch } from './http';
-import { TelescopeError, type MountState, type PierSide, type TelescopeAdapter } from './types';
+import {
+  NO_CAPS,
+  TelescopeError,
+  type MountState,
+  type PierSide,
+  type TelescopeAdapter,
+} from './types';
 
 interface AlpacaReply<T> {
   Value: T;
@@ -110,7 +116,7 @@ export function alpacaAdapter(opts: {
     return j.Value;
   }
   async function put(method: string, params: Record<string, string>) {
-    if (!alpacaAllowed(method, opts.control()))
+    if (!alpacaAllowed(method, opts.control(), 'PUT'))
       throw new TelescopeError(
         `Blocked: ${method} is not on the allow-list.`,
         'Switch on "Enable control" first.',
@@ -141,6 +147,7 @@ export function alpacaAdapter(opts: {
   return {
     kind: 'alpaca',
     label: opts.label,
+    caps: { ...NO_CAPS, park: true, tracking: true },
     async read(signal) {
       if (!(await get<boolean>('connected', signal)))
         throw new TelescopeError(
@@ -196,6 +203,15 @@ export function alpacaAdapter(opts: {
     },
     async stop() {
       await put('abortslew', {});
+    },
+    async park() {
+      await put('park', {});
+    },
+    async unpark() {
+      await put('unpark', {});
+    },
+    async setTracking(on) {
+      await put('tracking', { Tracking: on ? 'True' : 'False' });
     },
   };
 }

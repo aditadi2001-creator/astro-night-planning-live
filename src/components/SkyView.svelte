@@ -23,6 +23,7 @@
     altAzAt,
     describe,
     icrfToScreen,
+    screenToIcrf,
     setAtmosphere,
     setObserver,
     setSkyLayer,
@@ -80,6 +81,8 @@
     onsearch?: () => void;
     /** Drawn inside the sky's frame (so it stays visible in full screen): the dock. */
     overlay?: Snippet;
+    /** Part of the frame an open panel covers: the sky itself shrinks to stay in view. */
+    inset?: { right: number; bottom: number };
   }
   let {
     place,
@@ -110,6 +113,7 @@
     onopen,
     onsearch,
     overlay,
+    inset = { right: 0, bottom: 0 },
   }: Props = $props();
 
   let canvas = $state<HTMLCanvasElement>() as HTMLCanvasElement;
@@ -913,6 +917,18 @@
     stel.lookAt(v, glide(0.5));
   }
   export const isFull = () => full;
+  /** Centre of the view (J2000 degrees) and the field of view, for "objects around here". */
+  export function viewCentre(): { ra: number; dec: number; fovDeg: number } | null {
+    if (!stel || !canvas) return null;
+    const c = screenToIcrf(stel, canvas.clientWidth / 2, canvas.clientHeight / 2);
+    if (!c) return null;
+    const [ra, dec] = stel.c2s(c);
+    return {
+      ra: (((stel.anp(ra) * stel.R2D) % 360) + 360) % 360,
+      dec: stel.anpm(dec) * stel.R2D,
+      fovDeg: stel.core.fov * stel.R2D,
+    };
+  }
   // Full screen: the bars fade after 3 s without mouse or touch (Stellarium auto-hide).
   let idle = $state(false);
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -937,58 +953,60 @@
   onpointermove={wake}
   onpointerdown={wake}
 >
-  <canvas
-    bind:this={canvas}
-    class="sky"
-    tabindex="0"
-    onpointermove={onPointerMove}
-    onpointerleave={() => oncursor?.(null)}
-    onpointerdown={onCanvasPointerDown}
-    ondblclick={onDblClick}
-    onauxclick={(e) => e.button === 1 && e.preventDefault()}
-    aria-label="Interactive 3D sky. Drag or use the arrow keys to look around; scroll, pinch, Page Up/Down or +/- to zoom; tap an object for details. Press F1 for all shortcuts."
-  ></canvas>
+  <div class="stage" style:right={`${inset.right}px`} style:bottom={`${inset.bottom}px`}>
+    <canvas
+      bind:this={canvas}
+      class="sky"
+      tabindex="0"
+      onpointermove={onPointerMove}
+      onpointerleave={() => oncursor?.(null)}
+      onpointerdown={onCanvasPointerDown}
+      ondblclick={onDblClick}
+      onauxclick={(e) => e.button === 1 && e.preventDefault()}
+      aria-label="Interactive 3D sky. Drag or use the arrow keys to look around; scroll, pinch, Page Up/Down or +/- to zoom; tap an object for details. Press F1 for all shortcuts."
+    ></canvas>
 
-  {#if view.crosshair && !ocularOn}
-    <svg class="crosshair" aria-hidden="true" viewBox="-20 -20 40 40">
-      <path d="M-14 0H-4M4 0H14M0 -14V-4M0 4V14" />
-      <circle r="1" />
-    </svg>
-  {/if}
+    {#if view.crosshair && !ocularOn}
+      <svg class="crosshair" aria-hidden="true" viewBox="-20 -20 40 40">
+        <path d="M-14 0H-4M4 0H14M0 -14V-4M0 4V14" />
+        <circle r="1" />
+      </svg>
+    {/if}
 
-  {#if status === 'loading'}
-    <p class="overlay" role="status">Loading the sky…</p>
-  {:else if status === 'error'}
-    <p class="overlay error" role="alert">
-      The 3D sky could not start ({errorMsg}). Your browser needs WebGL 2. The other tabs still
-      work.
-    </p>
-  {/if}
+    {#if status === 'loading'}
+      <p class="overlay" role="status">Loading the sky…</p>
+    {:else if status === 'error'}
+      <p class="overlay error" role="alert">
+        The 3D sky could not start ({errorMsg}). Your browser needs WebGL 2. The other tabs still
+        work.
+      </p>
+    {/if}
 
-  {#if ocularOn}
-    <Oculars
-      bind:this={oculars}
-      {stel}
-      {canvas}
-      bind:setups
-      bind:shown={shownFrames}
-      selectedName={selected?.name ?? null}
-      {onframecenter}
-      onzoom={zoomToDeg}
-      onpreview={onrate}
-    />
-  {/if}
+    {#if ocularOn}
+      <Oculars
+        bind:this={oculars}
+        {stel}
+        {canvas}
+        bind:setups
+        bind:shown={shownFrames}
+        selectedName={selected?.name ?? null}
+        {onframecenter}
+        onzoom={zoomToDeg}
+        onpreview={onrate}
+      />
+    {/if}
 
-  {#if scope}
-    <ScopeReticle
-      {stel}
-      {canvas}
-      ra={scope.ra}
-      dec={scope.dec}
-      label={scope.label}
-      slewing={scope.slewing}
-    />
-  {/if}
+    {#if scope}
+      <ScopeReticle
+        {stel}
+        {canvas}
+        ra={scope.ra}
+        dec={scope.dec}
+        label={scope.label}
+        slewing={scope.slewing}
+      />
+    {/if}
+  </div>
 
   {@render overlay?.()}
 
@@ -1020,6 +1038,19 @@
   .wrap.full {
     border-radius: 0;
     border: none;
+  }
+  .stage {
+    position: absolute;
+    inset: 0;
+    container: sky-stage / size;
+    transition:
+      right 0.18s ease,
+      bottom 0.18s ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stage {
+      transition: none;
+    }
   }
   .sky {
     display: block;

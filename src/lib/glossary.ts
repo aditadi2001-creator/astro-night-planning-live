@@ -58,6 +58,10 @@ export const GLOSSARY: Term[] = [
     text: 'A dense ball of hundreds of thousands of old stars. Bright and easy, even from light-polluted places.',
   },
   {
+    term: 'GoTo',
+    text: 'A mount that finds objects by itself: choose a target and it slews there. "Slew and centre" (with NINA) then takes a picture, plate-solves and corrects until the object is exactly in the middle.',
+  },
+  {
     term: 'Hour angle (HA)',
     text: 'How far an object is from the meridian, in hours: negative while it rises in the east, positive after it has crossed.',
   },
@@ -95,6 +99,10 @@ export const GLOSSARY: Term[] = [
   },
   { term: 'Open cluster', text: 'A loose group of young stars born together, like the Pleiades.' },
   {
+    term: 'Park',
+    text: 'The mount’s rest position at the end of a night. A parked mount does not track or slew until it is unparked.',
+  },
+  {
     term: 'Pier side',
     text: 'Which side of the mount the telescope is on. It changes at the meridian flip.',
   },
@@ -129,6 +137,10 @@ export const GLOSSARY: Term[] = [
   {
     term: 'SQM (mag/arcsec²)',
     text: 'Sky Quality Meter reading of sky brightness. Higher is darker: 18 is a city, 21.5 a very dark site.',
+  },
+  {
+    term: 'Sync',
+    text: 'Telling the mount "you are pointing exactly here" once a star or object is centred. It improves every GoTo after it; a wrong sync spoils them.',
   },
   {
     term: 'Surface brightness',
