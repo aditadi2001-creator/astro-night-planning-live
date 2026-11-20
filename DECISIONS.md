@@ -298,3 +298,18 @@ needs. Only twelve monthly figures are kept on the device.
 
 **D61. Survey recommendations put mirrored surveys first;** surveys served only by CDS (Legacy,
 DECaPS, SkyMapper, ZTF, SHASSA, unWISE, ROSAT) follow, because CDS was down on 20 Nov 2026.
+
+**D62. The Sky page has its own timeline, always on screen** (owner's request): step, play
+(one step per second, either way) or scrub by minutes to centuries, or type a date; the sky follows
+(tested 1539 to 2039). Calendar-correct months and years (`src/lib/time/shift.ts`). The Trips
+calendar stays on the Plan page.
+
+**D63. The mount is always on the sky:** a "Connect mount" button, then the mount's state, its
+distance from the selected object and Stop (with control on). GoTo stays in the Telescope panel,
+where the safety checks and the confirmation are; that panel now starts with the telescope.
+
+**D64. "Any mount" through six routes and a picker.** INDI and Wi-Fi/Ethernet LX200/NexStar mounts
+go through the bridge (browsers cannot open TCP sockets); the bridge answers only the published
+app's origin and passes only allow-listed commands and INDI properties. Where a maker's network
+protocol is not documented or verified (Celestron Wi-Fi, Sky-Watcher Wi-Fi, iOptron), the picker
+routes through ASCOM or INDI instead of guessing.

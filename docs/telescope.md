@@ -12,14 +12,34 @@ a saved sequence and sending to the framing assistant. Flip, connect, starting a
 every other command are never sent (allow-lists in `src/lib/telescope/allow.ts` and
 `serial.ts`).
 
-## Four ways to connect
+## Six ways to connect (and "What mount do you have?")
 
-| Choice        | What it talks to                                                                           | Best for                                        |
-| ------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------- |
-| **NINA**      | NINA's Advanced API plugin (2.2.x, NINA 3.2+), port 1888                                   | Imaging rigs: plate-solve centring, sequences   |
-| ASCOM Alpaca  | Any Alpaca device, or ASCOM Remote (port 11111) in front of any ASCOM driver               | Windows rigs without NINA, Alpaca-native mounts |
-| **USB cable** | The mount's hand controller directly (Web Serial: Chrome or Edge on a computer), 9600 baud | A laptop at the mount, nothing else installed   |
-| Simulator     | A pretend mount at your site                                                               | Trying everything safely                        |
+Sky → Telescope (or the **Connect mount** button on the sky) starts with **What mount do you
+have?**: pick the family (ZWO AM, Sky-Watcher, Celestron, Meade, OnStep, iOptron, 10Micron, any
+other) and the app chooses the recommended connection and shows the steps (`src/lib/telescope/mounts.ts`).
+
+| Choice            | What it talks to                                                                                             | Best for                                        |
+| ----------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| **NINA**          | NINA's Advanced API plugin (2.2.x, NINA 3.2+), port 1888                                                     | Imaging rigs: plate-solve centring, sequences   |
+| ASCOM Alpaca      | Any Alpaca device, or ASCOM Remote (port 11111) in front of any ASCOM driver                                 | Windows rigs without NINA, Alpaca-native mounts |
+| **INDI**          | indiserver (Linux, Raspberry Pi, StellarMate, Astroberry, KStars/Ekos) through the bridge                    | Linux / Pi rigs: every INDI mount driver        |
+| **USB cable**     | The mount's hand controller directly (Web Serial: Chrome or Edge on a computer), 9600 baud                   | A laptop at the mount, nothing else installed   |
+| **Network mount** | A Wi-Fi / Ethernet mount speaking LX200 or NexStar (ZWO AM 4030, OnStep 9999, 10Micron 3490), via the bridge | Wi-Fi mounts without a PC driver                |
+| Simulator         | A pretend mount at your site                                                                                 | Trying everything safely                        |
+
+Browsers cannot open raw network sockets, so **INDI and network mounts go through the bridge**
+(`tools/bridge/bridge.mjs`, Node 18+, no dependencies) on a computer on the same network:
+
+```
+node tools/bridge/bridge.mjs --dist dist --indi 127.0.0.1:7624            # INDI
+node tools/bridge/bridge.mjs --dist dist --tcp 192.168.4.1:4030 --tcp-protocol lx200   # Wi-Fi mount
+```
+
+Add `--allow-control` to allow GoTo, sync, stop, park and tracking. The bridge answers other
+origins only for the published app (`*.astro-night-planning-live.pages.dev`) and local
+development, so another website cannot drive the mount; only allow-listed commands and INDI
+properties pass (`tools/bridge/mounts.mjs`, same lists as the page, checked by
+`tests/timeline-mounts.test.ts`). Not possible: ZWO ASIAIR and smart telescopes with closed apps.
 
 USB cable protocols: **LX200** (Meade LX200/Autostar, OnStep, iOptron and others in LX200 mode)
 and **NexStar** (Celestron NexStar/StarSense hand controllers and Sky-Watcher SynScan hand

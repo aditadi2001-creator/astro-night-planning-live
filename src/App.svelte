@@ -1274,11 +1274,15 @@
   $effect(() => {
     if (live || rate === 0) return;
     let last = performance.now();
-    const t = setInterval(() => {
-      const n = performance.now();
-      shown = new Date(shown.getTime() + (n - last) * rate);
-      last = n;
-    }, 250);
+    // Fast rates (a month or a year per second) update more often so the sky moves smoothly.
+    const t = setInterval(
+      () => {
+        const n = performance.now();
+        shown = new Date(shown.getTime() + (n - last) * rate);
+        last = n;
+      },
+      Math.abs(rate) > 86400 ? 100 : 250,
+    );
     return () => clearInterval(t);
   });
 </script>
@@ -1412,6 +1416,23 @@
               onopen={(p) => (dock = dock === p ? null : p)}
               onsearch={openSearch}
             >
+              {#snippet stageOverlay()}
+                <P.MountChip selected={selectedInfo} onopen={() => (dock = 'telescope')} />
+                <P.SkyTimeline
+                  time={shown}
+                  {live}
+                  {rate}
+                  {tz}
+                  onchange={setTime}
+                  onrate={(r) => {
+                    if (r === 0) rate = 0;
+                    else {
+                      live = false;
+                      rate = r;
+                    }
+                  }}
+                />
+              {/snippet}
               {#snippet overlay()}
                 <P.SkyDock
                   bind:active={dock}

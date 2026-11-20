@@ -8,8 +8,12 @@
  *
  *   node tools/bridge/bridge.mjs --dist dist                      # read-only (default)
  *   node tools/bridge/bridge.mjs --dist dist --allow-control      # also slew / sync / stop
+ *   node tools/bridge/bridge.mjs --dist dist --indi 127.0.0.1:7624   # an INDI server (Linux, Pi)
+ *   node tools/bridge/bridge.mjs --dist dist --tcp 192.168.4.1:4030 --tcp-protocol lx200
+ *                                              # a Wi-Fi / Ethernet mount (ZWO AM5, OnStep…)
  *
  * Options: --port 8080  --dist <folder>  --nina 127.0.0.1:1888  --alpaca 127.0.0.1:11111
+ *          --indi host:7624  --tcp host:port  --tcp-protocol lx200|nexstar
  *          --host 0.0.0.0 (listen address)  --allow-control
  * Never forward this port to the internet: NINA's API has no password.
  */
@@ -17,6 +21,9 @@ import { createServer, request } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { IndiClient, INDI_CONTROL, serialAllowed, TcpLink } from './mounts.mjs';
+
+export { INDI_CONTROL, SERIAL_CONTROL, SERIAL_READ } from './mounts.mjs';
 
 // Same lists as src/lib/telescope/allow.ts (tests/telescope.test.ts checks they agree).
 export const NINA_READ = [
@@ -108,6 +115,9 @@ function parseArgs(argv) {
     dist: 'dist',
     nina: '127.0.0.1:1888',
     alpaca: '127.0.0.1:11111',
+    indi: null,
+    tcp: null,
+    tcpProtocol: 'lx200',
     allowControl: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -118,6 +128,9 @@ function parseArgs(argv) {
     else if (a === '--dist') o.dist = argv[++i];
     else if (a === '--nina') o.nina = argv[++i];
     else if (a === '--alpaca') o.alpaca = argv[++i];
+    else if (a === '--indi') o.indi = argv[++i];
+    else if (a === '--tcp') o.tcp = argv[++i];
+    else if (a === '--tcp-protocol') o.tcpProtocol = argv[++i] === 'nexstar' ? 'nexstar' : 'lx200';
   }
   return o;
 }
@@ -178,13 +191,104 @@ async function serveStatic(res, root, urlPath) {
   }
 }
 
+/**
+ * Pages allowed to call the bridge from another origin (the published app and local
+ * development). Any other website gets no CORS headers, so it cannot drive the mount.
+ */
+export const ORIGINS = [
+  /^https:\/\/([a-z0-9-]+\.)?astro-night-planning-live\.pages\.dev$/,
+  /^http:\/\/(localhost|127\.0\.0\.1):(5173|4173)$/,
+];
+export function corsOrigin(origin) {
+  return origin && ORIGINS.some((r) => r.test(origin)) ? origin : null;
+}
+
+function json(res, code, body) {
+  res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+  res.end(JSON.stringify(body));
+}
+function readBody(req) {
+  return new Promise((resolveBody, reject) => {
+    let b = '';
+    req.on('data', (d) => {
+      b += d;
+      if (b.length > 4096) reject(new Error('too large'));
+    });
+    req.on('end', () => {
+      try {
+        resolveBody(JSON.parse(b || '{}'));
+      } catch (e) {
+        reject(e);
+      }
+    });
+  });
+}
+
 export function start(opts) {
   const root = resolve(opts.dist);
+  const hp = (s) => {
+    const i = s.lastIndexOf(':');
+    return [s.slice(0, i), Number(s.slice(i + 1))];
+  };
+  const tcp = opts.tcp ? new TcpLink(...hp(opts.tcp)) : null;
+  const indi = opts.indi ? new IndiClient(...hp(opts.indi)) : null;
   const server = createServer((req, res) => {
     const url = req.url ?? '/';
+    const allowed = corsOrigin(req.headers.origin);
+    if (allowed) {
+      res.setHeader('Access-Control-Allow-Origin', allowed);
+      res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      // Chrome's private/local network access preflight.
+      res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    }
+    if (req.method === 'OPTIONS') {
+      res.writeHead(allowed ? 204 : 403).end();
+      return;
+    }
     if (url === '/bridge.json') {
-      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-      res.end(JSON.stringify({ bridge: 1, control: opts.allowControl }));
+      json(res, 200, {
+        bridge: 2,
+        control: opts.allowControl,
+        tcp: tcp ? opts.tcpProtocol : null,
+        indi: !!indi,
+      });
+      return;
+    }
+    // Wi-Fi / Ethernet mount: one LX200 or NexStar command per request.
+    if (url === '/mount/tcp' && req.method === 'POST') {
+      if (!tcp) return json(res, 404, { error: 'start the bridge with --tcp host:port' });
+      void readBody(req)
+        .then(async (b) => {
+          const cmd = String(b.cmd ?? '');
+          if (!serialAllowed(opts.tcpProtocol, cmd, opts.allowControl))
+            return json(res, 403, { error: 'not on the bridge allow-list' });
+          const reply = await tcp.send(cmd, {
+            chars: Number.isInteger(b.chars) ? b.chars : undefined,
+            none: b.none === true,
+          });
+          json(res, 200, { reply });
+        })
+        .catch((e) => json(res, 502, { error: `mount: ${e.message}` }));
+      return;
+    }
+    // INDI: the latest properties, and change requests for the allow-listed ones.
+    if (url === '/mount/indi' && req.method === 'GET') {
+      if (!indi) return json(res, 404, { error: 'start the bridge with --indi host:7624' });
+      return json(res, 200, indi.snapshot());
+    }
+    if (url === '/mount/indi' && req.method === 'POST') {
+      if (!indi) return json(res, 404, { error: 'start the bridge with --indi host:7624' });
+      void readBody(req)
+        .then((b) => {
+          const kind = b.kind === 'Number' ? 'Number' : 'Switch';
+          if (!opts.allowControl || !INDI_CONTROL.includes(b.name))
+            return json(res, 403, { error: 'not on the bridge allow-list' });
+          indi.send(String(b.device), String(b.name), kind, b.values ?? {});
+          json(res, 200, { ok: true });
+        })
+        .catch((e) => json(res, 502, { error: `indi: ${e.message}` }));
       return;
     }
     if (url.startsWith('/nina/') || url.startsWith('/alpaca/')) {
@@ -215,7 +319,7 @@ export function start(opts) {
       `Astro Night Planning bridge on http://${opts.host === '0.0.0.0' ? '<this-computer>' : opts.host}:${opts.port}`,
     );
     console.log(
-      `  NINA ${opts.nina} · Alpaca ${opts.alpaca} · control ${opts.allowControl ? 'ALLOWED' : 'off (read-only)'}`,
+      `  NINA ${opts.nina} · Alpaca ${opts.alpaca}${opts.indi ? ` · INDI ${opts.indi}` : ''}${opts.tcp ? ` · ${opts.tcpProtocol} mount ${opts.tcp}` : ''} · control ${opts.allowControl ? 'ALLOWED' : 'off (read-only)'}`,
     );
     console.log('  Do not forward this port to the internet.');
   });

@@ -5,6 +5,7 @@
  */
 import { alpacaAdapter } from './alpaca';
 import { ninaAdapter } from './nina';
+import { bridgeWire, indiAdapter } from './indi';
 import { serialAdapter, SerialLink, type SerialProtocol } from './serial';
 import { simulatorAdapter } from './simulator';
 import {
@@ -38,8 +39,11 @@ const DEFAULT_PORT: Record<AdapterKind, number> = {
   nina: 1888,
   alpaca: 11111,
   serial: 0,
+  // INDI and network mounts are reached through the bridge (default port 8080).
+  indi: 8080,
+  network: 8080,
 };
-const KINDS: AdapterKind[] = ['simulator', 'nina', 'alpaca', 'serial'];
+const KINDS: AdapterKind[] = ['simulator', 'nina', 'alpaca', 'serial', 'indi', 'network'];
 
 function loadSettings(): TelescopeSettings {
   const d: TelescopeSettings = {
@@ -113,6 +117,22 @@ class TelescopeSession {
         label: s.viaBridge ? 'Alpaca (through the bridge)' : `Alpaca at ${hostPort}`,
         control,
       });
+    // INDI and Wi-Fi/Ethernet mounts: through the bridge (this page's origin, or the bridge
+    // computer's address when the page is opened elsewhere).
+    const bridgeBase = s.viaBridge ? '' : `http://${hostPort}`;
+    if (s.kind === 'indi') return indiAdapter({ base: bridgeBase, site, control });
+    if (s.kind === 'network')
+      return {
+        ...serialAdapter({
+          wire: bridgeWire(bridgeBase),
+          protocol: s.protocol,
+          j2000: s.serialJ2000,
+          site,
+          control,
+        }),
+        kind: 'network',
+        label: `${s.protocol === 'lx200' ? 'LX200' : 'NexStar/SynScan'} mount (network, through the bridge)`,
+      };
     if (s.kind === 'serial')
       return serialAdapter({
         wire: await SerialLink.pick(),

@@ -416,3 +416,16 @@ OpenAQ air quality missing. Cause: that work lived on a parallel branch never me
   accessibility (contrast, heading order, keyboard-scrollable list).
 - Evidence: tests 438+ (`tests/year-planner.test.ts`); axe: no violations on Plan (Trips) and Sky;
   browser checks at 1440 and 375 px.
+
+## Sky timeline, mount on the sky, any-mount connections ✅ (2026-11-20, owner's request)
+
+- **Timeline on the Sky page** (D62): step size from a minute to a century, −1/+1, play both ways
+  (one step a second), a scrubber (±50 steps, finer near the middle), a date box and Now. Checked:
+  +10 years, playing a year per second, back to 1539; no console errors; phone layout with the date
+  on its own line.
+- **Mount on the sky** (D63): Connect mount / state, off-target distance, Stop.
+- **Any mount** (D64): "What mount do you have?" picker; new INDI and Network-mount connections
+  through the bridge (TCP relay for LX200/NexStar, INDI client with property cache, origin
+  allow-list). End-to-end run against a fake LX200 Wi-Fi mount and a fake indiserver: reads, GoTo,
+  Stop pass; park over LX200 and INDI CONNECTION changes refused; an unknown website refused.
+- Not tried on real hardware: INDI on a Pi, a ZWO AM5 over Wi-Fi, a real hand controller.

@@ -30,7 +30,7 @@ export interface MountState {
   at: number;
 }
 
-export type AdapterKind = 'simulator' | 'nina' | 'alpaca' | 'serial';
+export type AdapterKind = 'simulator' | 'nina' | 'alpaca' | 'serial' | 'indi' | 'network';
 
 /** How to finish a GoTo (NINA only: plate solve and centre, then turn the rotator). */
 export interface GotoOptions {

@@ -11,3 +11,5 @@ export { default as InfoDrawer } from './components/InfoDrawer.svelte';
 export { default as TelescopePanel } from './components/TelescopePanel.svelte';
 export { default as TimeControls } from './components/TimeControls.svelte';
 export { default as QuickToggles } from './components/QuickToggles.svelte';
+export { default as SkyTimeline } from './components/SkyTimeline.svelte';
+export { default as MountChip } from './components/MountChip.svelte';

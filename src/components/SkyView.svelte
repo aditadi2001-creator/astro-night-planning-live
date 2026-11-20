@@ -92,6 +92,8 @@
     onsearch?: () => void;
     /** Drawn inside the sky's frame (so it stays visible in full screen): the dock. */
     overlay?: Snippet;
+    /** Drawn inside the visible sky area (beside / above an open panel): the timeline. */
+    stageOverlay?: Snippet;
     /** Whether the sky is full screen (read by the page's quick switches). */
     fullscreen?: boolean;
     /** Part of the frame an open panel covers: the sky itself shrinks to stay in view. */
@@ -127,6 +129,7 @@
     onopen,
     onsearch,
     overlay,
+    stageOverlay,
     inset = { right: 0, bottom: 0 },
     fullscreen = $bindable(false),
   }: Props = $props();
@@ -1023,7 +1026,12 @@
   onpointermove={wake}
   onpointerdown={wake}
 >
-  <div class="stage" style:right={`${inset.right}px`} style:bottom={`${inset.bottom}px`}>
+  <div
+    class="stage"
+    class:sheet={inset.bottom > 0}
+    style:right={`${inset.right}px`}
+    style:bottom={`${inset.bottom}px`}
+  >
     <canvas
       bind:this={canvas}
       class="sky"
@@ -1105,6 +1113,7 @@
         </div>
       </div>
     {/if}
+    {@render stageOverlay?.()}
   </div>
 
   {@render overlay?.()}
@@ -1147,7 +1156,7 @@
   .below {
     position: absolute;
     left: 50%;
-    bottom: 40px;
+    top: 64px;
     transform: translateX(-50%);
     z-index: 5;
     width: min(460px, calc(100% - 24px));
@@ -1171,12 +1180,22 @@
     font-size: var(--fs-14);
   }
   .stage {
+    --tl-bottom: 30px;
     position: absolute;
     inset: 0;
     container: sky-stage / size;
     transition:
       right 0.18s ease,
       bottom 0.18s ease;
+  }
+  /* Phones: above the dock's tab bar, or just above an open sheet. */
+  @media (max-width: 899px) {
+    .stage {
+      --tl-bottom: calc(var(--touch) + 26px);
+    }
+    .stage.sheet {
+      --tl-bottom: 6px;
+    }
   }
   @media (prefers-reduced-motion: reduce) {
     .stage {

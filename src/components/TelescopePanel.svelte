@@ -25,10 +25,12 @@
     localSiderealH,
     separation,
   } from '../lib/telescope/coords';
+  import { untrack } from 'svelte';
   import * as Astronomy from 'astronomy-engine';
   import { j2000ToNow } from '../lib/telescope/coords';
   import { gotoCheck, type GotoCheck } from '../lib/telescope/safety';
   import { serialSupported } from '../lib/telescope/serial';
+  import { MOUNTS } from '../lib/telescope/mounts';
   import { defaultPort, telescope } from '../lib/telescope/session.svelte';
   import { TelescopeError, type AdapterKind, type SequenceTarget } from '../lib/telescope/types';
 
@@ -125,6 +127,45 @@
     telescope.settings.kind = k;
     if (k !== 'simulator') telescope.settings.port = defaultPort(k);
   }
+  // ---- "What mount do you have?" -------------------------------------------------------
+  const MKEY = 'anp.telescope.mount';
+  let mountId = $state(
+    (() => {
+      try {
+        return localStorage.getItem(MKEY) ?? '';
+      } catch {
+        return '';
+      }
+    })(),
+  );
+  let routeI = $state(0);
+  const family = $derived(MOUNTS.find((m) => m.id === mountId) ?? null);
+  const route = $derived(family?.routes[routeI] ?? null);
+  function useRoute(i: number) {
+    routeI = i;
+    const r = family?.routes[i];
+    if (!r) return;
+    setKind(r.kind);
+    if (r.protocol) telescope.settings.protocol = r.protocol;
+  }
+  // On first show keep the connection already chosen (and remembered); a newly picked mount
+  // switches to its recommended route.
+  let seenMount = untrack(() => mountId);
+  $effect(() => {
+    const id = mountId;
+    try {
+      localStorage.setItem(MKEY, id);
+    } catch {
+      /* not remembered */
+    }
+    if (id === seenMount) {
+      const i = family?.routes.findIndex((r) => r.kind === telescope.settings.kind) ?? -1;
+      if (i >= 0) routeI = i;
+      return;
+    }
+    seenMount = id;
+    if (family) useRoute(0);
+  });
   function connect() {
     void telescope.connect({ lat: place.lat, lon: place.lon });
   }
@@ -378,73 +419,40 @@
 </script>
 
 <div class="tp">
-  <section aria-labelledby="tp-frame">
-    <h3 id="tp-frame">Camera frame</h3>
-    <p><strong>{profileName}</strong><br /><span class="note">{profileText}</span></p>
-    <div class="row">
-      <button aria-pressed={frameOn} onclick={ontoggleframe}>Camera frame on the sky</button>
-      <button onclick={oncentre} disabled={!selected}>Centre on selected</button>
-    </div>
-    <label class="rng">
-      Rotation
-      <input type="range" min="-180" max="180" step="1" bind:value={setups.deepsky.rotationDeg} />
-      <output>{Math.round(setups.deepsky.rotationDeg)}°</output>
-    </label>
-    {#if frameCenter}
-      <p class="note">
-        Frame centre {raHms(frameCenter.ra)}
-        {decDms(frameCenter.dec)} (J2000) · top edge at PA {normRotation(frameCenter.pa).toFixed(
-          0,
-        )}°
-      </p>
-    {/if}
-    <div class="row">
-      <button onclick={alignToObject} disabled={!shape}
-        >Align to {selected ? selected.name : 'the object'}</button
-      >
-      {#if selected && !shape}<span class="note"
-          >No position angle in the catalog for this object.</span
-        >{/if}
-    </div>
-
-    <h4>Mosaic</h4>
-    <div class="row">
-      <label class="num"
-        >Columns <select bind:value={mosaic.cols}>
-          {#each [1, 2, 3, 4, 5, 6] as n (n)}<option value={n}>{n}</option>{/each}
-        </select></label
-      >
-      <label class="num"
-        >Rows <select bind:value={mosaic.rows}>
-          {#each [1, 2, 3, 4, 5, 6] as n (n)}<option value={n}>{n}</option>{/each}
-        </select></label
-      >
-    </div>
-    <label class="rng">
-      Overlap
-      <input type="range" min="0.05" max="0.4" step="0.01" bind:value={mosaic.overlap} />
-      <output>{Math.round(mosaic.overlap * 100)} %</output>
-    </label>
-    <p class="note">
-      {mosaic.cols} × {mosaic.rows} panes cover {fmtDeg(span.w)} × {fmtDeg(span.h)} with the
-      {profileName} frame ({fmtDeg(stats.fovW)} × {fmtDeg(stats.fovH)}).
-    </p>
-    <div class="row">
-      <button onclick={exportMosaic} disabled={!frameCenter || mosaic.cols * mosaic.rows < 2}
-        >Export mosaic for NINA (CSV)</button
-      >
-    </div>
-    {#if !frameCenter}<p class="note">
-        Turn the camera frame on to place the mosaic on the sky.
-      </p>{/if}
-    {#if msg}<p class="msg" role="status">{msg}</p>{/if}
-  </section>
-
   <section aria-labelledby="tp-scope">
     <h3 id="tp-scope">Live telescope</h3>
     {#if telescope.status === 'off'}
+      <label class="num pick"
+        >What mount do you have?
+        <select bind:value={mountId}>
+          <option value="">Choose your mount…</option>
+          {#each MOUNTS as m (m.id)}<option value={m.id}>{m.name}</option>{/each}
+        </select></label
+      >
+      {#if family}
+        <div class="routes" role="radiogroup" aria-label="How to connect it">
+          {#each family.routes as r, i (r.label)}
+            <label class="route"
+              ><input
+                type="radio"
+                name="route"
+                checked={routeI === i}
+                onchange={() => useRoute(i)}
+              />
+              <span>{r.label}{i === 0 ? ' · recommended' : ''}</span></label
+            >
+          {/each}
+        </div>
+        {#if route}
+          <ol class="steps">
+            {#each route.steps as st (st)}<li>{st}</li>{/each}
+          </ol>
+        {/if}
+        {#if family.note}<p class="note">{family.note}</p>{/if}
+      {/if}
+      <p class="note">Or choose the connection yourself:</p>
       <div class="row" role="group" aria-label="Connect to">
-        {#each [['simulator', 'Simulator'], ['nina', 'NINA'], ['alpaca', 'ASCOM Alpaca'], ['serial', 'USB cable']] as [k, l] (k)}
+        {#each [['simulator', 'Simulator'], ['nina', 'NINA'], ['alpaca', 'ASCOM Alpaca'], ['indi', 'INDI'], ['serial', 'USB cable'], ['network', 'Network mount']] as [k, l] (k)}
           <button
             aria-pressed={telescope.settings.kind === k}
             onclick={() => setKind(k as AdapterKind)}>{l}</button
@@ -476,6 +484,25 @@
           </p>
         {/if}
       {:else if telescope.settings.kind !== 'simulator'}
+        {#if telescope.settings.kind === 'network'}
+          <div class="row">
+            <label class="num"
+              >Protocol <select bind:value={telescope.settings.protocol}>
+                <option value="lx200">LX200 (ZWO AM, OnStep, 10Micron, Meade)</option>
+                <option value="nexstar">NexStar / SynScan</option>
+              </select></label
+            >
+          </div>
+          <p class="note">
+            The bridge holds the connection to the mount (start it with --tcp &lt;mount
+            address&gt;:&lt;port&gt; --tcp-protocol {telescope.settings.protocol}).
+          </p>
+        {:else if telescope.settings.kind === 'indi'}
+          <p class="note">
+            The bridge holds the connection to indiserver (start it with --indi 127.0.0.1:7624 on
+            the INDI computer).
+          </p>
+        {/if}
         <label class="chk"
           ><input type="checkbox" bind:checked={telescope.settings.viaBridge} /> Through the bridge (this
           page is served by the bridge on your mini PC)</label
@@ -483,7 +510,10 @@
         {#if !telescope.settings.viaBridge}
           <div class="row">
             <label class="num"
-              >Computer <input
+              >{telescope.settings.kind === 'indi' || telescope.settings.kind === 'network'
+                ? 'Bridge computer'
+                : 'Computer'}
+              <input
                 type="text"
                 bind:value={telescope.settings.host}
                 autocomplete="off"
@@ -760,6 +790,67 @@
       <div class="row"><button onclick={() => telescope.disconnect()}>Disconnect</button></div>
     {/if}
   </section>
+  <section aria-labelledby="tp-frame">
+    <h3 id="tp-frame">Camera frame</h3>
+    <p><strong>{profileName}</strong><br /><span class="note">{profileText}</span></p>
+    <div class="row">
+      <button aria-pressed={frameOn} onclick={ontoggleframe}>Camera frame on the sky</button>
+      <button onclick={oncentre} disabled={!selected}>Centre on selected</button>
+    </div>
+    <label class="rng">
+      Rotation
+      <input type="range" min="-180" max="180" step="1" bind:value={setups.deepsky.rotationDeg} />
+      <output>{Math.round(setups.deepsky.rotationDeg)}°</output>
+    </label>
+    {#if frameCenter}
+      <p class="note">
+        Frame centre {raHms(frameCenter.ra)}
+        {decDms(frameCenter.dec)} (J2000) · top edge at PA {normRotation(frameCenter.pa).toFixed(
+          0,
+        )}°
+      </p>
+    {/if}
+    <div class="row">
+      <button onclick={alignToObject} disabled={!shape}
+        >Align to {selected ? selected.name : 'the object'}</button
+      >
+      {#if selected && !shape}<span class="note"
+          >No position angle in the catalog for this object.</span
+        >{/if}
+    </div>
+
+    <h4>Mosaic</h4>
+    <div class="row">
+      <label class="num"
+        >Columns <select bind:value={mosaic.cols}>
+          {#each [1, 2, 3, 4, 5, 6] as n (n)}<option value={n}>{n}</option>{/each}
+        </select></label
+      >
+      <label class="num"
+        >Rows <select bind:value={mosaic.rows}>
+          {#each [1, 2, 3, 4, 5, 6] as n (n)}<option value={n}>{n}</option>{/each}
+        </select></label
+      >
+    </div>
+    <label class="rng">
+      Overlap
+      <input type="range" min="0.05" max="0.4" step="0.01" bind:value={mosaic.overlap} />
+      <output>{Math.round(mosaic.overlap * 100)} %</output>
+    </label>
+    <p class="note">
+      {mosaic.cols} × {mosaic.rows} panes cover {fmtDeg(span.w)} × {fmtDeg(span.h)} with the
+      {profileName} frame ({fmtDeg(stats.fovW)} × {fmtDeg(stats.fovH)}).
+    </p>
+    <div class="row">
+      <button onclick={exportMosaic} disabled={!frameCenter || mosaic.cols * mosaic.rows < 2}
+        >Export mosaic for NINA (CSV)</button
+      >
+    </div>
+    {#if !frameCenter}<p class="note">
+        Turn the camera frame on to place the mosaic on the sky.
+      </p>{/if}
+    {#if msg}<p class="msg" role="status">{msg}</p>{/if}
+  </section>
 </div>
 
 <style>
@@ -838,6 +929,33 @@
   .stop {
     border-color: var(--nogo);
     color: var(--nogo);
+  }
+  .pick {
+    display: grid;
+    gap: 4px;
+  }
+  .pick select {
+    width: 100%;
+  }
+  .routes {
+    display: grid;
+    gap: 4px;
+    font-size: var(--fs-14);
+  }
+  .route {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  .route input {
+    margin-top: 3px;
+  }
+  .steps {
+    margin: 0;
+    padding-left: 1.3em;
+    display: grid;
+    gap: 4px;
+    font-size: var(--fs-14);
   }
   .stop.big {
     width: 100%;
