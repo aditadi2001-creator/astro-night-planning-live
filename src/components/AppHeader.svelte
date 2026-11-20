@@ -94,8 +94,17 @@
   </button>
 
   <div class="seg" role="group" aria-label="Detail level">
-    <button aria-pressed={!expert} onclick={() => onexpert(false)}>Beginner</button>
-    <button aria-pressed={expert} onclick={() => onexpert(true)}>Expert</button>
+    <button
+      aria-pressed={!expert}
+      onclick={() => onexpert(false)}
+      title="Beginner: the main facts in plain words (score, clouds, seeing, Moon)">Beginner</button
+    >
+    <button
+      aria-pressed={expert}
+      onclick={() => onexpert(true)}
+      title="Expert: every row and number (cloud layers, model range, transparency, coordinates, catalog data)"
+      >Expert</button
+    >
   </div>
   <!-- Phones: one toggle instead of the pair, so the header fits in two rows. -->
   <button

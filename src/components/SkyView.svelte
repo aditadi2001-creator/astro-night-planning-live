@@ -36,7 +36,7 @@
     type Stel,
   } from '../lib/engine/stel';
   import { renderClouds, type CloudInput } from '../lib/sky/clouds';
-  import { skyView, VIEW_KEY, type BoolKey } from '../lib/sky/view.svelte';
+  import { EYE_FOV_DEG, skyView, VIEW_KEY, type BoolKey } from '../lib/sky/view.svelte';
   import ScopeReticle from './ScopeReticle.svelte';
   import { nextGoodTime, pinInfo, type Pin } from '../lib/astro/pin';
   import CloudWorker from '../lib/sky/clouds.worker.ts?worker';
@@ -94,6 +94,8 @@
     overlay?: Snippet;
     /** Drawn inside the visible sky area (beside / above an open panel): the timeline. */
     stageOverlay?: Snippet;
+    /** Expert: pointer coordinates in the status line. */
+    expert?: boolean;
     /** Whether the sky is full screen (read by the page's quick switches). */
     fullscreen?: boolean;
     /** Part of the frame an open panel covers: the sky itself shrinks to stay in view. */
@@ -132,6 +134,7 @@
     stageOverlay,
     inset = { right: 0, bottom: 0 },
     fullscreen = $bindable(false),
+    expert = false,
   }: Props = $props();
 
   let canvas = $state<HTMLCanvasElement>() as HTMLCanvasElement;
@@ -297,7 +300,7 @@
         if (disposed) return;
         const c = s.core;
         c.time_speed = 1;
-        c.fov = 120 * s.D2R;
+        c.fov = EYE_FOV_DEG * s.D2R;
         c.observer.yaw = 180 * s.D2R; // look south
         c.observer.pitch = 25 * s.D2R;
         c.milkyway.visible = true;
@@ -540,6 +543,13 @@
     planetary: false,
     lunarsolar: false,
   };
+  // Closing the camera frame returns to the human-eye field of view (it zoomed in to the frame).
+  let wasOcular = false;
+  $effect(() => {
+    const on = ocularOn;
+    if (wasOcular && !on && stel) zoomToDeg(EYE_FOV_DEG);
+    wasOcular = on;
+  });
   function toggleOcular() {
     if (ocularOn) {
       lastFrames = { ...shownFrames };
@@ -688,15 +698,41 @@
   }
 
   let raf = 0;
+  /** Under the pointer (Expert status line): alt/az and J2000 RA/Dec, degrees. */
+  let pointer = $state<{ alt: number; az: number; ra: number; dec: number } | null>(null);
   function onPointerMove(e: PointerEvent) {
-    if (!stel || !oncursor) return;
+    if (!stel) return;
     const x = e.offsetX;
     const y = e.offsetY;
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
-      if (stel) oncursor?.(altAzAt(stel, x, y));
+      if (!stel) return;
+      const aa = altAzAt(stel, x, y);
+      oncursor?.(aa);
+      if (!expert || !aa) {
+        pointer = null;
+        return;
+      }
+      const c = screenToIcrf(stel, x, y);
+      if (!c) return;
+      const [ra, dec] = stel.c2s(c);
+      pointer = {
+        alt: aa.alt,
+        az: aa.az,
+        ra: (((stel.anp(ra) * stel.R2D) % 360) + 360) % 360,
+        dec: stel.anpm(dec) * stel.R2D,
+      };
     });
   }
+  const hms = (deg: number) => {
+    const h = deg / 15;
+    const m = (h % 1) * 60;
+    return `${Math.floor(h)}h${String(Math.floor(m)).padStart(2, '0')}m${String(Math.round((m % 1) * 60) % 60).padStart(2, '0')}s`;
+  };
+  const dms = (deg: number) => {
+    const a = Math.abs(deg);
+    return `${deg < 0 ? '−' : '+'}${Math.floor(a)}°${String(Math.floor((a % 1) * 60)).padStart(2, '0')}′`;
+  };
 
   // Refresh the info while an object is selected (it moves with time).
   $effect(() => {
@@ -1122,6 +1158,10 @@
     <p class="status" aria-live="off">
       <span>{place.name}</span>
       <span>FOV {fmtFovLine(fovDeg)}</span>
+      {#if expert && pointer}<span
+          >Pointer alt {pointer.alt.toFixed(1)}° az {pointer.az.toFixed(1)}° · RA {hms(pointer.ra)} Dec
+          {dms(pointer.dec)} (J2000)</span
+        >{/if}
       <span>{fmtDateTime(time, tz)}</span>
       <span class:hot={!live}>{rateText}</span>
       <span class="credit"

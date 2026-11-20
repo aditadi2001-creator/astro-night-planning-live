@@ -316,9 +316,11 @@
   .picker {
     position: absolute;
     top: calc(100% + 6px);
-    left: var(--gap);
-    right: var(--gap);
-    max-width: 460px;
+    left: 0;
+    /* Its own width: the location button it hangs from is narrow. */
+    width: min(460px, calc(100vw - 24px));
+    max-height: calc(100dvh - 120px);
+    overflow-y: auto;
     z-index: 20;
     background: var(--panel);
     border: 1px solid var(--line);

@@ -13,8 +13,18 @@
     /** The real clock: earlier hours are shown as recorded. */
     now?: number;
     onpick: (t: number) => void;
+    /** Expert: every row (cloud layers, model range, transparency, 7Timer!, agreement). */
+    expert?: boolean;
   }
-  let { rows, tz, shown, sevenTimer = null, now = Date.now(), onpick }: Props = $props();
+  let {
+    rows,
+    tz,
+    shown,
+    sevenTimer = null,
+    now = Date.now(),
+    onpick,
+    expert = false,
+  }: Props = $props();
   const isPast = (r: HourRow) => r.t + 3600_000 <= now;
   const pct = (v: number | null | undefined) => (v == null ? '—' : `${Math.round(v)}%`);
   const kindLabel = (r: HourRow) =>
@@ -112,42 +122,44 @@
               </td>
             {/each}
           </tr>
-          <tr class="layer">
-            <th scope="row">Low</th>
-            {#each rows as r (r.t)}
-              <td class:now={isShown(r)} class:past={isPast(r)}>{pct(r.weather?.cloudLow)}</td>
-            {/each}
-          </tr>
-          <tr class="layer">
-            <th scope="row">Mid</th>
-            {#each rows as r (r.t)}
-              <td class:now={isShown(r)} class:past={isPast(r)}>{pct(r.weather?.cloudMid)}</td>
-            {/each}
-          </tr>
-          <tr class="layer">
-            <th scope="row" title="High cloud is mostly thin cirrus: stars often show through it">
-              High (thin)
-            </th>
-            {#each rows as r (r.t)}
-              <td class:now={isShown(r)} class:past={isPast(r)}>{pct(r.weather?.cloudHigh)}</td>
-            {/each}
-          </tr>
-          <tr class="layer">
-            <th scope="row" title="Lowest and highest total cloud among the 8 models">Range</th>
-            {#each rows as r (r.t)}
-              <td class:now={isShown(r)} class:past={isPast(r)} class="muted">
-                {r.cloud?.min != null && r.cloud?.max != null
-                  ? `${Math.round(r.cloud.min)}–${Math.round(r.cloud.max)}`
-                  : '—'}
-              </td>
-            {/each}
-          </tr>
-          <tr>
-            <th scope="row">Transp.</th>
-            {#each rows as r (r.t)}
-              <td class:now={isShown(r)}>{r.extinction ? r.extinction.total.toFixed(2) : '—'}</td>
-            {/each}
-          </tr>
+          {#if expert}
+            <tr class="layer">
+              <th scope="row">Low</th>
+              {#each rows as r (r.t)}
+                <td class:now={isShown(r)} class:past={isPast(r)}>{pct(r.weather?.cloudLow)}</td>
+              {/each}
+            </tr>
+            <tr class="layer">
+              <th scope="row">Mid</th>
+              {#each rows as r (r.t)}
+                <td class:now={isShown(r)} class:past={isPast(r)}>{pct(r.weather?.cloudMid)}</td>
+              {/each}
+            </tr>
+            <tr class="layer">
+              <th scope="row" title="High cloud is mostly thin cirrus: stars often show through it">
+                High (thin)
+              </th>
+              {#each rows as r (r.t)}
+                <td class:now={isShown(r)} class:past={isPast(r)}>{pct(r.weather?.cloudHigh)}</td>
+              {/each}
+            </tr>
+            <tr class="layer">
+              <th scope="row" title="Lowest and highest total cloud among the 8 models">Range</th>
+              {#each rows as r (r.t)}
+                <td class:now={isShown(r)} class:past={isPast(r)} class="muted">
+                  {r.cloud?.min != null && r.cloud?.max != null
+                    ? `${Math.round(r.cloud.min)}–${Math.round(r.cloud.max)}`
+                    : '—'}
+                </td>
+              {/each}
+            </tr>
+            <tr>
+              <th scope="row">Transp.</th>
+              {#each rows as r (r.t)}
+                <td class:now={isShown(r)}>{r.extinction ? r.extinction.total.toFixed(2) : '—'}</td>
+              {/each}
+            </tr>
+          {/if}
           <tr>
             <th scope="row">Seeing</th>
             {#each rows as r (r.t)}
@@ -160,7 +172,7 @@
               </td>
             {/each}
           </tr>
-          {#if sevenTimer}
+          {#if sevenTimer && expert}
             <tr>
               <th scope="row">7Timer!</th>
               {#each rows as r (r.t)}
@@ -179,27 +191,37 @@
               >
             {/each}
           </tr>
-          <tr>
-            <th scope="row">Models</th>
-            {#each rows as r (r.t)}
-              <td class:now={isShown(r)}>
-                <span class="dot {r.agreement}" title={`Model agreement: ${r.agreement}`}></span>
-                <span class="visually-hidden">{r.agreement}</span>
-              </td>
-            {/each}
-          </tr>
+          {#if expert}
+            <tr>
+              <th scope="row">Models</th>
+              {#each rows as r (r.t)}
+                <td class:now={isShown(r)}>
+                  <span class="dot {r.agreement}" title={`Model agreement: ${r.agreement}`}></span>
+                  <span class="visually-hidden">{r.agreement}</span>
+                </td>
+              {/each}
+            </tr>
+          {/if}
         </tbody>
       </table>
     </div>
+    {#if !expert}
+      <p class="note">
+        Beginner view: the main rows. Switch to Expert (top right) for cloud layers, the range of
+        the weather models, transparency, the 7Timer! second opinion and model agreement.
+      </p>
+    {/if}
     <p class="note">
       Score = clouds × transparency × Moon × darkness × seeing, each as a relative signal-to-noise
       factor for sky-limited imaging. Seeing is a forecast estimate from upper-air winds (our model;
       7Timer! every 3 h as a second opinion), never a measurement. Scores rate each hour for this
-      site; its light pollution is in the Sky quality card. Clouds: the median of 8 global models
-      (ECMWF, GFS, ICON, JMA, Météo-France, UK Met Office, GEM, CMA), pulled towards the newest
-      satellite image for the next few hours (<em>sat.</em>); earlier hours are what the satellite
-      recorded (<em>rec.</em>). High cloud is mostly thin cirrus and counts as 60 % in the score.
-      Models: <span class="dot high"></span> agree <span class="dot medium"></span> partly
+      site; its light pollution is in the Sky quality card. Clouds: the median of 6 global models
+      (ECMWF, GFS, ICON, JMA, Météo-France, UK Met Office; GEM and CMA count only in the range),
+      pulled towards the newest satellite image for the next few hours (<em>sat.</em>); earlier
+      hours are what the satellite recorded (<em>rec.</em>). High cloud is mostly thin cirrus and
+      counts as 60 % in the score. Models: <span class="dot high"></span> agree
+      <span class="dot medium"></span>
+      partly
       <span class="dot low"></span> disagree. Weather data by Open-Meteo.com; satellite NOAA GMGSI.
     </p>
   {:else}

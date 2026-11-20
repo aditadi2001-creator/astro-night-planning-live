@@ -34,6 +34,12 @@ export interface View {
 
 export const VIEW_KEY = 'anp.view.v2';
 
+/**
+ * The sky's default field of view: about what both human eyes take in at once without moving
+ * (the binocular field is ~114–120° wide). Used at start and when the camera frame is closed.
+ */
+export const EYE_FOV_DEG = 120;
+
 export function viewDefaults(): View {
   return {
     conLines: true,
@@ -208,7 +214,7 @@ export const VIEW_PRESETS: {
 }[] = [
   {
     id: 'beginner',
-    label: 'Beginner',
+    label: 'Simple',
     hint: 'Constellation figures and names, compass points, planet and star names; no grids.',
     view: {
       conLines: true,

@@ -13,7 +13,7 @@
     <li class="s-{source.status}" title={source.error ?? ''}>
       <span class="dot" aria-hidden="true"></span>
       {label}:
-      {#if source.status === 'loading'}loading…{:else if source.status === 'error'}unavailable{:else}{ageLabel(
+      {#if source.status === 'idle' && !source.fetchedAt}loads when its section is opened{:else if source.status === 'loading'}loading…{:else if source.status === 'error'}unavailable{:else}{ageLabel(
           source.fetchedAt,
           now,
         )}{#if source.status === 'stale'}

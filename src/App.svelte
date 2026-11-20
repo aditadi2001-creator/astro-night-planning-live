@@ -244,6 +244,9 @@
 
   // ---- Beginner / Expert (same data; Expert shows every column and unit) ----
   let expert = $state(readFlag('anp:expert'));
+  /** What the Beginner / Expert switch just changed (shown for a few seconds). */
+  let modeNote = $state('');
+  let modeTimer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => writeFlag('anp:expert', expert));
   function hasStoredSetups(): boolean {
     try {
@@ -1319,6 +1322,7 @@
     >
   </div>
 {/if}
+{#if modeNote}<p class="mode-note" role="status">{modeNote}</p>{/if}
 {#if searchOpen}
   <SearchDialog
     onclose={() => (searchOpen = false)}
@@ -1340,7 +1344,14 @@
     {night}
     onplace={setPlace}
     onprofile={selectProfile}
-    onexpert={(v) => (expert = v)}
+    onexpert={(v) => {
+      expert = v;
+      modeNote = v
+        ? 'Expert: the hourly table shows cloud layers, the models’ range, transparency, 7Timer! and model agreement; Info, Targets and Planets show every catalog number and coordinate.'
+        : 'Beginner: the main facts in plain words. Expert (top right) adds every row and number.';
+      clearTimeout(modeTimer);
+      modeTimer = setTimeout(() => (modeNote = ''), 6000);
+    }}
     onnight={(v) => (night = v)}
     onpage={(p) => goPage(p)}
     onsearch={openSearch}
@@ -1413,6 +1424,7 @@
               bind:this={skyRef}
               inset={dockInset}
               bind:fullscreen={skyFull}
+              {expert}
               onopen={(p) => (dock = dock === p ? null : p)}
               onsearch={openSearch}
             >
@@ -1621,6 +1633,7 @@
           {/if}
           {#if ready('tonight-detail')}
             <Timeline
+              {expert}
               rows={timeline}
               {tz}
               shown={shown.getTime()}
@@ -2045,6 +2058,21 @@
     min-width: 0;
   }
   /* Space held for a section that has not rendered yet (keeps the page from jumping). */
+  .mode-note {
+    position: fixed;
+    z-index: 70;
+    left: 50%;
+    top: 70px;
+    transform: translateX(-50%);
+    width: min(560px, calc(100% - 24px));
+    margin: 0;
+    padding: var(--s3) var(--s4);
+    font-size: var(--fs-14);
+    background: var(--ink-1);
+    border: 1px solid var(--brass);
+    border-radius: var(--r-section);
+    box-shadow: var(--shadow-float);
+  }
   .sec-wait {
     min-height: 40vh;
     margin: 0;

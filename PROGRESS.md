@@ -429,3 +429,19 @@ OpenAQ air quality missing. Cause: that work lived on a parallel branch never me
   allow-list). End-to-end run against a fake LX200 Wi-Fi mount and a fake indiserver: reads, GoTo,
   Stop pass; park over LX200 and INDI CONNECTION changes refused; an unknown website refused.
 - Not tried on real hardware: INDI on a Pi, a ZWO AM5 over Wi-Fi, a real hand controller.
+
+## Modes, eye-view FOV, deep test and guide ✅ (2026-11-20, owner's request)
+
+- **Beginner / Expert** now visibly differ: the hourly table shows the main rows in Beginner and
+  every row (cloud layers, model range, transparency, 7Timer!, agreement) in Expert; Expert adds
+  pointer alt/az and RA/Dec on the sky; buttons explain themselves and a note says what changed.
+  The Layers preset "Beginner" is renamed "Simple" to avoid the clash.
+- **Field of view** starts at 120° (the human binocular field) and returns there when the camera
+  frame is closed (checked 120° → 59′ → 120°).
+- **Deep test** (production build, cleared storage, 1440 and 375 px): first paint < 0.1 s, all nine
+  Plan sections, all seven Sky panels, location change to Hanle and back, no failed requests, no
+  console errors, no horizontal overflow. Fixed: the place picker opened as a 50 px-wide column;
+  "Orbits: never" now reads "loads when its section is opened"; the hourly note still said "median
+  of 8 models".
+- **Free use** audited (docs/USER_GUIDE.md §10, DATA_BUDGET.md).
+- **docs/USER_GUIDE.md**: the complete guide to every part of the app.
