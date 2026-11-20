@@ -18,15 +18,15 @@ Contents: [1 The screen](#1-the-screen) · [2 Plan page](#2-the-plan-page) ·
 
 **Header (top bar), left to right**
 
-| Control                                                | What it does                                                                                                                                                                                                                                                       |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Place** (e.g. "Bangalore", with its local time)      | Opens the place picker: search any town or observatory, use your phone's GPS, type coordinates, pick a saved place (Bangalore, Hanle, Coorg…), save the current one, or _Save for offline_ (section 8). Every forecast, the sky and the planners follow the place. |
-| **Equipment profile** (e.g. "C9.25 + 0.63× · ATR585M") | Your telescope + camera combination. It sets the camera frame on the sky, the pixel scale, which targets fit, and imaging advice. Edit profiles in Plan → Telescope.                                                                                               |
-| **Search** (Ctrl K / ⌘ K)                              | Finds anything: section 4.                                                                                                                                                                                                                                         |
-| **Beginner / Expert**                                  | How much detail is shown: section 7.                                                                                                                                                                                                                               |
-| **?**                                                  | Help: a one-minute guided tour, the keyboard keys and a glossary of 38 terms.                                                                                                                                                                                      |
-| **Night**                                              | Red-only night mode for your dark adaptation: section 8.                                                                                                                                                                                                           |
-| **Plan / Sky**                                         | The two pages.                                                                                                                                                                                                                                                     |
+| Control                                                        | What it does                                                                                                                                                                                                                                                                                                           |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Place** (e.g. "Greenwich", with its local time)              | Opens the place picker: search any town or observatory, use your phone's GPS, type coordinates, pick a built-in observatory (Greenwich, Mauna Kea, La Palma, Paranal) or one of your saved places, save the current one, or _Save for offline_ (section 8). Every forecast, the sky and the planners follow the place. |
+| **Equipment profile** (e.g. "80 mm f/6 refractor · ASI2600MC") | Your telescope + camera combination. It sets the camera frame on the sky, the pixel scale, which targets fit, and imaging advice. Four starter rigs are built in; enter your own telescope and camera in Plan → Telescope and it appears here as **My setup**.                                                         |
+| **Search** (Ctrl K / ⌘ K)                                      | Finds anything: section 4.                                                                                                                                                                                                                                                                                             |
+| **Beginner / Expert**                                          | How much detail is shown: section 7.                                                                                                                                                                                                                                                                                   |
+| **?**                                                          | Help: a one-minute guided tour, the keyboard keys and a glossary of 38 terms.                                                                                                                                                                                                                                          |
+| **Night**                                                      | Red-only night mode for your dark adaptation: section 8.                                                                                                                                                                                                                                                               |
+| **Plan / Sky**                                                 | The two pages.                                                                                                                                                                                                                                                                                                         |
 
 **Night ribbon** (the strip under the header): tonight from sunset to sunrise. Blue shades are
 twilight, black is astronomical darkness, the bright band is the Moon, and the gold line marks the
@@ -108,8 +108,10 @@ meteor-shower peaks. Tap a night for its details and _Show this night_.
 
 ### Telescope (equipment)
 
-Your profiles: telescope (aperture, focal length, reducer/Barlow), camera (sensor, pixels), filters.
-The app works out the field of view, pixel scale, sampling and f-ratio.
+Your equipment: telescope (aperture, focal length, reducer/Barlow), camera (sensor, pixels),
+filters. The app works out the field of view, pixel scale, sampling and f-ratio. As soon as you
+change the deep-sky telescope or camera, the header calls it **My setup**; you can try a starter
+rig and switch back to My setup without losing it.
 
 ### Space
 
@@ -288,6 +290,11 @@ the pointer (alt/az and RA/Dec) in the sky's status line. A note says what chang
   catalogs and planners work, and forecasts show their last copy with its age.
 - **Your data stays on your device**: places, profiles, plans, notes, favourites, horizons,
   telescope settings. Nothing is uploaded; export and import as files.
+- **First visit and coming back**: a new visitor starts at the Royal Observatory, Greenwich, with a
+  starter rig, and is asked once where they observe from (GPS, a place, or keep Greenwich). Every
+  choice (place, equipment, layers, Beginner/Expert, night mode, view settings) is remembered in
+  that browser, so the site opens the same way next time. Another browser or device starts fresh;
+  clearing the browser's site data resets it.
 
 ---
 

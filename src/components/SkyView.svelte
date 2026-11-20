@@ -1142,8 +1142,8 @@
       <p class="overlay" role="status">Loading the sky…</p>
     {:else if status === 'error'}
       <p class="overlay error" role="alert">
-        The 3D sky could not start ({errorMsg}). Your browser needs WebGL 2. The other tabs still
-        work.
+        The 3D sky could not start ({errorMsg}). It needs WebGL: turn on hardware acceleration in
+        the browser settings, or try another browser. Everything else on this site still works.
       </p>
     {/if}
 

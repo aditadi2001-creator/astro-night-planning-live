@@ -26,6 +26,8 @@
     onpage: (p: Page) => void;
     onsearch: () => void;
     onhelp: () => void;
+    /** The location picker is open (bindable: the first-visit prompt opens it). */
+    picking?: boolean;
   }
   let {
     page,
@@ -43,9 +45,9 @@
     onpage,
     onsearch,
     onhelp,
+    picking = $bindable(false),
   }: Props = $props();
 
-  let picking = $state(false);
   const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 </script>
 

@@ -14,7 +14,7 @@
  * What is new here: the minimum altitude and a horizon profile (terrain or custom) define
  * "usable", filters narrow the list before scoring, the "any type" ranking keeps variety
  * (no near-duplicates, at most a quarter of the list from one type), and every result explains
- * itself (factors, one-line why, filter advice for the owner's filters, difficulty).
+ * itself (factors, one-line why, filter advice for the profile's filters, difficulty).
  * Surface brightness is computed from the catalog magnitude and size, the mean over the
  * ellipse (the same definition OpenNGC uses).
  */

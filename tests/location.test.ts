@@ -3,7 +3,11 @@ import {
   DEFAULT_PLACE,
   PRESETS,
   effectiveSqm,
+  hasChosenPlace,
+  loadPlace,
   loadSiteSky,
+  markPlaceChosen,
+  savePlace,
   presetById,
   saveSiteSky,
   siteKey,
@@ -19,18 +23,34 @@ beforeEach(() => {
 });
 
 describe('locations', () => {
-  it('defaults to Bangalore, rounded to 0.01° (privacy)', () => {
-    expect(DEFAULT_PLACE.id).toBe('bangalore');
+  it('defaults to Greenwich; built-in places are public observatories rounded to 0.01°', () => {
+    expect(DEFAULT_PLACE.id).toBe('greenwich');
+    expect(PRESETS.map((p) => p.id)).toEqual(['greenwich', 'mauna-kea', 'la-palma', 'paranal']);
     for (const p of PRESETS) {
       expect(Math.round(p.lat * 100) / 100).toBe(p.lat);
       expect(Math.round(p.lon * 100) / 100).toBe(p.lon);
     }
   });
 
-  it('has the Hanle and Coorg presets', () => {
-    expect(presetById('hanle')?.elevation).toBe(4500);
-    expect(presetById('coorg')?.timezone).toBe('Asia/Kolkata');
-    expect(presetById('nowhere')).toBeNull();
+  it('ships no personal site', () => {
+    for (const id of ['bangalore', 'hanle', 'coorg']) expect(presetById(id)).toBeNull();
+    expect(presetById('paranal')?.lat).toBeLessThan(0);
+    expect(presetById('mauna-kea')?.timezone).toBe('Pacific/Honolulu');
+  });
+
+  it('first visit: default place and not chosen; a saved place comes back next visit', () => {
+    expect(hasChosenPlace()).toBe(false);
+    expect(loadPlace()).toEqual(DEFAULT_PLACE);
+    const home = { name: 'Home', lat: 40.1, lon: -3.7, elevation: 650 };
+    savePlace(home);
+    expect(hasChosenPlace()).toBe(true);
+    expect(loadPlace()).toEqual(home);
+  });
+
+  it('keeping the default place also counts as a choice', () => {
+    markPlaceChosen();
+    expect(hasChosenPlace()).toBe(true);
+    expect(loadPlace().id).toBe('greenwich');
   });
 
   it('keys custom places by coordinates rounded to ~1 km', () => {

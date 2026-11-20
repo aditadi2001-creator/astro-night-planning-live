@@ -27,7 +27,12 @@
   import type { ResultEntry } from './lib/search/client';
   import {
     loadActiveProfileId,
+    loadMySetup,
     loadProfiles,
+    MINE_ID,
+    mineProfile,
+    sameRig,
+    saveMySetup,
     profileSetup,
     saveActiveProfileId,
     type Profile,
@@ -65,7 +70,17 @@
   import PhysicsPanel from './components/PhysicsPanel.svelte';
   import Credits from './pages/Credits.svelte';
   import About from './pages/About.svelte';
-  import { effectiveSqm, loadPlace, loadSiteSky, savePlace } from './lib/location';
+  import { loadLayers, saveLayers } from './lib/state/layers';
+  import {
+    DEFAULT_PLACE,
+    effectiveSqm,
+    hasChosenPlace,
+    loadPlace,
+    loadSiteSky,
+    locateMe,
+    markPlaceChosen,
+    savePlace,
+  } from './lib/location';
   import TonightGlance from './components/TonightGlance.svelte';
   import { verdict } from './lib/plan/verdict';
   import { bortle } from './lib/lp/lightpollution';
@@ -305,7 +320,7 @@
     {
       sel: '.bar .loc',
       title: 'Your site',
-      text: 'Pick where you observe from: Bangalore, Hanle, Coorg or anywhere. Places stay on this device. You can also save the star maps for offline use here.',
+      text: 'Pick where you observe from: your own location, any town, or a famous observatory. Your places and settings are saved in this browser only, so the site opens with them next time. You can also save the star maps for offline use here.',
     },
     {
       sel: '.ribbon',
@@ -343,10 +358,36 @@
       text: 'This tour again, the keys and a glossary of every term in plain words.',
     },
   ];
-  onMount(() => {
+  // First visit: ask where the visitor observes from (the default is Greenwich), then offer the tour.
+  let placePrompt = $state(!hasChosenPlace());
+  let placePromptBusy = $state(false);
+  let placePromptErr = $state('');
+  let locPicking = $state(false);
+  let tourTimer: ReturnType<typeof setTimeout> | undefined;
+  function offerTour(delay: number) {
     if (tourSeen() || firstRoute.page !== 'plan') return;
-    const t = setTimeout(() => (tourOffer = true), 2500);
-    return () => clearTimeout(t);
+    clearTimeout(tourTimer);
+    tourTimer = setTimeout(() => (tourOffer = true), delay);
+  }
+  function closePlacePrompt() {
+    if (!placePrompt) return;
+    placePrompt = false;
+    offerTour(1500);
+  }
+  async function useMyLocation() {
+    placePromptBusy = true;
+    placePromptErr = '';
+    try {
+      setPlace(await locateMe());
+    } catch (e) {
+      placePromptErr = `${e instanceof Error ? e.message : String(e)} Choose a place instead.`;
+    } finally {
+      placePromptBusy = false;
+    }
+  }
+  onMount(() => {
+    if (!placePrompt) offerTour(2500);
+    return () => clearTimeout(tourTimer);
   });
   function startTour() {
     helpOpen = false;
@@ -449,18 +490,27 @@
   /** Time-rate multiplier while not live (Stellarium J/K/L); 0 = stopped at the chosen time. */
   let rate = $state(0);
   let night = $state(readNight());
-  let layers = $state<LayerState>({
-    clouds: true,
-    haze: true,
-    terrain: true,
-    constellations: true,
-    satmap: false,
-    lightpollution: true,
-    surveys: false,
-    survey: SURVEYS[0]?.id ?? 'dss',
-    surveyOpacity: 0.8,
-    longExposure: false,
-    deepSky: true,
+  // Layer switches start from these defaults on a first visit and are remembered afterwards.
+  let layers = $state<LayerState>(
+    loadLayers(
+      {
+        clouds: true,
+        haze: true,
+        terrain: true,
+        constellations: true,
+        satmap: false,
+        lightpollution: true,
+        surveys: false,
+        survey: SURVEYS[0]?.id ?? 'dss',
+        surveyOpacity: 0.8,
+        longExposure: false,
+        deepSky: true,
+      },
+      (id) => !!surveyById(id),
+    ),
+  );
+  $effect(() => {
+    saveLayers($state.snapshot(layers));
   });
 
   // Deep-sky photos: the DSS2 colour survey, faded in by the sky view when zoomed in.
@@ -1113,6 +1163,8 @@
   function setPlace(p: Place) {
     place = p;
     savePlace(p);
+    markPlaceChosen();
+    closePlacePrompt();
   }
 
   // Night milestones for the time slider and jump buttons.
@@ -1207,15 +1259,48 @@
     untrack(() => skyRef?.pointAt(m.ra, m.dec));
   });
   // The header's profile selector drives the deep-sky frame (FOV, framing scores).
-  let profiles = $state<Profile[]>(loadProfiles());
+  // Starter rigs plus "My setup": the visitor's own deep-sky equipment from Plan → Telescope,
+  // remembered in this browser and kept when they try a starter rig.
+  const starterProfiles = loadProfiles();
+  let mySetup = $state<Setup | null>(loadMySetup());
+  const profiles = $derived<Profile[]>(
+    mySetup ? [mineProfile(mySetup), ...starterProfiles] : starterProfiles,
+  );
   let profileId = $state(loadActiveProfileId());
   const activeProfile = $derived(profiles.find((p) => p.id === profileId) ?? profiles[0] ?? null);
   function selectProfile(id: string) {
     profileId = id;
     saveActiveProfileId(id);
     const p = profiles.find((x) => x.id === id);
-    if (p) setups = { ...setups, deepsky: { ...profileSetup(p), kind: 'deepsky' } };
+    if (!p) return;
+    const next = id === MINE_ID && mySetup ? mySetup : profileSetup(p);
+    // Keep the frame rotation the visitor set on the sky.
+    setups = {
+      ...setups,
+      deepsky: { ...next, rotationDeg: setups.deepsky.rotationDeg, kind: 'deepsky' },
+    };
   }
+  // Editing the deep-sky equipment away from the chosen rig makes it "My setup".
+  $effect(() => {
+    const d = $state.snapshot(setups.deepsky) as Setup;
+    untrack(() => {
+      const p = activeProfile;
+      if (p && p.id !== MINE_ID && sameRig(d, profileSetup(p))) return;
+      if (
+        mySetup &&
+        sameRig(d, mySetup) &&
+        d.telescope === mySetup.telescope &&
+        d.camera === mySetup.camera
+      )
+        return;
+      mySetup = d;
+      saveMySetup(d);
+      if (profileId !== MINE_ID) {
+        profileId = MINE_ID;
+        saveActiveProfileId(MINE_ID);
+      }
+    });
+  });
   // First visit: start from the active profile instead of the generic default rig.
   untrack(() => {
     if (!hasStoredSetups() && activeProfile) {
@@ -1329,7 +1414,31 @@
 {#if touring}
   <Tour steps={TOUR} onclose={() => (touring = false)} />
 {/if}
-{#if tourOffer && !touring}
+{#if placePrompt}
+  <div class="tour-offer place-prompt" role="dialog" aria-label="Choose your location">
+    <span>
+      Welcome! The sky is shown from {DEFAULT_PLACE.name} for now. Where do you observe from? Your choice
+      and your settings are saved in this browser only.
+    </span>
+    <button class="primary" onclick={useMyLocation} disabled={placePromptBusy}>
+      {placePromptBusy ? 'Locating…' : 'Use my location'}
+    </button>
+    <button
+      onclick={() => {
+        locPicking = true;
+        closePlacePrompt();
+      }}>Choose a place</button
+    >
+    <button
+      onclick={() => {
+        markPlaceChosen();
+        closePlacePrompt();
+      }}>Keep {DEFAULT_PLACE.name}</button
+    >
+    {#if placePromptErr}<span class="err" role="alert">{placePromptErr}</span>{/if}
+  </div>
+{/if}
+{#if tourOffer && !touring && !placePrompt}
   <div class="tour-offer" role="status">
     <span>New here? A one-minute tour shows the main controls.</span>
     <button class="primary" onclick={startTour}>Show me</button>
@@ -1361,6 +1470,7 @@
     {profileId}
     {expert}
     {night}
+    bind:picking={locPicking}
     onplace={setPlace}
     onprofile={selectProfile}
     onexpert={(v) => {
@@ -2054,6 +2164,13 @@
   .tour-offer .primary {
     border-color: var(--brass);
     color: var(--brass);
+  }
+  .place-prompt span {
+    flex-basis: 100%;
+  }
+  .place-prompt .err {
+    color: var(--warn, var(--text-2));
+    font-size: var(--fs-12, var(--fs-14));
   }
   /* ---- Plan page ---- */
   .plan {

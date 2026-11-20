@@ -1,7 +1,7 @@
 /**
  * Two pages, one shareable state in the URL hash (PLAN.md §1):
  *
- *   #/plan?s=targets&t=M%2031&at=2026-11-19T16:00:00.000Z&loc=bangalore&p=c925r&l=con,eqgrid
+ *   #/plan?s=targets&t=M%2031&at=2026-11-19T16:00:00.000Z&loc=greenwich&p=r80-2600&l=con,eqgrid
  *   #/sky?t=M%2031
  *
  * Old tab links (#/tonight, #/week, #/targets, #/equipment, #/maps, #/space,

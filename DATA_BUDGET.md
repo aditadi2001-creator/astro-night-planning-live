@@ -116,16 +116,16 @@ All on Cloudflare Pages (zero R2), versioned file names, built by
 `python scripts/catalogs/build_catalogs.py` (inputs downloaded to `scripts/catalogs/raw/`,
 git-ignored, never uploaded).
 
-| File                             | Source                                                           | License                        |            Rows |     Bytes |      gzip | Loaded                                               |
-| -------------------------------- | ---------------------------------------------------------------- | ------------------------------ | --------------: | --------: | --------: | ---------------------------------------------------- |
-| `catalog/dso-core-v1.json`       | Stellarium DSO catalog v3.23 + Herschel 400 list                 | GPL-2.0-or-later (list: facts) |          25,555 | 2,466,850 |   650,842 | when search first opens                              |
-| `catalog/dso-galaxies-v1.json`   | same (objects only in PGC/UGC/ESO, no name, fainter than mag 13) | GPL-2.0-or-later               |          69,325 | 6,331,596 | 1,641,466 | only when a query needs it                           |
-| `catalog/stars-v1.json`          | bundled Hipparcos/Gaia star tiles + BSC5 + IAU WGSN names        | ESA open data / public domain  | 8,924 (V ≤ 6.5) |   588,652 |   235,939 | when search first opens                              |
-| `catalog/notable-v1.json`        | curated names, positions from CDS Sesame                         | acknowledgement (SIMBAD)       |              84 |     5,859 |     2,328 | when search first opens                              |
-| `catalog/manifest-v1.json`       | counts, sources                                                  | —                              |               — |     1,060 |       662 | About page (bundled)                                 |
-| `data/lightpollution-2025.json`  | copy of the Worker's yearly model description                    | ours                           |               — |     ~2 KB |         — | Tonight (instead of a Worker request)                |
-| `horizons/presets-v1.json`       | Copernicus GLO-30 horizon profiles (Bangalore, Hanle)            | Copernicus DEM licence (free)  |         2 × 720 |     ~8 KB |         — | first visit at a preset (instead of 12 DEM requests) |
-| `src/lib/sky/survey-registry.ts` | CDS MocServer records + CORS-tested mirrors                      | per survey (Credits)           |      25 surveys |     in JS |         — | survey picker                                        |
+| File                             | Source                                                                       | License                        |            Rows |     Bytes |      gzip | Loaded                                               |
+| -------------------------------- | ---------------------------------------------------------------------------- | ------------------------------ | --------------: | --------: | --------: | ---------------------------------------------------- |
+| `catalog/dso-core-v1.json`       | Stellarium DSO catalog v3.23 + Herschel 400 list                             | GPL-2.0-or-later (list: facts) |          25,555 | 2,466,850 |   650,842 | when search first opens                              |
+| `catalog/dso-galaxies-v1.json`   | same (objects only in PGC/UGC/ESO, no name, fainter than mag 13)             | GPL-2.0-or-later               |          69,325 | 6,331,596 | 1,641,466 | only when a query needs it                           |
+| `catalog/stars-v1.json`          | bundled Hipparcos/Gaia star tiles + BSC5 + IAU WGSN names                    | ESA open data / public domain  | 8,924 (V ≤ 6.5) |   588,652 |   235,939 | when search first opens                              |
+| `catalog/notable-v1.json`        | curated names, positions from CDS Sesame                                     | acknowledgement (SIMBAD)       |              84 |     5,859 |     2,328 | when search first opens                              |
+| `catalog/manifest-v1.json`       | counts, sources                                                              | —                              |               — |     1,060 |       662 | About page (bundled)                                 |
+| `data/lightpollution-2025.json`  | copy of the Worker's yearly model description                                | ours                           |               — |     ~2 KB |         — | Tonight (instead of a Worker request)                |
+| `horizons/presets-v2.json`       | Copernicus GLO-30 horizon profiles (Greenwich, Mauna Kea, La Palma, Paranal) | Copernicus DEM licence (free)  |         4 × 720 |    ~13 KB |         — | first visit at a preset (instead of 12 DEM requests) |
+| `src/lib/sky/survey-registry.ts` | CDS MocServer records + CORS-tested mirrors                                  | per survey (Credits)           |      25 surveys |     in JS |         — | survey picker                                        |
 
 Objects per catalog (an object can be in several): PGC 79,314 · ESO 17,396 · UGC 13,371 ·
 NGC 7,269 · Abell 5,249 · IC 3,776 · PN G 2,929 · PK 1,897 · LDN 1,786 · VV 1,126 · LBN 1,118 ·

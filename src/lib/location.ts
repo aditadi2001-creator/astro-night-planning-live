@@ -5,40 +5,53 @@ const SAVED_KEY = 'anp.savedLocations.v1';
 const SKY_KEY = 'anp.siteSky.v1';
 
 /**
- * Built-in places. Coordinates are public landmarks rounded to 0.01° (DECISIONS D3):
- * the owner's precise site is entered on the device and never shipped.
+ * Built-in places: famous public observatories (coordinates rounded to 0.01°, DECISIONS D3).
+ * Nobody's personal site ships with the app: each visitor's own places are entered on their
+ * device and saved there (localStorage).
  */
 export const PRESETS: readonly Place[] = [
   {
-    id: 'bangalore',
-    name: 'Bangalore',
-    detail: 'Karnataka, India',
-    lat: 12.97,
-    lon: 77.59,
-    elevation: 920,
-    timezone: 'Asia/Kolkata',
+    id: 'greenwich',
+    name: 'Greenwich',
+    detail: 'Royal Observatory, London, UK',
+    lat: 51.48,
+    lon: 0,
+    elevation: 47,
+    timezone: 'Europe/London',
   },
   {
-    id: 'hanle',
-    name: 'Hanle',
-    detail: 'Ladakh, India (dark-sky reserve)',
-    lat: 32.78,
-    lon: 78.96,
-    elevation: 4500,
-    timezone: 'Asia/Kolkata',
+    id: 'mauna-kea',
+    name: 'Mauna Kea',
+    detail: 'Hawaiʻi, USA (observatory summit)',
+    lat: 19.82,
+    lon: -155.47,
+    elevation: 4205,
+    timezone: 'Pacific/Honolulu',
   },
   {
-    id: 'coorg',
-    name: 'Coorg (Madikeri)',
-    detail: 'Karnataka, India',
-    lat: 12.42,
-    lon: 75.74,
-    elevation: 1150,
-    timezone: 'Asia/Kolkata',
+    id: 'la-palma',
+    name: 'Roque de los Muchachos',
+    detail: 'La Palma, Canary Islands, Spain',
+    lat: 28.76,
+    lon: -17.88,
+    elevation: 2396,
+    timezone: 'Atlantic/Canary',
+  },
+  {
+    id: 'paranal',
+    name: 'Cerro Paranal',
+    detail: 'Atacama Desert, Chile (ESO VLT)',
+    lat: -24.63,
+    lon: -70.4,
+    elevation: 2635,
+    timezone: 'America/Santiago',
   },
 ];
 
-/** Default until the visitor picks or shares a location: Bangalore (rounded city centre). */
+/**
+ * Shown until the visitor shares or picks a location: the Royal Observatory, Greenwich
+ * (longitude 0°). The first-visit prompt asks for the visitor's own place.
+ */
 export const DEFAULT_PLACE: Place = PRESETS[0] as Place;
 
 export function presetById(id: string): Place | null {
@@ -81,6 +94,25 @@ export function loadPlace(): Place {
 
 export function savePlace(p: Place): void {
   writeJson(KEY, p);
+}
+
+const CHOSEN_KEY = 'anp.location.chosen.v1';
+
+/** True once the visitor has picked, shared or confirmed a location on this device. */
+export function hasChosenPlace(): boolean {
+  try {
+    return localStorage.getItem(CHOSEN_KEY) === '1' || localStorage.getItem(KEY) != null;
+  } catch {
+    return true; // no storage: never nag
+  }
+}
+
+export function markPlaceChosen(): void {
+  try {
+    localStorage.setItem(CHOSEN_KEY, '1');
+  } catch {
+    /* private mode */
+  }
 }
 
 export function loadSavedPlaces(): Place[] {

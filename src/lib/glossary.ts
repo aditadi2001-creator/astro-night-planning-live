@@ -23,7 +23,7 @@ export const GLOSSARY: Term[] = [
   },
   {
     term: 'Bortle scale',
-    text: 'A 1–9 rating of how dark a sky is: 1 is a pristine desert, 9 a city centre. Bangalore city is about 9.',
+    text: 'A 1–9 rating of how dark a sky is: 1 is a pristine desert, 9 a city centre. A big-city centre is about 8–9; a rural village about 4.',
   },
   {
     term: 'Dark nebula',

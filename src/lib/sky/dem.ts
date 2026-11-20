@@ -27,7 +27,7 @@ const FAR_M = 90_000;
 const M_PER_DEG = 111_320;
 const CACHE_PREFIX = 'anp.horizon.v2.';
 
-interface Raster {
+export interface Raster {
   west: number;
   north: number;
   /** Degrees per pixel. */
@@ -136,8 +136,14 @@ async function readImage(
   };
 }
 
-function sampleRaster(r: Raster, lat: number, lon: number): number {
-  if (!r.data) return 0;
+/** Elevation at a point from one raster; NaN when the point is outside it. Exported for tests. */
+export function sampleRaster(r: Raster, lat: number, lon: number): number {
+  // A missing tile is open sea (0 m), but only inside its own 1° square: returning 0 for every
+  // point made any site with ocean within 90 km see a flat sea-level horizon (fixed 2026-11-20).
+  if (!r.data) {
+    const inside = lat >= r.north - 1 && lat < r.north && lon >= r.west && lon < r.west + 1;
+    return inside ? 0 : Number.NaN;
+  }
   const x = (lon - r.west) / r.dx - 0.5;
   const y = (r.north - lat) / r.dy - 0.5;
   if (x < 0 || y < 0 || x > r.w - 1 || y > r.h - 1) return Number.NaN;
@@ -209,7 +215,7 @@ async function presetHorizon(
   lon: number,
   eye: number | null,
 ): Promise<SiteHorizon | null> {
-  presets ??= fetch(`${import.meta.env.BASE_URL}horizons/presets-v1.json`)
+  presets ??= fetch(`${import.meta.env.BASE_URL}horizons/presets-v2.json`)
     .then((r) => (r.ok ? r.json() : { presets: {} }))
     .then(
       (j: { presets?: Record<string, { p: number[]; e: number; n: number }> }) => j.presets ?? {},

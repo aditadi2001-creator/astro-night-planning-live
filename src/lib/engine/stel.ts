@@ -94,8 +94,28 @@ const BASE = import.meta.env.BASE_URL;
 const ENGINE_V = typeof __ENGINE_V__ === 'string' ? __ENGINE_V__ : 'dev';
 export const SKYDATA = `${BASE}skydata/`;
 
+/**
+ * True when the browser can create a WebGL context (the engine draws with WebGL 1). Tried on a
+ * scratch canvas, then released, so the sky's own canvas is untouched. Exported for tests.
+ */
+export function webglAvailable(doc: Document = document): boolean {
+  try {
+    const c = doc.createElement('canvas');
+    const gl = (c.getContext('webgl') ??
+      c.getContext('experimental-webgl')) as WebGLRenderingContext | null;
+    if (!gl) return false;
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Load the engine module and initialise it on `canvas`. */
 export async function startEngine(canvas: HTMLCanvasElement): Promise<Stel> {
+  // Without WebGL the engine would start with no drawing context and throw on every texture
+  // upload; say so once instead (the rest of the app works without the 3D sky).
+  if (!webglAvailable()) throw new Error('WebGL is turned off or not available in this browser');
   // The engine is a prebuilt static file in /public. Vite refuses to import
   // from there, so fetch it (cacheable like any asset) and import a Blob URL.
   const res = await fetch(`${BASE}engine/stellarium-web-engine.js?v=${ENGINE_V}`);
@@ -242,6 +262,8 @@ interface EngineHeap {
   _skylayers_set(i: number, p: number, w: number, h: number, a0: number, a1: number): void;
   _skylayers_win_to_altaz(x: number, y: number, out: number): number;
   _skylayers_icrf_to_win(x: number, y: number, z: number, out: number): number;
+  /** The engine's WebGL context; missing when the browser lost it (GPU reset, tab evicted). */
+  ctx?: unknown;
 }
 
 export function setAtmosphere(stel: Stel, a: EngineAtmosphere): void {
@@ -267,6 +289,8 @@ export function setSkyLayer(
   altMaxDeg: number,
 ): void {
   const m = stel as unknown as EngineHeap;
+  // No drawing context (lost by the browser): nothing to upload to; the next change retries.
+  if (!m.ctx) return;
   if (!rgba) {
     m._skylayers_set(layer, 0, 0, 0, 0, 0);
     return;

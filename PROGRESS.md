@@ -480,3 +480,19 @@ OpenAQ air quality missing. Cause: that work lived on a parallel branch never me
 - Deployed `dist` to the Pages project `astro-night-planning-live` (production branch `main`):
   https://astro-night-planning-live.pages.dev. The main website's project (`deepskyvision`) was not
   touched. Git `main` is not updated (nothing pushed).
+
+## Neutral defaults; visitors' own settings remembered ✅ (2026-11-20, owner's request)
+
+- Removed the owner's places (Bangalore, Hanle, Coorg) and rigs (C9.25 + ATR585M, guide scope,
+  a6100) from what the site ships. First visit: Greenwich, the 80 mm f/6 + ASI2600MC starter rig,
+  and a one-time "Where do you observe from?" prompt (Use my location / Choose a place / Keep
+  Greenwich); the tour is offered after it (D67).
+- Remembered per browser: place, starter rig or **My setup** (the visitor's own equipment), sky
+  layers (new), Beginner/Expert, night mode, view settings, equipment, oculars, telescope settings.
+  Tested: first visit with empty storage, the three prompt buttons, a return visit restoring place
+  (Mauna Kea), profile, Expert, survey on and constellation lines off; My setup survives trying a
+  starter rig and a reload; a browser holding the owner's old C9.25 setup keeps it as My setup.
+- Fixed on the way: coastal sites got a flat terrain horizon (D69); without WebGL the sky threw on
+  every Sky → Plan switch, also on production (D68). Generic wording in the glossary, foreground
+  hints and telescope help.
+- Gates: check, lint, format, 58 test files / 492 tests, build, check:budget all pass.

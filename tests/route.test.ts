@@ -42,8 +42,8 @@ describe('parseHash', () => {
       s: 'targets',
       t: 'NGC 7000',
       at: '2026-11-19T16:00:00.000Z',
-      loc: 'bangalore',
-      p: 'c925r',
+      loc: 'greenwich',
+      p: 'r80-2600',
     };
     const h = buildHash('plan', params);
     expect(parseHash(h)).toEqual({ page: 'plan', params, redirected: false });
@@ -52,7 +52,7 @@ describe('parseHash', () => {
 
 describe('location parameter privacy', () => {
   it('accepts presets and coordinates with at most two decimals', () => {
-    expect(validLoc('bangalore')).toBe(true);
+    expect(validLoc('mauna-kea')).toBe(true);
     expect(validLoc('13.04,77.57')).toBe(true);
     expect(validLoc('13.0412,77.5701')).toBe(false);
     expect(validLoc('95,10')).toBe(false);

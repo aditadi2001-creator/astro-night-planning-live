@@ -56,7 +56,7 @@ export async function localFetch(
     throw new TelescopeError(
       `Could not reach ${where}.`,
       mixed
-        ? 'This browser may block a secure page from talking to your local network. Allow the "local network" prompt (Chrome, Edge), or open the app through the bridge on your mini PC (see "How to connect").'
+        ? 'This browser may block a secure page from talking to your local network. Allow the "local network" prompt (Chrome, Edge), or open the app through the bridge on the computer next to the telescope (see "How to connect").'
         : offlineHint,
     );
   } finally {

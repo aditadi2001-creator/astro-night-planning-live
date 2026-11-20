@@ -505,7 +505,7 @@
         {/if}
         <label class="chk"
           ><input type="checkbox" bind:checked={telescope.settings.viaBridge} /> Through the bridge (this
-          page is served by the bridge on your mini PC)</label
+          page is served by the bridge on the computer next to the telescope)</label
         >
         {#if !telescope.settings.viaBridge}
           <div class="row">
@@ -563,7 +563,7 @@
             "local network" prompt.
           </li>
           <li>
-            Safari, iPhone or Firefox: run the bridge on the mini PC (<code
+            Safari, iPhone or Firefox: run the bridge on the computer next to the telescope (<code
               >node tools/bridge/bridge.mjs --dist dist</code
             >), open
             <code>http://&lt;address&gt;:8080</code> and tick "Through the bridge".

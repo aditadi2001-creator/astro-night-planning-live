@@ -327,3 +327,27 @@ rotation. Both were invisible at wide fields and several pixels at high zoom (th
 shake). Now the clock is reset only for real jumps (more than 1.5 s, or a deliberate time change),
 and in the equatorial view (or after a go-to) mountStep advances time and pointing together. The
 north-up roll is measured over a fixed 0.5° step and damped.
+
+## Neutral defaults for the public site (2026-11-20)
+
+**D67. Nobody's personal site or rig ships with the app; each visitor's choices live in their
+browser.** The owner asked for their places and equipment to be removed from the live site. The
+built-in places are four public observatories (Greenwich, Mauna Kea, Roque de los Muchachos,
+Cerro Paranal; 0.01° as before) and Greenwich is the default because it is neutral (longitude 0°)
+and its terrain horizon ships precomputed (no DEM requests through the Worker on first visits). A
+first visit asks once for the visitor's place (GPS, picker, or keep Greenwich) and only then
+offers the tour. The starter rigs are common generic equipment. The visitor's own deep-sky
+equipment from Plan → Telescope becomes "My setup" in the header as soon as it differs from the
+chosen rig, and is kept when they try a starter rig; a browser that already holds the owner's
+C9.25 setup therefore keeps it as My setup. Sky layer switches are now remembered too (the
+satellite map is not restored, as turning it on opens the Maps tab). Everything stays in
+localStorage (CLAUDE.md rule 5).
+
+**D68. The sky engine only starts when WebGL is available.** Without WebGL the engine started with
+no drawing context and every texture upload threw (seen on production too, on each Sky → Plan
+switch). The app now checks WebGL on a scratch canvas first and shows how to turn it on; texture
+uploads are skipped while the context is missing.
+
+**D69. A missing DEM tile counts as sea only inside its own 1° square.** It used to read 0 m for
+every point, so a site with sea within 90 km got a flat sea-level terrain horizon (found while
+computing the Mauna Kea and Paranal presets; tests/dem-sea.test.ts).

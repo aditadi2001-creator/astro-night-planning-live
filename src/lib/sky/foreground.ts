@@ -70,7 +70,7 @@ export const FOREGROUNDS: { id: ForegroundId; label: string; hint: string; tint:
   {
     id: 'himalaya',
     label: 'Himalayan peaks',
-    hint: 'High, jagged peaks like those around Hanle, Ladakh.',
+    hint: 'High, jagged snow peaks, as seen from a high mountain site.',
     tint: [0.95, 0.95, 1.1],
   },
   {
@@ -82,7 +82,7 @@ export const FOREGROUNDS: { id: ForegroundId; label: string; hint: string; tint:
   {
     id: 'rooftop',
     label: 'Rooftop with parapet',
-    hint: 'A Bangalore-style roof: a waist-high wall, a water tank and nearby buildings.',
+    hint: 'A city roof: a waist-high wall, a water tank and nearby buildings.',
     tint: [1.2, 1.1, 1],
   },
   {
