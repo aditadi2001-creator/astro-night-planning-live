@@ -25,6 +25,9 @@
   let latText = $state('');
   let lonText = $state('');
   let busy = $state(false);
+  /** The 3D globe (MapLibre and its tiles load only when it is opened). */
+  let globe = $state(false);
+  const loadGlobe = () => import('./GlobePicker.svelte');
   const typed = $derived(parseCoordinates(query));
   const fields = $derived(latText && lonText ? parseCoordinates(`${latText}, ${lonText}`) : null);
   let input: HTMLInputElement;
@@ -246,6 +249,9 @@
   </div>
 
   <div class="row actions">
+    <button class="globe-btn" onclick={() => (globe = true)} aria-haspopup="dialog">
+      🌍 Pick on the 3D globe
+    </button>
     <button onclick={gps}>Use my location (GPS)</button>
     <button onclick={toggleSave} aria-pressed={isSaved}>
       {isSaved ? '★ Saved' : '☆ Save this place'}
@@ -298,6 +304,28 @@
       </button>
     {/each}
   </div>
+
+  {#if globe}
+    {#await loadGlobe()}
+      <p class="msg" role="status">Opening the globe…</p>
+    {:then { default: GlobePicker }}
+      <GlobePicker
+        {place}
+        onplace={(p) => {
+          globe = false;
+          onplace(p);
+          onclose();
+        }}
+        onclose={() => {
+          globe = false;
+          // Places saved on the globe show up in the list here.
+          saved = loadSavedPlaces();
+        }}
+      />
+    {:catch}
+      <p class="msg" role="alert">The globe could not load. Check the connection and try again.</p>
+    {/await}
+  {/if}
 
   {#if typed}
     <ul class="list" aria-label="Coordinates">
@@ -467,6 +495,11 @@
   }
   .search {
     flex: 1;
+  }
+  .globe-btn {
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
   }
   input {
     width: 100%;
