@@ -177,6 +177,8 @@
   let polys = $state<{ id: SetupKind; d: string }[]>([]);
   /** Mosaic panes of the active setup (true positions on the sky). */
   let panes = $state<{ n: number; d: string; x: number; y: number }[]>([]);
+  /** Apparent altitude of the frame centre, degrees (0.1° steps). */
+  let altDeg = $state<number | null>(null);
   let lastKey = '';
   /** Screen corners of the active north-up frame (for its on-sky label). */
   let activePts: [number, number][] = [];
@@ -294,6 +296,10 @@
     }
     if (mode === 'nightscape') nsPath = nightscapePath(s, c);
     else if (nsPath) nsPath = '';
+    // Apparent altitude of the frame centre (observed frame: z towards the zenith).
+    const obs = s.convertFrame(s.core.observer, 'ICRF', 'OBSERVED', c);
+    const ol = Math.hypot(obs[0] ?? 0, obs[1] ?? 0, obs[2] ?? 0) || 1;
+    altDeg = Math.round(Math.asin(Math.max(-1, Math.min(1, (obs[2] ?? 0) / ol))) * s.R2D * 10) / 10;
     // Report the frame centre (J2000) for the Equipment tab.
     const ra = (((s.anp(ra0) * s.R2D) % 360) + 360) % 360;
     const dec = s.anpm(dec0) * s.R2D;
@@ -459,6 +465,10 @@
     } else if (mode === 'eyepiece') {
       x0 = cx - epR;
       y0 = cy - epR;
+    } else if (mode === 'telrad') {
+      // Outer (4°) ring; only the altitude line is shown.
+      x0 = cx - 2 * pxPerDeg;
+      y0 = cy - 2 * pxPerDeg + 15;
     } else {
       x0 = cx - 120;
       y0 = 48;
@@ -467,7 +477,7 @@
       // Clear of the quick switches down the left edge.
       x: Math.max(72, Math.min(w - 300, x0)),
       // Below the search row and the quick switches' top.
-      y: Math.max(76, Math.min(h - 40, y0 - 26)),
+      y: Math.max(76, Math.min(h - 55, y0 - (altDeg === null ? 26 : 41))),
     };
   });
   /** Shorten a label line to the room left on the screen (about 6.6 px per character). */
@@ -504,6 +514,10 @@
       ];
     return [];
   });
+  /** Last label line: how high the frame centre stands above the horizon. */
+  const altLine = $derived(
+    altDeg === null ? '' : `Alt ${altDeg.toFixed(1)}°${altDeg < 0 ? ' · below horizon' : ''}`,
+  );
   const cx = $derived(w / 2);
   const cy = $derived(h / 2);
   /** Screen-aligned frame of a setup (rotation relative to the screen). */
@@ -573,7 +587,7 @@
         <circle {cx} {cy} r={(d / 2) * pxPerDeg} class="telrad" />
       {/each}
     {/if}
-    {#if labelLines.length}
+    {#if labelLines.length || altLine}
       <text
         class="flabel"
         x={label.x}
@@ -582,10 +596,22 @@
           ? '#c8a2ff'
           : mode === 'eyepiece'
             ? '#d0d0d0'
-            : FRAME_COLORS[active]}
+            : mode === 'telrad'
+              ? '#ff6a60'
+              : FRAME_COLORS[active]}
       >
-        <tspan x={label.x} dy="0" class="l1">{fit(labelLines[0] ?? '')}</tspan>
-        <tspan x={label.x} dy="15">{fit(labelLines[1] ?? '')}</tspan>
+        {#if labelLines.length}
+          <tspan x={label.x} dy="0" class="l1">{fit(labelLines[0] ?? '')}</tspan>
+          <tspan x={label.x} dy="15">{fit(labelLines[1] ?? '')}</tspan>
+        {/if}
+        {#if altLine}
+          <tspan
+            x={label.x}
+            dy={labelLines.length ? 15 : 0}
+            class="alt"
+            class:below={altDeg !== null && altDeg < 0}>{altLine}</tspan
+          >
+        {/if}
       </text>
     {/if}
   </svg>
@@ -815,6 +841,9 @@
   }
   .ocular .flabel .l1 {
     font-weight: 600;
+  }
+  .ocular .flabel .alt.below {
+    fill: #ff8a80;
   }
   .ocular .pane-n {
     font-size: 12px;
