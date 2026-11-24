@@ -82,6 +82,10 @@
     savePlace,
   } from './lib/location';
   import TonightGlance from './components/TonightGlance.svelte';
+  import RainPanel from './components/RainPanel.svelte';
+  import RatingsPanel from './components/RatingsPanel.svelte';
+  import { loadRain, type Rain } from './lib/data/rain';
+  import { rateHour, scoreMath } from './lib/ratings';
   import { verdict } from './lib/plan/verdict';
   import { bortle } from './lib/lp/lightpollution';
   import type { Place } from './lib/astro/sky';
@@ -188,12 +192,14 @@
     'tonight',
     'tonight-detail',
     'week',
+    'rain',
+    'ratings',
     'maps',
     'targets',
     'planets',
-    'trips',
     'telescope',
     'space',
+    'trips',
     'about',
   ];
   let planStage = $state(firstRoute.params.s ? PLAN_ORDER.length : 1);
@@ -246,9 +252,33 @@
     }
     params = { ...params, s: id };
     history.replaceState(null, '', buildHash('plan', params));
-    void renderAll().then(() =>
-      document.getElementById(`sec-${id}`)?.scrollIntoView({ block: 'start' }),
-    );
+    void renderAll().then(() => holdSection(id));
+  }
+  /**
+   * Scroll to a section and keep it there for a few seconds while sections above it grow
+   * (lazy maps, satellite passes, rain data), until the user scrolls themselves.
+   */
+  let releaseHold: (() => void) | null = null;
+  function holdSection(id: SectionId, ms = 5000) {
+    releaseHold?.();
+    const go = () => document.getElementById(`sec-${id}`)?.scrollIntoView({ block: 'start' });
+    go();
+    const body = document.querySelector('.plan-body');
+    const ro = body ? new ResizeObserver(go) : null;
+    if (body) ro?.observe(body);
+    const stop = () => {
+      ro?.disconnect();
+      clearTimeout(t);
+      removeEventListener('wheel', stop);
+      removeEventListener('touchmove', stop);
+      removeEventListener('keydown', stop);
+      releaseHold = null;
+    };
+    const t = setTimeout(stop, ms);
+    addEventListener('wheel', stop, { passive: true });
+    addEventListener('touchmove', stop, { passive: true });
+    addEventListener('keydown', stop);
+    releaseHold = stop;
   }
   function sectionInView(id: SectionId) {
     if (id === activeSection) return;
@@ -1090,6 +1120,40 @@
   );
   let plan = $state<PlanItem[]>(loadPlan());
 
+  // ---- rain forecast and the 0–100 ratings (their own sections) ----------------------------
+  // One extra Open-Meteo call per place, started only when the Rain or Ratings section comes
+  // near the screen (or a link opens it), so the rest of the page loads as before.
+  let rainNear = $state(firstRoute.params.s === 'rain' || firstRoute.params.s === 'ratings');
+  let rainSource = $state<LiveSource<Rain> | null>(null);
+  $effect(() => {
+    if (!rainNear) return;
+    const lat = place.lat;
+    const lon = place.lon;
+    const s = new LiveSource<Rain>('rain', (sig, f) => loadRain(lat, lon, sig, f), 30 * 60_000);
+    rainSource = s;
+    return s.start();
+  });
+  const rainData = $derived(rainSource?.data ?? null);
+  const rateInput = (r: typeof row) => ({
+    row: r,
+    rain: rainData ? hourAt(rainData.hours, r.t) : null,
+    darkSkyMag: darkSkyAt(r.aod),
+    siteSqm: sqmUsed.value,
+    elevation: place.elevation,
+  });
+  const rateRow = (r: typeof row) => rateHour(rateInput(r));
+  const ratingsInput = $derived(rateInput(row));
+  const ratingsNow = $derived(rateHour(ratingsInput));
+  // The timeline starts three hours back (daytime at noon): the table keeps the hours after sunset.
+  const ratingsTonight = $derived.by(() => {
+    const night = timeline.filter((r) => r.sunAlt < 0);
+    return (night.length ? night : timeline).map((r) => ({
+      t: r.t,
+      ratings: rateRow(r),
+      score: r.score?.score ?? null,
+    }));
+  });
+
   const ribbonHours = $derived<RibbonHour[]>(
     timeline.map((r) => ({
       t: r.t,
@@ -1817,6 +1881,64 @@
             <p class="sec-wait" aria-hidden="true"></p>
           {/if}
         </section>
+        <section id="sec-rain" class="sec" aria-labelledby="h-rain">
+          <header class="sec-head">
+            <div>
+              <h2 id="h-rain">Rain forecast</h2>
+              <p class="lede">
+                Rain now and over the next 48 hours, the week ahead, and a 0–100 rain rating for
+                each night at {place.name}.
+              </p>
+            </div>
+          </header>
+          {#if ready('rain')}
+            <div use:nearView={() => (rainNear = true)}>
+              <RainPanel
+                rain={rainData}
+                status={rainSource?.status ?? 'loading'}
+                {place}
+                {tz}
+                now={nowMin}
+                onpick={(t) => setTime(new Date(t), false)}
+              />
+            </div>
+          {:else}
+            <p class="sec-wait" aria-hidden="true"></p>
+          {/if}
+        </section>
+        <section id="sec-ratings" class="sec" aria-labelledby="h-ratings">
+          <header class="sec-head">
+            <div>
+              <h2 id="h-ratings">Every condition rated 0–100</h2>
+              <p class="lede">
+                Each condition for {live ? 'now' : fmtDateTime(shown, tz)} as a rating out of 100, with
+                the numbers that went in and the sum that made it. Pick an hour in the Tonight timeline
+                to rate that hour.
+              </p>
+            </div>
+            {#if !live}<button onclick={() => setTime(new Date(), true)}>Back to now</button>{/if}
+          </header>
+          {#if ready('ratings')}
+            <div use:nearView={() => (rainNear = true)}>
+              <RatingsPanel
+                ratings={ratingsNow}
+                score={row.score?.score ?? null}
+                scoreMath={scoreMath(row)}
+                hours={ratingsTonight}
+                {tz}
+                when={live ? 'now' : fmtDateTime(shown, tz)}
+                input={ratingsInput}
+                parts={row.score}
+                selected={live ? null : hourStart(minute)}
+                {live}
+                onpick={(t) => setTime(new Date(t), false)}
+                onnow={() => setTime(new Date(), true)}
+              />
+            </div>
+          {:else}
+            <p class="sec-wait" aria-hidden="true"></p>
+          {/if}
+        </section>
         <section id="sec-maps" class="sec" aria-labelledby="h-maps">
           <header class="sec-head">
             <div>
@@ -1913,46 +2035,6 @@
             <p class="sec-wait" aria-hidden="true"></p>
           {/if}
         </section>
-        <section id="sec-trips" class="sec" aria-labelledby="h-trips">
-          <header class="sec-head">
-            <div>
-              <h2 id="h-trips">Trip planner: months and years ahead</h2>
-              <p class="lede">
-                Every night of any year to {new Date().getFullYear() + 15}: dark hours without the
-                Moon, when your target is up, and how often each month's nights were clear here over
-                the last ten years. Change the place (top left) to plan a trip somewhere else.
-              </p>
-            </div>
-          </header>
-          {#if ready('trips')}
-            <YearPlanner
-              {place}
-              {tz}
-              targets={[
-                ...(selectedInfo
-                  ? [
-                      {
-                        name: selectedInfo.name,
-                        ra: selectedInfo.ra2000,
-                        dec: selectedInfo.dec2000,
-                      },
-                    ]
-                  : []),
-                ...plan.map((p) => ({
-                  name: p.common ? `${p.name} · ${p.common}` : p.name,
-                  ra: p.ra,
-                  dec: p.dec,
-                })),
-              ]}
-              onnight={(t) => {
-                setTime(t, false);
-                jumpTo('tonight');
-              }}
-            />
-          {:else}
-            <p class="sec-wait" aria-hidden="true"></p>
-          {/if}
-        </section>
         <section id="sec-telescope" class="sec" aria-labelledby="h-telescope">
           <header class="sec-head">
             <div>
@@ -1990,6 +2072,46 @@
               kp={kpSource.data}
               orbits={orbitSource?.data ?? null}
               orbitsMissing={!orbitSource || orbitSource.status === 'error'}
+            />
+          {:else}
+            <p class="sec-wait" aria-hidden="true"></p>
+          {/if}
+        </section>
+        <section id="sec-trips" class="sec" aria-labelledby="h-trips">
+          <header class="sec-head">
+            <div>
+              <h2 id="h-trips">Trip planner: months and years ahead</h2>
+              <p class="lede">
+                Every night of any year to {new Date().getFullYear() + 15}: dark hours without the
+                Moon, when your target is up, and how often each month's nights were clear here over
+                the last ten years. Change the place (top left) to plan a trip somewhere else.
+              </p>
+            </div>
+          </header>
+          {#if ready('trips')}
+            <YearPlanner
+              {place}
+              {tz}
+              targets={[
+                ...(selectedInfo
+                  ? [
+                      {
+                        name: selectedInfo.name,
+                        ra: selectedInfo.ra2000,
+                        dec: selectedInfo.dec2000,
+                      },
+                    ]
+                  : []),
+                ...plan.map((p) => ({
+                  name: p.common ? `${p.name} · ${p.common}` : p.name,
+                  ra: p.ra,
+                  dec: p.dec,
+                })),
+              ]}
+              onnight={(t) => {
+                setTime(t, false);
+                jumpTo('tonight');
+              }}
             />
           {:else}
             <p class="sec-wait" aria-hidden="true"></p>

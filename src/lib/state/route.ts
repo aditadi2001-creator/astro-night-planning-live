@@ -14,12 +14,14 @@ export type Page = 'plan' | 'sky';
 export const PLAN_SECTIONS = [
   { id: 'tonight', label: 'Tonight', title: 'Tonight at a glance' },
   { id: 'week', label: 'Week', title: 'Week ahead' },
+  { id: 'rain', label: 'Rain', title: 'Rain forecast' },
+  { id: 'ratings', label: 'Ratings', title: 'Every condition rated 0–100' },
   { id: 'maps', label: 'Maps', title: 'Cloud and light-pollution maps' },
   { id: 'targets', label: 'Targets', title: 'Best targets tonight' },
   { id: 'planets', label: 'Planets', title: 'Planets, Sun and Moon' },
-  { id: 'trips', label: 'Trips', title: 'Trip planner: months and years ahead' },
   { id: 'telescope', label: 'Telescope', title: 'Telescope and field of view' },
   { id: 'space', label: 'Space', title: 'Aurora and satellites' },
+  { id: 'trips', label: 'Trips', title: 'Trip planner: months and years ahead' },
   { id: 'about', label: 'About', title: 'About, methods and credits' },
 ] as const;
 export type SectionId = (typeof PLAN_SECTIONS)[number]['id'];
@@ -34,6 +36,8 @@ const LEGACY: Record<string, SectionId> = {
   equipment: 'telescope',
   maps: 'maps',
   space: 'space',
+  rain: 'rain',
+  ratings: 'ratings',
   about: 'about',
   credits: 'about',
 };
