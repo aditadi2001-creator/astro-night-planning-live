@@ -187,9 +187,9 @@
   const PLAN_ORDER: (SectionId | 'tonight-detail')[] = [
     'tonight',
     'tonight-detail',
+    'week',
     'targets',
     'planets',
-    'week',
     'trips',
     'telescope',
     'space',
@@ -1804,6 +1804,19 @@
             <p class="sec-wait" aria-hidden="true"></p>
           {/if}
         </section>
+        <section id="sec-week" class="sec" aria-labelledby="h-week">
+          <header class="sec-head">
+            <div>
+              <h2 id="h-week">Week ahead</h2>
+              <p class="lede">Cloud outlook for the next seven nights from the forecast models.</p>
+            </div>
+          </header>
+          {#if ready('week')}
+            <WeekAhead nights={week} {tz} />
+          {:else}
+            <p class="sec-wait" aria-hidden="true"></p>
+          {/if}
+        </section>
         <section id="sec-targets" class="sec" aria-labelledby="h-targets">
           <header class="sec-head">
             <div>
@@ -1859,19 +1872,6 @@
               seeing={tonightVerdict.seeing}
               onshow={(name) => pickResult({ kind: 'planet', label: name, sub: '', badges: [] })}
             />
-          {:else}
-            <p class="sec-wait" aria-hidden="true"></p>
-          {/if}
-        </section>
-        <section id="sec-week" class="sec" aria-labelledby="h-week">
-          <header class="sec-head">
-            <div>
-              <h2 id="h-week">Week ahead</h2>
-              <p class="lede">Cloud outlook for the next seven nights from the forecast models.</p>
-            </div>
-          </header>
-          {#if ready('week')}
-            <WeekAhead nights={week} {tz} />
           {:else}
             <p class="sec-wait" aria-hidden="true"></p>
           {/if}

@@ -13,9 +13,9 @@ export type Page = 'plan' | 'sky';
 
 export const PLAN_SECTIONS = [
   { id: 'tonight', label: 'Tonight', title: 'Tonight at a glance' },
+  { id: 'week', label: 'Week', title: 'Week ahead' },
   { id: 'targets', label: 'Targets', title: 'Best targets tonight' },
   { id: 'planets', label: 'Planets', title: 'Planets, Sun and Moon' },
-  { id: 'week', label: 'Week', title: 'Week ahead' },
   { id: 'trips', label: 'Trips', title: 'Trip planner: months and years ahead' },
   { id: 'telescope', label: 'Telescope', title: 'Telescope and field of view' },
   { id: 'space', label: 'Space', title: 'Aurora and satellites' },
