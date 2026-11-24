@@ -1820,16 +1820,25 @@
         <section id="sec-maps" class="sec" aria-labelledby="h-maps">
           <header class="sec-head">
             <div>
-              <h2 id="h-maps">Light pollution and cloud maps</h2>
+              <h2 id="h-maps">Cloud and light-pollution maps</h2>
               <p class="lede">
-                Our yearly light-pollution model and the infrared satellite cloud map of the last
-                hours.
+                The infrared satellite cloud map of the last hours and our yearly light-pollution
+                model.
               </p>
             </div>
           </header>
           {#if ready('maps')}
             <div class="night-filter" use:nearView={() => (mapsNear = true)}>
               {#if mapsNear}
+                {#await import('./components/SatelliteMap.svelte') then { default: SatelliteMap }}
+                  <div id="satmap">
+                    <SatelliteMap {place} {tz} />
+                  </div>
+                {:catch}
+                  <p class="note">
+                    The satellite map could not be loaded. Check the connection and try again.
+                  </p>
+                {/await}
                 {#await import('./components/LightPollutionMap.svelte') then { default: LightPollutionMap }}
                   <LightPollutionMap {place} site={siteLight} {naturalSky} onplace={setPlace} />
                 {:catch}
@@ -1837,28 +1846,6 @@
                     The light-pollution map could not be loaded. Check the connection.
                   </p>
                 {/await}
-                {#if layers.satmap}
-                  {#await import('./components/SatelliteMap.svelte') then { default: SatelliteMap }}
-                    <div id="satmap">
-                      <SatelliteMap {place} {tz} />
-                    </div>
-                  {:catch}
-                    <p class="note">
-                      The satellite map could not be loaded. Check the connection and try again.
-                    </p>
-                  {/await}
-                {:else}
-                  <div class="placeholder">
-                    <div>
-                      <h2>Satellite cloud map</h2>
-                      <p>
-                        Infrared images of the last 2.5 hours around your site (about 1–3 MB). Off
-                        until you open it, to save data.
-                      </p>
-                    </div>
-                    <button onclick={() => (layers.satmap = true)}>Show the satellite map</button>
-                  </div>
-                {/if}
               {:else}
                 <p class="note">The maps load when you scroll here (they need about 1–3 MB).</p>
               {/if}
@@ -2290,27 +2277,6 @@
     gap: var(--gap);
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
     align-items: start;
-  }
-  .placeholder {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px 24px;
-    background: var(--panel);
-    border: 1px dashed var(--line);
-    border-radius: var(--radius);
-    padding: 16px;
-  }
-  .placeholder h2 {
-    margin: 0 0 4px;
-    font-size: 16px;
-  }
-  .placeholder p {
-    margin: 0;
-    color: var(--muted);
-    font-size: 14px;
-    max-width: 60ch;
   }
   .note {
     color: var(--muted);
