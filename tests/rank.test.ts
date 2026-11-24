@@ -115,3 +115,22 @@ describe('targets engine', () => {
     expect(long.every((r) => r.hours >= 6)).toBe(true);
   });
 });
+
+describe('unique target names', () => {
+  it('no two catalog objects share a name (the lists are keyed by it)', () => {
+    const seen = new Set<string>();
+    for (const o of objs) {
+      expect(seen.has(o.name), o.name).toBe(false);
+      seen.add(o.name);
+    }
+  });
+  it('the Double Cluster halves use their own NGC numbers and keep C 14 as an id', () => {
+    const halves = objs.filter((o) => o.ids.includes('C 14'));
+    expect(halves.map((o) => o.name).sort()).toEqual(['NGC 869', 'NGC 884']);
+    for (const o of halves) expect(o.badges).toContain('C');
+  });
+  it('names that were already unique do not change', () => {
+    expect(objs.find((o) => o.ids.includes('NGC 224'))?.name).toBe('M 31');
+    expect(objs.find((o) => o.ids.includes('NGC 1976'))?.name).toBe('M 42');
+  });
+});

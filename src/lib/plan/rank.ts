@@ -512,5 +512,34 @@ export function objectsFromShard(shard: { columns: string[]; rows: unknown[][] }
       sb: surfaceBrightness(mag, maj, min),
     });
   }
-  return out;
+  return uniqueNames(out);
+}
+
+/**
+ * Give every object its own name. A group designation can sit first on several objects
+ * (C 14 is the whole Double Cluster: NGC 869 and NGC 884), and the lists, the plan and the
+ * sky lookup all work by name, so those objects take their first designation that no other
+ * object carries (NGC 869, NGC 884). The shared one stays in `ids` (badges, search).
+ * Objects whose name is already unique keep it.
+ */
+export function uniqueNames(objs: Obj[]): Obj[] {
+  const asName = new Map<string, number>();
+  const anyUse = new Map<string, number>();
+  for (const o of objs) {
+    asName.set(o.name, (asName.get(o.name) ?? 0) + 1);
+    for (const id of new Set(o.ids)) anyUse.set(id, (anyUse.get(id) ?? 0) + 1);
+  }
+  const taken = new Set(objs.filter((o) => asName.get(o.name) === 1).map((o) => o.name));
+  for (const o of objs) {
+    if (asName.get(o.name) === 1) continue;
+    let name = o.ids.find((id) => anyUse.get(id) === 1 && !taken.has(id));
+    // No designation of its own: number the copies ("NGC 78 (2)").
+    for (let k = 1; !name; k++) {
+      const n = k === 1 ? o.name : `${o.name} (${k})`;
+      if (!taken.has(n)) name = n;
+    }
+    taken.add(name);
+    o.name = name;
+  }
+  return objs;
 }
