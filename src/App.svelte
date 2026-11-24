@@ -188,12 +188,12 @@
     'tonight',
     'tonight-detail',
     'week',
+    'maps',
     'targets',
     'planets',
     'trips',
     'telescope',
     'space',
-    'maps',
     'about',
   ];
   let planStage = $state(firstRoute.params.s ? PLAN_ORDER.length : 1);
@@ -1817,6 +1817,56 @@
             <p class="sec-wait" aria-hidden="true"></p>
           {/if}
         </section>
+        <section id="sec-maps" class="sec" aria-labelledby="h-maps">
+          <header class="sec-head">
+            <div>
+              <h2 id="h-maps">Light pollution and cloud maps</h2>
+              <p class="lede">
+                Our yearly light-pollution model and the infrared satellite cloud map of the last
+                hours.
+              </p>
+            </div>
+          </header>
+          {#if ready('maps')}
+            <div class="night-filter" use:nearView={() => (mapsNear = true)}>
+              {#if mapsNear}
+                {#await import('./components/LightPollutionMap.svelte') then { default: LightPollutionMap }}
+                  <LightPollutionMap {place} site={siteLight} {naturalSky} onplace={setPlace} />
+                {:catch}
+                  <p class="note">
+                    The light-pollution map could not be loaded. Check the connection.
+                  </p>
+                {/await}
+                {#if layers.satmap}
+                  {#await import('./components/SatelliteMap.svelte') then { default: SatelliteMap }}
+                    <div id="satmap">
+                      <SatelliteMap {place} {tz} />
+                    </div>
+                  {:catch}
+                    <p class="note">
+                      The satellite map could not be loaded. Check the connection and try again.
+                    </p>
+                  {/await}
+                {:else}
+                  <div class="placeholder">
+                    <div>
+                      <h2>Satellite cloud map</h2>
+                      <p>
+                        Infrared images of the last 2.5 hours around your site (about 1–3 MB). Off
+                        until you open it, to save data.
+                      </p>
+                    </div>
+                    <button onclick={() => (layers.satmap = true)}>Show the satellite map</button>
+                  </div>
+                {/if}
+              {:else}
+                <p class="note">The maps load when you scroll here (they need about 1–3 MB).</p>
+              {/if}
+            </div>
+          {:else}
+            <p class="sec-wait" aria-hidden="true"></p>
+          {/if}
+        </section>
         <section id="sec-targets" class="sec" aria-labelledby="h-targets">
           <header class="sec-head">
             <div>
@@ -1954,56 +2004,6 @@
               orbits={orbitSource?.data ?? null}
               orbitsMissing={!orbitSource || orbitSource.status === 'error'}
             />
-          {:else}
-            <p class="sec-wait" aria-hidden="true"></p>
-          {/if}
-        </section>
-        <section id="sec-maps" class="sec" aria-labelledby="h-maps">
-          <header class="sec-head">
-            <div>
-              <h2 id="h-maps">Light pollution and cloud maps</h2>
-              <p class="lede">
-                Our yearly light-pollution model and the infrared satellite cloud map of the last
-                hours.
-              </p>
-            </div>
-          </header>
-          {#if ready('maps')}
-            <div class="night-filter" use:nearView={() => (mapsNear = true)}>
-              {#if mapsNear}
-                {#await import('./components/LightPollutionMap.svelte') then { default: LightPollutionMap }}
-                  <LightPollutionMap {place} site={siteLight} {naturalSky} onplace={setPlace} />
-                {:catch}
-                  <p class="note">
-                    The light-pollution map could not be loaded. Check the connection.
-                  </p>
-                {/await}
-                {#if layers.satmap}
-                  {#await import('./components/SatelliteMap.svelte') then { default: SatelliteMap }}
-                    <div id="satmap">
-                      <SatelliteMap {place} {tz} />
-                    </div>
-                  {:catch}
-                    <p class="note">
-                      The satellite map could not be loaded. Check the connection and try again.
-                    </p>
-                  {/await}
-                {:else}
-                  <div class="placeholder">
-                    <div>
-                      <h2>Satellite cloud map</h2>
-                      <p>
-                        Infrared images of the last 2.5 hours around your site (about 1–3 MB). Off
-                        until you open it, to save data.
-                      </p>
-                    </div>
-                    <button onclick={() => (layers.satmap = true)}>Show the satellite map</button>
-                  </div>
-                {/if}
-              {:else}
-                <p class="note">The maps load when you scroll here (they need about 1–3 MB).</p>
-              {/if}
-            </div>
           {:else}
             <p class="sec-wait" aria-hidden="true"></p>
           {/if}

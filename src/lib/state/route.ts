@@ -14,12 +14,12 @@ export type Page = 'plan' | 'sky';
 export const PLAN_SECTIONS = [
   { id: 'tonight', label: 'Tonight', title: 'Tonight at a glance' },
   { id: 'week', label: 'Week', title: 'Week ahead' },
+  { id: 'maps', label: 'Maps', title: 'Light pollution and cloud maps' },
   { id: 'targets', label: 'Targets', title: 'Best targets tonight' },
   { id: 'planets', label: 'Planets', title: 'Planets, Sun and Moon' },
   { id: 'trips', label: 'Trips', title: 'Trip planner: months and years ahead' },
   { id: 'telescope', label: 'Telescope', title: 'Telescope and field of view' },
   { id: 'space', label: 'Space', title: 'Aurora and satellites' },
-  { id: 'maps', label: 'Maps', title: 'Light pollution and cloud maps' },
   { id: 'about', label: 'About', title: 'About, methods and credits' },
 ] as const;
 export type SectionId = (typeof PLAN_SECTIONS)[number]['id'];
