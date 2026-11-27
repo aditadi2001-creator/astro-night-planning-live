@@ -14,7 +14,8 @@
  *                                         (no CORS on that bucket), max 4 MiB
  *   /7timer/<lat>/<lon>                   7Timer! ASTRO forecast (no CORS there)
  *   /aq/<lat>/<lon>                       measured air quality: nearest OpenAQ monitors,
- *                                         NowCast PM2.5/PM10 (needs the OPENAQ_KEY secret)
+ *                                         NowCast and 24-h PM2.5/PM10, O3/NO2/SO2/CO, and
+ *                                         regional monitors for remote sites (OPENAQ_KEY secret)
  *
  * Tiles are served one per URL so Workers Caching can keep each of them (the
  * cache is keyed by URL, not byte range). The Worker does the range read
@@ -42,6 +43,15 @@ import {
   AQ_MAX_AGE_MS,
   AQ_READ,
   AQ_STATIONS,
+  AQ_GASES,
+  AQ_HOURS,
+  AQ_REGIONAL_KM,
+  AQ_REGIONAL_STATIONS,
+  bboxAround,
+  gasToStd,
+  roundSeries,
+  trailingMean,
+  type AqGas,
 } from './routes';
 
 export interface Env {
@@ -225,7 +235,7 @@ async function proxy7timer(path: string): Promise<Response> {
 
 interface OaqSensor {
   id: number;
-  parameter?: { name?: string };
+  parameter?: { name?: string; units?: string };
 }
 interface OaqLocation {
   id: number;
@@ -249,25 +259,112 @@ async function oaq<T>(env: Env, path: string): Promise<T> {
   return (await r.json()) as T;
 }
 
-/** Last 12 h of one sensor as a NowCast concentration, plus the newest hour. */
-async function sensorNowCast(env: Env, id: number, now: number) {
-  const from = new Date(now - 14 * 3600_000).toISOString();
+/**
+ * The last AQ_HOURS hours of one sensor (newest first, values converted by `conv`), with the
+ * EPA NowCast of the newest 12 and the newest hour's end. One OpenAQ request.
+ */
+async function sensorHours(
+  env: Env,
+  id: number,
+  now: number,
+  conv: (v: number) => number | null = (v) => v,
+) {
+  const from = new Date(now - (AQ_HOURS + 2) * 3600_000).toISOString();
   const d = await oaq<{ results?: OaqHour[] }>(
     env,
-    `/sensors/${id}/hours?datetime_from=${encodeURIComponent(from)}&limit=24`,
+    `/sensors/${id}/hours?datetime_from=${encodeURIComponent(from)}&limit=${AQ_HOURS + 6}`,
   );
   const rows = (d.results ?? []).map((h) => ({
-    value: h.value ?? null,
+    value: h.value == null ? null : conv(h.value),
     end: Date.parse(h.period?.datetimeTo?.utc ?? ''),
   }));
-  const { series, newest } = hourlySeries(rows);
-  return { nowcast: nowCast(series), latest: series[0] ?? null, newest };
+  const { series, newest } = hourlySeries(rows, AQ_HOURS);
+  return { series, nowcast: nowCast(series), latest: series[0] ?? null, newest };
+}
+
+type Located = { l: OaqLocation; km: number; last: number };
+
+function locate(p: { lat: number; lon: number }, list: OaqLocation[], now: number): Located[] {
+  return list
+    .map((l) => ({
+      l,
+      km: haversineKm(
+        p.lat,
+        p.lon,
+        l.coordinates?.latitude ?? NaN,
+        l.coordinates?.longitude ?? NaN,
+      ),
+      last: Date.parse(l.datetimeLast?.utc ?? ''),
+    }))
+    .filter((x) => Number.isFinite(x.km) && now - x.last <= AQ_MAX_AGE_MS)
+    .sort((a, b) => a.km - b.km);
+}
+
+const sensorOf = (l: OaqLocation, name: string) =>
+  l.sensors?.find((s) => s.parameter?.name === name);
+
+/** PM2.5 and PM10 of one station: NowCast, 24-hour means and the PM2.5 day for the chart. */
+async function readPm({ l, km }: Located, env: Env, now: number) {
+  const pm25Id = sensorOf(l, 'pm25')?.id;
+  const pm10Id = sensorOf(l, 'pm10')?.id;
+  const [pm25, pm10] = await Promise.all([
+    pm25Id ? sensorHours(env, pm25Id, now).catch(() => null) : null,
+    pm10Id ? sensorHours(env, pm10Id, now).catch(() => null) : null,
+  ]);
+  return {
+    name: l.name ?? `OpenAQ ${l.id}`,
+    provider: l.provider?.name ?? null,
+    monitor: !!l.isMonitor,
+    km: Math.round(km * 10) / 10,
+    lat: l.coordinates?.latitude ?? null,
+    lon: l.coordinates?.longitude ?? null,
+    time: pm25?.newest ?? pm10?.newest ?? null,
+    pm25: pm25?.nowcast ?? null,
+    pm25Latest: pm25?.latest ?? null,
+    pm10: pm10?.nowcast ?? null,
+    pm25Mean24: pm25 ? trailingMean(pm25.series, 24) : null,
+    pm10Mean24: pm10 ? trailingMean(pm10.series, 24) : null,
+    pm25Series: pm25 ? roundSeries(pm25.series) : null,
+  };
 }
 
 /**
- * /aq/<lat>/<lon>: the nearest reference monitors (up to 5 within 25 km, reported
- * in the last 3 h) with NowCast PM2.5 and PM10, as the EPA computes "current AQI".
- * Low-cost sensors are used only when no reference monitor is in range.
+ * One gas from the nearest station that measures it, in ppb (O3, NO2, SO2) or ppm (CO): the
+ * newest hour, the 8-hour mean (O3, CO) and the 24-hour mean (SO2), as the EPA AQI uses them.
+ */
+async function readGas(gas: AqGas, cands: Located[], env: Env, now: number) {
+  const c = cands.find((x) => sensorOf(x.l, gas)?.id);
+  const s = c ? sensorOf(c.l, gas) : undefined;
+  const unit = s?.parameter?.units;
+  if (!c || !s || !unit || gasToStd(1, unit, gas) == null) return null;
+  const h = await sensorHours(env, s.id, now, (v) => gasToStd(v, unit, gas)).catch(() => null);
+  if (!h || h.newest == null) return null;
+  return {
+    name: c.l.name ?? `OpenAQ ${c.l.id}`,
+    provider: c.l.provider?.name ?? null,
+    monitor: !!c.l.isMonitor,
+    km: Math.round(c.km * 10) / 10,
+    time: h.newest,
+    unit: gas === 'co' ? 'ppm' : 'ppb',
+    /** The unit the station reports in (before conversion). */
+    reported: unit,
+    latest: h.latest,
+    mean8: trailingMean(h.series, 8),
+    mean24: trailingMean(h.series, 24),
+    series: roundSeries(h.series, gas === 'co' ? 3 : 1),
+  };
+}
+
+/**
+ * /aq/<lat>/<lon>: measured air quality at a place, as the EPA computes "current AQI".
+ *  - stations: the nearest reference monitors (up to 5 within 25 km, reported in the last 3 h)
+ *    with NowCast PM2.5 and PM10, their 24-hour means and the last day of PM2.5. Low-cost
+ *    sensors are used only when no reference monitor is in range.
+ *  - gases: O3, NO2, SO2 and CO from the nearest of those stations that measures each.
+ *  - regional: only when nothing reports within 25 km, the nearest three within 100 km, for
+ *    reference (the site then keeps the model figure).
+ * OpenAQ requests per uncached place: 1 + up to 16 (PM) + up to 4 (gases) = 21, or 1 + 1 + 6 when
+ * only the regional search runs; the free limit is 60 a minute.
  * 503 without the OPENAQ_KEY secret (the site then shows the CAMS model).
  */
 async function serveAq(env: Env, path: string): Promise<Response> {
@@ -282,44 +379,13 @@ async function serveAq(env: Env, path: string): Promise<Response> {
     env,
     `/locations?coordinates=${p.lat},${p.lon}&radius=${AQ_RADIUS_M}&parameters_id=2&limit=50`,
   );
-  const fresh = (loc.results ?? [])
-    .map((l) => ({
-      l,
-      km: haversineKm(
-        p.lat,
-        p.lon,
-        l.coordinates?.latitude ?? NaN,
-        l.coordinates?.longitude ?? NaN,
-      ),
-      last: Date.parse(l.datetimeLast?.utc ?? ''),
-    }))
-    .filter((x) => Number.isFinite(x.km) && now - x.last <= AQ_MAX_AGE_MS)
-    .sort((a, b) => a.km - b.km);
+  const fresh = locate(p, loc.results ?? [], now);
   const monitors = fresh.filter((x) => x.l.isMonitor);
-  const pick = (monitors.length ? monitors : fresh).slice(0, AQ_READ);
-  const read = await Promise.all(
-    pick.map(async ({ l, km }) => {
-      const sensor = (name: string) => l.sensors?.find((s) => s.parameter?.name === name)?.id;
-      const pm25Id = sensor('pm25');
-      const pm10Id = sensor('pm10');
-      const [pm25, pm10] = await Promise.all([
-        pm25Id ? sensorNowCast(env, pm25Id, now).catch(() => null) : null,
-        pm10Id ? sensorNowCast(env, pm10Id, now).catch(() => null) : null,
-      ]);
-      return {
-        name: l.name ?? `OpenAQ ${l.id}`,
-        provider: l.provider?.name ?? null,
-        monitor: !!l.isMonitor,
-        km: Math.round(km * 10) / 10,
-        lat: l.coordinates?.latitude ?? null,
-        lon: l.coordinates?.longitude ?? null,
-        time: pm25?.newest ?? pm10?.newest ?? null,
-        pm25: pm25?.nowcast ?? null,
-        pm25Latest: pm25?.latest ?? null,
-        pm10: pm10?.nowcast ?? null,
-      };
-    }),
-  );
+  const cands = monitors.length ? monitors : fresh;
+  const [read, gasList] = await Promise.all([
+    Promise.all(cands.slice(0, AQ_READ).map((c) => readPm(c, env, now))),
+    Promise.all(AQ_GASES.map((g) => readGas(g, cands, env, now).catch(() => null))),
+  ]);
   // Stations with a recent PM2.5 hour first (nearest first), then the rest; at most AQ_STATIONS.
   const recent = (s: (typeof read)[number]) =>
     s.pm25 != null && s.time != null && now - s.time <= AQ_MAX_AGE_MS;
@@ -327,11 +393,30 @@ async function serveAq(env: Env, path: string): Promise<Response> {
     0,
     AQ_STATIONS,
   );
-  return respond(JSON.stringify({ source: 'openaq', fetched: now, stations }), 200, {
-    'Content-Type': 'application/json',
-    // Monitors report hourly; 20 minutes keeps us far inside OpenAQ's free rate limit.
-    'Cache-Control': 'public, max-age=1200',
-  });
+  const gases = Object.fromEntries(AQ_GASES.map((g, i) => [g, gasList[i] ?? null]));
+
+  let regional: Awaited<ReturnType<typeof readPm>>[] = [];
+  if (!fresh.length) {
+    const wide = await oaq<{ results?: OaqLocation[] }>(
+      env,
+      `/locations?bbox=${bboxAround(p.lat, p.lon, AQ_REGIONAL_KM)}&parameters_id=2&limit=100`,
+    ).catch(() => null);
+    const near = locate(p, wide?.results ?? [], now).filter((x) => x.km <= AQ_REGIONAL_KM);
+    const mon = near.filter((x) => x.l.isMonitor);
+    const pickR = [...mon, ...near.filter((x) => !x.l.isMonitor)].slice(0, AQ_REGIONAL_STATIONS);
+    regional = (await Promise.all(pickR.map((c) => readPm(c, env, now)))).filter(
+      (s) => s.pm25 != null || s.pm10 != null,
+    );
+  }
+  return respond(
+    JSON.stringify({ source: 'openaq', v: 2, fetched: now, stations, gases, regional }),
+    200,
+    {
+      'Content-Type': 'application/json',
+      // Monitors report hourly; 20 minutes keeps us far inside OpenAQ's free rate limit.
+      'Cache-Control': 'public, max-age=1200',
+    },
+  );
 }
 
 export default {

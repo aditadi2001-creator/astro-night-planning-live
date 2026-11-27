@@ -16,7 +16,7 @@
   import { limitingMagnitude } from '../lib/physics/skybrightness';
   import { magToNl } from '../lib/physics/moonlight';
   import { aqiCategory } from '../lib/air/aqi';
-  import type { siteAqi } from '../lib/data/stationair';
+  import { POLLUTANT_LABEL, type siteAqi } from '../lib/data/stationair';
 
   interface Props {
     row: HourRow | null;
@@ -44,6 +44,8 @@
     stationNote?: string;
     /** Recent 10.7 cm solar flux (sfu) behind it, or null while unknown. */
     solarFlux?: number | null;
+    /** Opens the Air section. */
+    onairmore?: () => void;
     loading: boolean;
   }
   let {
@@ -59,6 +61,7 @@
     solarFlux = null,
     measured = null,
     stationNote = '',
+    onairmore,
     loading,
   }: Props = $props();
   const naturalNote = $derived(
@@ -386,6 +389,18 @@
             · {Math.max(0, Math.round((Date.now() - s.time) / 60_000))} min ago{/if}{#if !s.monitor}
             <span class="sub">(low-cost sensor)</span>{/if}
         </dd>
+        {#if measured.parts.length > 1 || measured.dominant !== 'pm25'}
+          <dt>Set by</dt>
+          <dd>
+            {POLLUTANT_LABEL[measured.dominant]}
+            <span class="sub"
+              >({measured.parts[0]?.basis}; {measured.parts.length} pollutant{measured.parts
+                .length > 1
+                ? 's'
+                : ''} measured)</span
+            >
+          </dd>
+        {/if}
         <dt>PM2.5 / PM10</dt>
         <dd>
           {n(measured.pm25, 0)} / {n(measured.pm10, 0, ' µg/m³')}
@@ -429,6 +444,11 @@
       </p>
     {:else}
       <p class="muted">{loading ? 'Loading…' : 'Air-quality data unavailable.'}</p>
+    {/if}
+    {#if onairmore}
+      <button type="button" class="more" onclick={onairmore}
+        >Every pollutant, station and the 5-day forecast</button
+      >
     {/if}
   </Card>
 
@@ -592,6 +612,20 @@
   .dew {
     margin: 0;
     font-weight: 500;
+  }
+  .more {
+    min-height: 36px;
+    margin-top: 6px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--brass);
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
   }
   .dew-none,
   .dew-low {

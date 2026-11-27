@@ -180,6 +180,28 @@ Bangalore 175 on 20 Nov 05:30 while IQAir showed the city at 112 and WAQI's 04:0
 forecast hours and where no station is near. Needs a free OpenAQ key as the Worker secret
 `OPENAQ_KEY`; the Worker caches each 0.01° cell for 20 minutes.
 
+**Since 27 Nov 2026 (D73) the measured AQI follows the EPA definition in full** (Technical
+Assistance Document EPA-403/B-26-003, May 2026): the highest sub-index of every pollutant, not PM
+alone. The Worker reads 24 hours per sensor, so each station also carries 24-hour PM means (18 of
+24 hours needed; the basis of official daily AQIs) and its PM2.5 day for a chart. Ozone, NO₂, SO₂
+and CO come from the nearest station within 25 km that measures each, converted from the
+station's own unit (µg/m³, mg/m³, ppm or ppb) to the table's ppb/ppm at 25 °C and 1 atm
+(24.45 L/mol). Averaging as Table 6 prescribes: O₃ the 8-hour mean (6 of 8 hours), its 1-hour
+value only from 0.125 ppm, the larger index reported, no 8-hour index above 0.200 ppm; CO the
+8-hour mean; NO₂ the hour; SO₂ the hour below 305 ppb, from there the 24-hour mean if it is 305 or
+more, else fixed at 200. Truncation: O₃ 3 decimals (ppm), CO 1 decimal (ppm), NO₂ and SO₂ whole
+ppb. The 2019 ozone NowCast (two weeks of 1-h/8-h pairs) is not used; the plain 8-hour mean is.
+Only stations whose newest hour is less than 3 hours old enter the blend: the NowCast counts back
+from a station's own newest hour, so a monitor that went quiet still had a value (London, 27 Nov:
+a station 6 h stale carried 21 % of the blend). Where nothing reports within 25 km (most dark
+sites) the nearest monitors within 100 km are listed for reference; they never set the figure.
+The Ratings section uses the measured AQI for the present hour.
+
+The **Air section** shows all of it: every measured pollutant with its averaging, sub-index and
+station; every station with its share of the blend; the CAMS concentrations with Open-Meteo's US
+and European sub-indices, dust, AOD, UV, CO₂, methane, and (CAMS Europe only, n/a elsewhere)
+ammonia and pollen; the model's PM2.5 against the monitors'; and five days of hourly forecast.
+
 ## Satellite clouds: how much, and how thick
 
 `src/lib/sat/ir.ts`, `src/lib/sky/clouds.ts`. The hourly GMGSI infrared image is blended with the

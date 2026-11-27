@@ -16,6 +16,7 @@ export const PLAN_SECTIONS = [
   { id: 'week', label: 'Week', title: 'Week ahead' },
   { id: 'rain', label: 'Rain', title: 'Rain forecast' },
   { id: 'ratings', label: 'Ratings', title: 'Every condition rated 0–100' },
+  { id: 'air', label: 'Air', title: 'Air quality in detail' },
   { id: 'maps', label: 'Maps', title: 'Cloud and light-pollution maps' },
   { id: 'targets', label: 'Targets', title: 'Best targets tonight' },
   { id: 'planets', label: 'Planets', title: 'Planets, Sun and Moon' },
@@ -38,6 +39,8 @@ const LEGACY: Record<string, SectionId> = {
   space: 'space',
   rain: 'rain',
   ratings: 'ratings',
+  air: 'air',
+  aqi: 'air',
   about: 'about',
   credits: 'about',
 };

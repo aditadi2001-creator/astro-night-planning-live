@@ -509,3 +509,28 @@ OpenAQ air quality missing. Cause: that work lived on a parallel branch never me
 - Location picker: elevation of the current place (type it, or "From terrain map", then Set),
   shown on every built-in observatory and editable on every saved place (D72). Tested: set 935 m,
   terrain map 914 m, saved place 800 → 850 m; phone width without sideways scrolling.
+
+## Air quality in detail, every tab checked for every location (2026-11-27, owner's request)
+
+- Research: Open-Meteo air variables probed live (all 32 used work; ammonia and pollen are CAMS
+  Europe only, null elsewhere; global forecast 5 days, Europe 4); OpenAQ v3 docs (60/min,
+  2,000/h; units per sensor); EPA Technical Assistance Document May 2026 read from the PDF.
+- New **Air** section after Ratings (D76): headline AQI with the pollutant that sets it and EPA
+  advice, daily 24-h AQI, model vs monitors; every pollutant measured and modelled (US and EU
+  sub-indices); every station with distance, age, NowCast, 24-h mean, weight and its PM2.5 day;
+  regional monitors for remote sites (D75); dust, AOD, UV, CO₂, methane, ammonia, pollen; five-day
+  chart, day table and every hour. Tonight's air card links to it and names the pollutant.
+- Accuracy: measured AQI = highest sub-index of PM2.5, PM10, O₃, NO₂, SO₂, CO (D73); stale
+  stations no longer enter the blend (D74; found live in London); Ratings use the measured AQI
+  for the present hour. Wrong descriptions fixed: the Week note said "median of 8" (it is 6) and
+  About said 3 models give the agreement (all 8 do).
+- Every tab checked at Greenwich, Bangalore, Delhi, New York, Sydney, Svalbard, McMurdo, Atacama,
+  Hanle and mid-Pacific: all forecast models and CAMS cover every place; the gaps by place are
+  physical or by data coverage and are labelled (aurora below 40°, GMGSI beyond ±72.7°,
+  monitors, CAMS-Europe-only fields). The real gap was measured air at dark sites, now D75.
+- Worker `/aq` extended (gases, 24 h, regional) — **needs a Worker deploy**; the site works
+  with the old answer meanwhile. Tested end to end with a stubbed OpenAQ (tests/worker-aq.test.ts).
+- Browser (vite preview, real Worker): London measured 74 with the stale station left out,
+  Ratings air 75 from it; v2 answer injected for London (gases, sparklines) and Hanle (regional
+  Leh 96 km); 390 px without sideways scroll; night mode red-only; zero console errors.
+- Gates: check, lint, format, 63 test files / 530 tests, build, check:budget, worker:check pass.

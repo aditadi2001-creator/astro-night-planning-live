@@ -66,9 +66,11 @@
       </table>
     </div>
     <p class="note">
-      Dark hours = Sun more than 12° below the horizon. Clouds are the median of 8 forecast models
-      (tonight also corrected by the satellite); high cloud is mostly thin cirrus. Rating combines
-      clouds (high counting 60 %) and moonlight. Forecasts beyond about 3 days are rough.
+      Dark hours = Sun more than 12° below the horizon. Clouds are the median of 6 forecast models
+      (ECMWF, GFS, ICON, JMA, Météo-France, UK Met Office; GEM and CMA count only in the
+      uncertainty; tonight also corrected by the satellite); high cloud is mostly thin cirrus.
+      Rating combines clouds (high counting 60 %) and moonlight. Forecasts beyond about 3 days are
+      rough.
     </p>
   {:else}
     <p class="note">The week-ahead outlook appears once the forecast models have loaded.</p>

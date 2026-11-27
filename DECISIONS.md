@@ -373,3 +373,27 @@ elevation with a field to change it and a "From terrain map" lookup (Open-Meteo 
 picker already used), and each saved place has its own elevation box. A built-in observatory with
 a changed height becomes the visitor's own copy (its preset id and precomputed horizon no longer
 apply). Heights outside −450 to 8,900 m are refused.
+
+## Air quality in detail (2026-11-27)
+
+**D73. The measured US AQI is the highest sub-index of all six pollutants, by the EPA's rules.**
+It used to take PM2.5 and PM10 only, which can under-report (summer ozone, roadside NO₂). Rules
+from the May 2026 Technical Assistance Document, Table 6 and section IV (see docs/methods.md).
+Gases come from the nearest monitor within 25 km measuring each, not a blend: reading every
+station's gases would cost up to 32 more OpenAQ requests per place against a 60/minute limit.
+The document's 1-hour ozone example prints 148 where its own Equation 1 gives 147.49 → 147 (same
+in the 2018 edition; the other worked examples match the equation): we follow the equation.
+
+**D74. Stale stations leave the blend.** A station whose newest hour is over 3 hours old (the
+Worker's own "current" limit) no longer counts; it is still listed, marked "too old". When every
+station is stale the site shows the model, as when there is none.
+
+**D75. Remote sites get regional monitors for reference only** (one bbox search within 100 km,
+only when nothing reports within 25 km). Air at a dark site is usually cleaner than in the town
+with the monitor, so blending them would bias the site figure; they are shown apart.
+
+**D76. A separate Air section (after Ratings) holds the detail;** the Tonight card stays short
+and links to it. One Open-Meteo call (now 5 days and every variable, cache key `air2`) and the same
+`/aq` Worker request serve both: no new requests. The European AQI is Open-Meteo's computation
+(EEA bands); we do not compute a measured European index because the EEA band table could not be
+checked against the EEA itself (its site was down), and unverified numbers are not shown.

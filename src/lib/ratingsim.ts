@@ -189,7 +189,7 @@ export function simStart(id: RatingId, c: RateInput): Values {
     case 'skydark':
       return { sqm: c.siteSqm ?? 21 };
     case 'air':
-      return { aqi: c.row.air?.usAqi ?? 50 };
+      return { aqi: c.measuredAqi?.aqi ?? c.row.air?.usAqi ?? 50 };
     case 'confidence':
       return { spread: c.row.cloudSpread ?? 20 };
   }

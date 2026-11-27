@@ -76,7 +76,47 @@ const UPPER = LEVELS.flatMap((l) => [
   `wind_direction_${l}hPa`,
   `temperature_${l}hPa`,
 ]);
-const AQ = ['aerosol_optical_depth', 'dust', 'pm2_5', 'pm10', 'us_aqi', 'european_aqi'] as const;
+/**
+ * Air-quality variables (CAMS via Open-Meteo, one call). Ammonia and pollen exist only in the
+ * CAMS Europe domain and are null elsewhere; Open-Meteo's `domains=auto` (the default) uses
+ * the 11 km Europe model there and the ~45 km global model everywhere else.
+ */
+const AQ = [
+  'aerosol_optical_depth',
+  'dust',
+  'pm2_5',
+  'pm10',
+  'us_aqi',
+  'european_aqi',
+  'ozone',
+  'nitrogen_dioxide',
+  'sulphur_dioxide',
+  'carbon_monoxide',
+  'carbon_dioxide',
+  'ammonia',
+  'methane',
+  'uv_index',
+  'uv_index_clear_sky',
+  'us_aqi_pm2_5',
+  'us_aqi_pm10',
+  'us_aqi_ozone',
+  'us_aqi_nitrogen_dioxide',
+  'us_aqi_sulphur_dioxide',
+  'us_aqi_carbon_monoxide',
+  'european_aqi_pm2_5',
+  'european_aqi_pm10',
+  'european_aqi_ozone',
+  'european_aqi_nitrogen_dioxide',
+  'european_aqi_sulphur_dioxide',
+  'alder_pollen',
+  'birch_pollen',
+  'grass_pollen',
+  'mugwort_pollen',
+  'olive_pollen',
+  'ragweed_pollen',
+] as const;
+export const POLLENS = ['alder', 'birch', 'grass', 'mugwort', 'olive', 'ragweed'] as const;
+export type Pollen = (typeof POLLENS)[number];
 
 const TTL = 30 * 60_000;
 
@@ -140,10 +180,28 @@ export interface AirHour {
   pm10: number | null;
   usAqi: number | null;
   euAqi: number | null;
+  /** Gases, µg/m³ (CO too); CO2 in ppm. */
+  o3?: number | null;
+  no2?: number | null;
+  so2?: number | null;
+  co?: number | null;
+  co2?: number | null;
+  nh3?: number | null;
+  ch4?: number | null;
+  uv?: number | null;
+  uvClear?: number | null;
+  /** US AQI and European AQI sub-indices per pollutant (Open-Meteo's own computation). */
+  us?: Record<'pm25' | 'pm10' | 'o3' | 'no2' | 'so2' | 'co', number | null>;
+  eu?: Record<'pm25' | 'pm10' | 'o3' | 'no2' | 'so2', number | null>;
+  /** Pollen, grains/m³ (CAMS Europe only). */
+  pollen?: Record<Pollen, number | null>;
 }
 
 export interface Air {
   hours: AirHour[];
+  /** Model grid point used (Open-Meteo snaps to its grid). */
+  lat?: number;
+  lon?: number;
 }
 
 function q(params: Record<string, string | number>): string {
@@ -260,25 +318,59 @@ export async function loadAir(
   signal: AbortSignal,
   force = false,
 ): Promise<Cached<Air>> {
-  const url = `${AIR}?${q({ ...base(lat, lon), hourly: AQ.join(',') })}`;
-  const r = await fetchJson<RawForecast>(key('air', lat, lon), url, {
-    maxAgeMs: force ? 0 : TTL,
-    signal,
-  });
-  const h = r.data.hourly;
+  // Five days: as far as the CAMS global forecast reaches (CAMS Europe: four).
+  const url = `${AIR}?${q({ ...base(lat, lon), forecast_days: 5, hourly: AQ.join(',') })}`;
+  // air2: more variables and days than the old 'air' entries held.
+  const r = await fetchJson<RawForecast & { latitude?: number; longitude?: number }>(
+    key('air2', lat, lon),
+    url,
+    { maxAgeMs: force ? 0 : TTL, signal },
+  );
+  return { ...r, data: parseAir(r.data) };
+}
+
+export function parseAir(raw: RawForecast & { latitude?: number; longitude?: number }): Air {
+  const h = raw.hourly;
   return {
-    ...r,
-    data: {
-      hours: h.time.map((t, i) => ({
-        t: t * 1000,
-        aod: v(h.aerosol_optical_depth, i),
-        dust: v(h.dust, i),
-        pm25: v(h.pm2_5, i),
-        pm10: v(h.pm10, i),
-        usAqi: v(h.us_aqi, i),
-        euAqi: v(h.european_aqi, i),
-      })),
-    },
+    lat: raw.latitude,
+    lon: raw.longitude,
+    hours: h.time.map((t, i) => ({
+      t: t * 1000,
+      aod: v(h.aerosol_optical_depth, i),
+      dust: v(h.dust, i),
+      pm25: v(h.pm2_5, i),
+      pm10: v(h.pm10, i),
+      usAqi: v(h.us_aqi, i),
+      euAqi: v(h.european_aqi, i),
+      o3: v(h.ozone, i),
+      no2: v(h.nitrogen_dioxide, i),
+      so2: v(h.sulphur_dioxide, i),
+      co: v(h.carbon_monoxide, i),
+      co2: v(h.carbon_dioxide, i),
+      nh3: v(h.ammonia, i),
+      ch4: v(h.methane, i),
+      uv: v(h.uv_index, i),
+      uvClear: v(h.uv_index_clear_sky, i),
+      us: {
+        pm25: v(h.us_aqi_pm2_5, i),
+        pm10: v(h.us_aqi_pm10, i),
+        o3: v(h.us_aqi_ozone, i),
+        no2: v(h.us_aqi_nitrogen_dioxide, i),
+        so2: v(h.us_aqi_sulphur_dioxide, i),
+        co: v(h.us_aqi_carbon_monoxide, i),
+      },
+      eu: {
+        pm25: v(h.european_aqi_pm2_5, i),
+        pm10: v(h.european_aqi_pm10, i),
+        o3: v(h.european_aqi_ozone, i),
+        no2: v(h.european_aqi_nitrogen_dioxide, i),
+        so2: v(h.european_aqi_sulphur_dioxide, i),
+      },
+      pollen: Object.fromEntries(POLLENS.map((p) => [p, v(h[`${p}_pollen`], i)])) as Record<
+        Pollen,
+        number | null
+      >,
+    })),
   };
 }
 

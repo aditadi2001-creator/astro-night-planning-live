@@ -126,7 +126,8 @@ const CORE_CREDITS: Credit[] = [
     attribution:
       'Air quality data by Open-Meteo.com, based on CAMS ENSEMBLE data provider (Copernicus Atmosphere Monitoring Service).',
     shortCredit: 'Air quality: Open-Meteo.com, CAMS ENSEMBLE data provider',
-    usage: 'Aerosol optical depth, dust, PM2.5, PM10, US/European AQI.',
+    usage:
+      'Five days of hourly aerosol optical depth, dust, PM2.5, PM10, ozone, NO₂, SO₂, CO, CO₂, methane, UV index, US and European AQI with every sub-index; ammonia and pollen in Europe (CAMS Europe).',
     kind: 'data',
     status: 'live',
   },
@@ -206,7 +207,7 @@ const CORE_CREDITS: Credit[] = [
       'Measured air quality: OpenAQ (openaq.org), from government monitoring stations (e.g. CPCB, US EPA, EEA).',
     shortCredit: 'Air quality: OpenAQ',
     usage:
-      'Nearest reference monitors within 25 km (up to five): last 12 hours of PM2.5 and PM10 for the EPA NowCast, read through the data Worker and cached 20 minutes per place.',
+      'Nearest reference monitors within 25 km (up to five): last 24 hours of PM2.5 and PM10 (EPA NowCast and 24-hour means), and ozone, NO₂, SO₂ and CO from the nearest monitor measuring each; for remote sites the nearest monitors within 100 km for reference. Read through the data Worker and cached 20 minutes per place.',
     kind: 'data',
     status: 'live',
   },

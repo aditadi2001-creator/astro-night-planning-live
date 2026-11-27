@@ -152,3 +152,16 @@ never stored by us.
 - "Save for offline" downloads 872 Pages files (28.7 MB): **0 Worker requests, 0 R2 reads**.
 - The device keeps at most 150 MB of cached data (least recently used dropped first).
 - Initial JS: 173.1 KiB gz (Sky page code split off; was 203.9 KiB after Phase 5).
+
+## 8. Air quality in detail (2026-11-27, D73–D76)
+
+- **Worker requests: unchanged.** The Air section uses the same `/aq/<lat>/<lon>` request as the
+  Tonight card (cached 20 min per 0.01° cell) and the same single Open-Meteo air call (now five
+  days and every variable; no Worker involved). No new route, no R2.
+- **OpenAQ requests per uncached place** (free key: 60/min, 2,000/h): at most 1 + 16 (PM, as
+  before) + 4 (one sensor per gas) = **21** (was 17). Remote sites with nothing within 25 km: 1 +
+  1 (bbox search) + up to 6 = **8**. Each PM read now asks for 24 hours instead of 12 (same
+  number of requests, about twice the rows).
+- `/aq` response: about 2–4 KB (was ~1 KB) with the 24-hour PM2.5 series and gases.
+- The new behaviour needs a **Worker deploy**; until then the site works with the old answer
+  (gas rows say the data service does not read them yet).

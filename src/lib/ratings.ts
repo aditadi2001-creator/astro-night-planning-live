@@ -90,7 +90,7 @@ export const RULES: Record<RatingId, { label: string; rule: string; formula: str
   },
   air: {
     label: 'Air quality',
-    rule: 'US AQI from the air-quality forecast (health, and smoke or dust in the sky). 100 at AQI 0, 0 at AQI 300 or more ("hazardous").',
+    rule: 'US AQI (health, and smoke or dust in the sky): measured by nearby monitors for the present hour when they report, otherwise the air-quality forecast. 100 at AQI 0, 0 at AQI 300 or more ("hazardous").',
     formula: '100 × (1 − AQI / 300), between 0 and 100',
   },
   confidence: {
@@ -136,10 +136,22 @@ export interface RateInput {
   siteSqm: number | null;
   /** Site elevation, m (for the fallback pressure). */
   elevation: number;
+  /**
+   * Measured US AQI from nearby monitors, given only for the present hour: it replaces the
+   * forecast there (the global model can be several times too low in cities).
+   */
+  measuredAqi?: { aqi: number; note: string } | null;
 }
 
 /** All ratings for one hour. */
-export function rateHour({ row, rain, darkSkyMag, siteSqm, elevation }: RateInput): Rating[] {
+export function rateHour({
+  row,
+  rain,
+  darkSkyMag,
+  siteSqm,
+  elevation,
+  measuredAqi = null,
+}: RateInput): Rating[] {
   const w = row.weather;
   const out: Rating[] = [];
   const push = (
@@ -262,10 +274,18 @@ export function rateHour({ row, rain, darkSkyMag, siteSqm, elevation }: RateInpu
     );
   } else push('skydark', null, 'Light-pollution map not loaded', '—');
 
-  const aqi = row.air?.usAqi ?? null;
+  const model = row.air?.usAqi ?? null;
+  const aqi = measuredAqi?.aqi ?? model;
   if (aqi != null) {
     const af = airFactor(aqi);
-    push('air', pct(af), `US AQI ${n0(aqi)}`, `100 × (1 − ${n0(aqi)} / 300) = ${pct(af)}`);
+    push(
+      'air',
+      pct(af),
+      measuredAqi
+        ? `US AQI ${n0(aqi)} measured (${measuredAqi.note})${model != null ? `; forecast model ${n0(model)}` : ''}`
+        : `US AQI ${n0(aqi)} (forecast model)`,
+      `100 × (1 − ${n0(aqi)} / 300) = ${pct(af)}`,
+    );
   } else push('air', null, 'No air-quality forecast yet', '—');
 
   if (row.cloudSpread != null) {

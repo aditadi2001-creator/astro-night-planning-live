@@ -181,9 +181,12 @@ export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: numb
 
 /**
  * Hourly values (any order; `end` = end of the hour, ms) → a newest-first series
- * of 12 hours counted back from the newest hour reported, plus that hour's end.
+ * of `n` hours (default 12) counted back from the newest hour reported, plus that hour's end.
  */
-export function hourlySeries(rows: readonly { value: number | null; end: number }[]): {
+export function hourlySeries(
+  rows: readonly { value: number | null; end: number }[],
+  n = 12,
+): {
   series: (number | null)[];
   newest: number | null;
 } {
@@ -193,13 +196,67 @@ export function hourlySeries(rows: readonly { value: number | null; end: number 
   );
   if (!valid.length) return { series: [], newest: null };
   const newest = Math.max(...valid.map((r) => r.end));
-  const series = new Array<number | null>(12).fill(null);
+  const series = new Array<number | null>(n).fill(null);
   for (const r of valid) {
     const i = Math.round((newest - r.end) / 3600_000);
-    if (i >= 0 && i < 12 && series[i] == null) series[i] = r.value;
+    if (i >= 0 && i < n && series[i] == null) series[i] = r.value;
   }
   return { series, newest };
 }
+
+/**
+ * Mean of the newest `hours` values of a newest-first series, or null when fewer than
+ * `minValid` of them are present (the EPA's 75 % completeness: 6 of 8 hours, 18 of 24).
+ */
+export function trailingMean(
+  series: readonly (number | null)[],
+  hours: number,
+  minValid = Math.ceil(hours * 0.75),
+): number | null {
+  const v = series.slice(0, hours).filter((x): x is number => x != null && Number.isFinite(x));
+  return v.length >= minValid && v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+}
+
+/** Gases read per place, as OpenAQ names them. */
+export const AQ_GASES = ['o3', 'no2', 'so2', 'co'] as const;
+export type AqGas = (typeof AQ_GASES)[number];
+const MOLAR_MASS: Record<AqGas, number> = { o3: 48.0, no2: 46.0055, so2: 64.066, co: 28.01 };
+
+/**
+ * A gas value in the sensor's own unit (OpenAQ: µg/m³ for e.g. India's CPCB, ppm for US
+ * AirNow) → ppb for O3/NO2/SO2 and ppm for CO, the units of the EPA AQI table, using the EPA
+ * reference state (25 °C, 1 atm: 24.45 L/mol). Null for a unit we do not know.
+ */
+export function gasToStd(value: number, unit: string, gas: AqGas): number | null {
+  if (!Number.isFinite(value) || value < 0) return null;
+  const u = unit.toLowerCase().replace(/\s/g, '').replace('μ', 'µ').replace(/^u/, 'µ');
+  const ugm3 = u === 'µg/m³' || u === 'µg/m3';
+  const mgm3 = u === 'mg/m³' || u === 'mg/m3';
+  let ppb: number;
+  if (u === 'ppb') ppb = value;
+  else if (u === 'ppm') ppb = value * 1000;
+  else if (ugm3) ppb = (value * 24.45) / MOLAR_MASS[gas];
+  else if (mgm3) ppb = (value * 1000 * 24.45) / MOLAR_MASS[gas];
+  else return null;
+  return gas === 'co' ? ppb / 1000 : ppb;
+}
+
+/** Search box (OpenAQ `bbox`: minLon,minLat,maxLon,maxLat) reaching `km` from a point. */
+export function bboxAround(lat: number, lon: number, km: number): string {
+  const dLat = km / 111.2;
+  const dLon = km / (111.2 * Math.max(0.05, Math.cos((lat * Math.PI) / 180)));
+  const f = (x: number) => x.toFixed(4);
+  return [
+    f(Math.max(-180, lon - dLon)),
+    f(Math.max(-90, lat - dLat)),
+    f(Math.min(180, lon + dLon)),
+    f(Math.min(90, lat + dLat)),
+  ].join(',');
+}
+
+/** Round a series for the response (one decimal; three for ppm). */
+export const roundSeries = (s: readonly (number | null)[], d = 1) =>
+  s.map((x) => (x == null ? null : Math.round(x * 10 ** d) / 10 ** d));
 
 export const OPENAQ = 'https://api.openaq.org/v3';
 /** Stations further than this are not "at the site". */
@@ -214,6 +271,14 @@ export const AQ_STATIONS = 5;
  * with a recent PM2.5 hour are kept first. 8 × 2 sensor reads per 20-minute cache miss.
  */
 export const AQ_READ = 8;
+/**
+ * When no monitor reports within AQ_RADIUS_M (most dark sites), the nearest few within this
+ * distance are read for reference. They are shown apart and never set the site's figure.
+ */
+export const AQ_REGIONAL_KM = 100;
+export const AQ_REGIONAL_STATIONS = 3;
+/** Hours of history read per sensor: the 24-hour means and the chart need a full day. */
+export const AQ_HOURS = 24;
 
 /** GitHub repository whose workflows the Worker's cron starts. */
 export const GH_REPO = 'aditadi2001-creator/astro-night-planning-live';

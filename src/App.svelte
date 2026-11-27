@@ -84,6 +84,7 @@
   import TonightGlance from './components/TonightGlance.svelte';
   import RainPanel from './components/RainPanel.svelte';
   import RatingsPanel from './components/RatingsPanel.svelte';
+  import AirPanel from './components/AirPanel.svelte';
   import { loadRain, type Rain } from './lib/data/rain';
   import { rateHour, scoreMath } from './lib/ratings';
   import { verdict } from './lib/plan/verdict';
@@ -136,6 +137,7 @@
   import {
     STATION_AIR_ENABLED,
     loadStationAir,
+    isCurrent,
     siteAqi,
     type StationAir,
   } from './lib/data/stationair';
@@ -194,6 +196,7 @@
     'week',
     'rain',
     'ratings',
+    'air',
     'maps',
     'targets',
     'planets',
@@ -762,7 +765,9 @@
       ? ''
       : sources.stationAir.data == null
         ? 'Measured station data is not available right now.'
-        : (sources.stationAir.data.stations.length ?? 0) === 0
+        : !sources.stationAir.data.stations.some((s) =>
+              isCurrent(s, sources?.stationAir?.data?.fetched ?? Date.now()),
+            )
           ? 'No monitoring station has reported within 25 km in the last 3 hours.'
           : 'Measured values are shown for the present hour only.',
   );
@@ -1140,6 +1145,14 @@
     darkSkyMag: darkSkyAt(r.aod),
     siteSqm: sqmUsed.value,
     elevation: place.elevation,
+    // Monitors measure the present hour only; later hours keep the forecast.
+    measuredAqi:
+      measured && hourStart(r.t) === hourStart(now.getTime())
+        ? {
+            aqi: measured.aqi,
+            note: measured.used > 1 ? `${measured.used} nearby stations` : measured.station.name,
+          }
+        : null,
   });
   const rateRow = (r: typeof row) => rateHour(rateInput(r));
   const ratingsInput = $derived(rateInput(row));
@@ -1846,6 +1859,7 @@
               {solarFlux}
               {measured}
               {stationNote}
+              onairmore={() => jumpTo('air')}
               lightStatus={layers.lightpollution ? (sources?.light?.status ?? 'off') : 'off'}
               loading={sources?.weather.status === 'loading'}
             />
@@ -1935,6 +1949,33 @@
                 onnow={() => setTime(new Date(), true)}
               />
             </div>
+          {:else}
+            <p class="sec-wait" aria-hidden="true"></p>
+          {/if}
+        </section>
+        <section id="sec-air" class="sec" aria-labelledby="h-air">
+          <header class="sec-head">
+            <div>
+              <h2 id="h-air">Air quality in detail</h2>
+              <p class="lede">
+                Every pollutant measured near {place.name} and forecast by the model, each station, the
+                US and European indices, and five days ahead.
+              </p>
+            </div>
+          </header>
+          {#if ready('air')}
+            <AirPanel
+              {air}
+              airStatus={sources?.air.status ?? 'loading'}
+              stations={sources?.stationAir?.data ?? null}
+              stationsEnabled={STATION_AIR_ENABLED}
+              stationStatus={sources?.stationAir?.status ?? 'off'}
+              placeName={place.name}
+              {tz}
+              {utcOff}
+              now={now.getTime()}
+              onpick={(t) => setTime(new Date(t), false)}
+            />
           {:else}
             <p class="sec-wait" aria-hidden="true"></p>
           {/if}
