@@ -397,3 +397,10 @@ and links to it. One Open-Meteo call (now 5 days and every variable, cache key `
 `/aq` Worker request serve both: no new requests. The European AQI is Open-Meteo's computation
 (EEA bands); we do not compute a measured European index because the EEA band table could not be
 checked against the EEA itself (its site was down), and unverified numbers are not shown.
+
+**D77. Live checks after the first Worker deploy changed three things.** (1) A second station is
+tried per gas when the nearest has no reading in the last 3 hours (Delhi showed no O₃/NO₂ in one
+cell though ITO, 1 km further, had both). (2) CO below 0.03 ppm is rejected as a wrong unit or a
+broken sensor: no surface air holds less than ~40 ppb, and one Delhi station gave 6 "ppb"
+(city air ~1,000+). Other gases can truly be near zero and are not filtered. (3) A rate-limited
+OpenAQ call no longer leaves a half-empty answer cached for 20 minutes (see DATA_BUDGET §8).

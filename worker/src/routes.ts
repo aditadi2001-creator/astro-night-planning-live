@@ -241,6 +241,22 @@ export function gasToStd(value: number, unit: string, gas: AqGas): number | null
   return gas === 'co' ? ppb / 1000 : ppb;
 }
 
+/** Stations tried per gas (the nearest often has no recent hours or a broken sensor). */
+export const AQ_GAS_TRIES = 2;
+
+/**
+ * Carbon monoxide below 0.03 ppm (30 ppb) does not occur in surface air anywhere: the cleanest
+ * background air holds about 40–150 ppb. Lower readings mean a wrong unit or a broken sensor
+ * at the source (OpenAQ, Delhi 27 Nov 2026: a station gave 6 "ppb", city air holds ~1,000+),
+ * so that station is skipped. The other gases can be near zero for real (O3 at night in a city,
+ * SO2 and NO2 in clean air) and are not filtered.
+ */
+export const CO_MIN_PPM = 0.03;
+export function gasPlausible(gas: AqGas, latestStd: number | null): boolean {
+  if (latestStd == null || !Number.isFinite(latestStd) || latestStd < 0) return false;
+  return gas !== 'co' || latestStd >= CO_MIN_PPM;
+}
+
 /** Search box (OpenAQ `bbox`: minLon,minLat,maxLon,maxLat) reaching `km` from a point. */
 export function bboxAround(lat: number, lon: number, km: number): string {
   const dLat = km / 111.2;

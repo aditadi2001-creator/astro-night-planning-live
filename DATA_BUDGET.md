@@ -159,9 +159,13 @@ never stored by us.
   Tonight card (cached 20 min per 0.01° cell) and the same single Open-Meteo air call (now five
   days and every variable; no Worker involved). No new route, no R2.
 - **OpenAQ requests per uncached place** (free key: 60/min, 2,000/h): at most 1 + 16 (PM, as
-  before) + 4 (one sensor per gas) = **21** (was 17). Remote sites with nothing within 25 km: 1 +
-  1 (bbox search) + up to 6 = **8**. Each PM read now asks for 24 hours instead of 12 (same
+  before) + 8 (gases: the nearest station, and a second one only if the first has no current or
+  plausible reading) = **25** (was 17); about 21 usually. Remote sites with nothing within 25 km:
+  1 + 1 (bbox search) + up to 6 = **8**. Each PM read now asks for 24 hours instead of 12 (same
   number of requests, about twice the rows).
+- Rate limit (D77): a burst of ~8 uncached places within a minute (seen while testing) gets 429s.
+  The Worker then answers 503 uncached when nothing came back, or caches a partial answer for
+  2 minutes instead of 20; the site keeps its last good copy or shows the model.
 - `/aq` response: about 2–4 KB (was ~1 KB) with the 24-hour PM2.5 series and gases.
 - The new behaviour needs a **Worker deploy**; until then the site works with the old answer
   (gas rows say the data service does not read them yet).

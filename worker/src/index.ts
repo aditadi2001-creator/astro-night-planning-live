@@ -47,6 +47,8 @@ import {
   AQ_HOURS,
   AQ_REGIONAL_KM,
   AQ_REGIONAL_STATIONS,
+  AQ_GAS_TRIES,
+  gasPlausible,
   bboxAround,
   gasToStd,
   roundSeries,
@@ -251,10 +253,18 @@ interface OaqHour {
   period?: { datetimeTo?: { utc?: string } };
 }
 
-async function oaq<T>(env: Env, path: string): Promise<T> {
+/**
+ * The Worker environment for one /aq request, with a flag set when OpenAQ refused a call for its
+ * rate limit (60/min, 2,000/h): sensor reads swallow errors to keep the other stations, so the
+ * answer must then not be cached as if it were complete.
+ */
+type AqEnv = Env & { aqLimited?: boolean };
+
+async function oaq<T>(env: AqEnv, path: string): Promise<T> {
   const r = await fetch(`${OPENAQ}${path}`, {
     headers: { 'X-API-Key': (env.OPENAQ_KEY ?? '').trim(), Accept: 'application/json' },
   });
+  if (r.status === 429) env.aqLimited = true;
   if (!r.ok) throw new Error(`OpenAQ ${r.status}`);
   return (await r.json()) as T;
 }
@@ -333,12 +343,26 @@ async function readPm({ l, km }: Located, env: Env, now: number) {
  * newest hour, the 8-hour mean (O3, CO) and the 24-hour mean (SO2), as the EPA AQI uses them.
  */
 async function readGas(gas: AqGas, cands: Located[], env: Env, now: number) {
-  const c = cands.find((x) => sensorOf(x.l, gas)?.id);
-  const s = c ? sensorOf(c.l, gas) : undefined;
+  // The nearest station measuring the gas often has no recent hours (or a broken sensor): one
+  // more is tried, so at most AQ_GAS_TRIES requests per gas.
+  const withSensor = cands.filter((x) => {
+    const u = sensorOf(x.l, gas)?.parameter?.units;
+    return !!u && gasToStd(1, u, gas) != null;
+  });
+  for (const c of withSensor.slice(0, AQ_GAS_TRIES)) {
+    const r = await readGasAt(gas, c, env, now);
+    if (r) return r;
+  }
+  return null;
+}
+
+async function readGasAt(gas: AqGas, c: Located, env: Env, now: number) {
+  const s = sensorOf(c.l, gas);
   const unit = s?.parameter?.units;
-  if (!c || !s || !unit || gasToStd(1, unit, gas) == null) return null;
+  if (!s || !unit) return null;
   const h = await sensorHours(env, s.id, now, (v) => gasToStd(v, unit, gas)).catch(() => null);
-  if (!h || h.newest == null) return null;
+  if (!h || h.newest == null || now - h.newest > AQ_MAX_AGE_MS) return null;
+  if (!gasPlausible(gas, h.latest)) return null;
   return {
     name: c.l.name ?? `OpenAQ ${c.l.id}`,
     provider: c.l.provider?.name ?? null,
@@ -363,17 +387,19 @@ async function readGas(gas: AqGas, cands: Located[], env: Env, now: number) {
  *  - gases: O3, NO2, SO2 and CO from the nearest of those stations that measures each.
  *  - regional: only when nothing reports within 25 km, the nearest three within 100 km, for
  *    reference (the site then keeps the model figure).
- * OpenAQ requests per uncached place: 1 + up to 16 (PM) + up to 4 (gases) = 21, or 1 + 1 + 6 when
- * only the regional search runs; the free limit is 60 a minute.
+ * OpenAQ requests per uncached place: 1 + up to 16 (PM) + up to 8 (gases, two stations each at
+ * most) = 25, or 1 + 1 + 6 when only the regional search runs; the free limit is 60 a minute.
  * 503 without the OPENAQ_KEY secret (the site then shows the CAMS model).
  */
-async function serveAq(env: Env, path: string): Promise<Response> {
+async function serveAq(baseEnv: Env, path: string): Promise<Response> {
   const p = parseAq(path);
   if (!p) return notFound();
-  if (!env.OPENAQ_KEY)
+  if (!baseEnv.OPENAQ_KEY)
     return respond('No station source configured', 503, {
       'Cache-Control': 'public, max-age=3600',
     });
+  // This request's own environment (bindings via the prototype), carrying the rate-limit flag.
+  const env = Object.assign(Object.create(baseEnv) as AqEnv, { aqLimited: false });
   const now = Date.now();
   const loc = await oaq<{ results?: OaqLocation[] }>(
     env,
@@ -408,13 +434,23 @@ async function serveAq(env: Env, path: string): Promise<Response> {
       (s) => s.pm25 != null || s.pm10 != null,
     );
   }
+  const usable = stations.some((s) => s.pm25 != null || s.pm10 != null) || regional.length > 0;
+  // Rate-limited with nothing to show: say so without caching (the site keeps its last good copy
+  // or the model) rather than caching an empty answer for 20 minutes.
+  if (env.aqLimited && !usable)
+    return respond('OpenAQ rate limit, try again shortly', 503, {
+      'Cache-Control': 'no-store',
+      'Retry-After': '60',
+      'Content-Type': 'text/plain',
+    });
   return respond(
     JSON.stringify({ source: 'openaq', v: 2, fetched: now, stations, gases, regional }),
     200,
     {
       'Content-Type': 'application/json',
-      // Monitors report hourly; 20 minutes keeps us far inside OpenAQ's free rate limit.
-      'Cache-Control': 'public, max-age=1200',
+      // Monitors report hourly; 20 minutes keeps us far inside OpenAQ's free rate limit. A
+      // partly rate-limited answer is kept only 2 minutes so the missing parts come back soon.
+      'Cache-Control': env.aqLimited ? 'public, max-age=120' : 'public, max-age=1200',
     },
   );
 }

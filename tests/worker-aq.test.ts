@@ -138,7 +138,43 @@ describe('/aq end to end (stubbed OpenAQ)', () => {
     // 1 location search + 3 PM sensors + 4 gases; the stale station is never read.
     expect(calls).toHaveLength(8);
     expect(calls.some((c) => c.includes('/sensors/31/'))).toBe(false);
-    expect(calls.length).toBeLessThanOrEqual(21);
+    expect(calls.length).toBeLessThanOrEqual(25);
+  });
+
+  it('tries a second station when the nearest has no current gas, and skips impossible CO', async () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+    const calls = stub((url) => {
+      if (url.pathname === '/v3/locations')
+        return {
+          results: [
+            loc(1, 'Stadium', 28.611, 77.238, [
+              s(11, 'pm25', 'µg/m³'),
+              s(13, 'o3', 'µg/m³'),
+              s(14, 'co', 'ppb'),
+            ]),
+            loc(2, 'ITO', 28.6286, 77.241, [
+              s(21, 'pm25', 'µg/m³'),
+              s(23, 'o3', 'µg/m³'),
+              s(24, 'co', 'mg/m³'),
+            ]),
+          ],
+        };
+      const id = Number(/^\/v3\/sensors\/(\d+)\/hours$/.exec(url.pathname)?.[1]);
+      if (id === 11 || id === 21) return hours(100);
+      if (id === 13) return { results: [] }; // o3 sensor with no recent hours
+      if (id === 14) return hours(6); // "6 ppb" of CO: impossible in surface air
+      if (id === 23) return hours(40);
+      if (id === 24) return hours(1.5);
+      return null;
+    });
+    const r = await get('/aq/28.62/77.22');
+    const j = (await r.json()) as { gases: Record<string, { name: string; latest: number }> };
+    expect(j.gases.o3?.name).toBe('ITO');
+    expect(j.gases.co?.name).toBe('ITO');
+    expect(j.gases.co?.latest).toBeCloseTo((1.5 * 24.45) / 28.01, 3);
+    // 1 search + 2 PM + 2 tries for o3 + 2 tries for co.
+    expect(calls).toHaveLength(7);
+    expect(calls.length).toBeLessThanOrEqual(25);
   });
 
   it('a remote site gets the nearest monitors within 100 km, kept apart', async () => {
@@ -167,6 +203,37 @@ describe('/aq end to end (stubbed OpenAQ)', () => {
     expect(j.regional[0]?.km).toBeLessThan(100);
     expect(calls.find((c) => c.includes('bbox='))).toMatch(/bbox=-?\d+\.\d{4},/);
     expect(calls.length).toBeLessThanOrEqual(8);
+  });
+
+  it('a rate-limited answer is never cached as if complete', async () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+    const limited = () => new Response('Too many requests', { status: 429 });
+    const okLoc = {
+      results: [
+        loc(1, 'A', 28.61, 77.21, [s(11, 'pm25', 'µg/m³')]),
+        loc(2, 'B', 28.62, 77.22, [s(21, 'pm25', 'µg/m³')]),
+      ],
+    };
+    const run = (sensorOk: (id: number) => boolean) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = new URL(typeof input === 'string' ? input : input.toString());
+          if (url.pathname === '/v3/locations') return new Response(JSON.stringify(okLoc));
+          const id = Number(/^\/v3\/sensors\/(\d+)\/hours$/.exec(url.pathname)?.[1]);
+          return sensorOk(id) ? new Response(JSON.stringify(hours(50))) : limited();
+        }),
+      );
+      return get('/aq/28.61/77.21');
+    };
+    // Every sensor read refused: 503, not stored.
+    const none = await run(() => false);
+    expect(none.status).toBe(503);
+    expect(none.headers.get('Cache-Control')).toBe('no-store');
+    // One read refused: the data that came back, kept 2 minutes only.
+    const part = await run((id) => id === 11);
+    expect(part.status).toBe(200);
+    expect(part.headers.get('Cache-Control')).toBe('public, max-age=120');
   });
 
   it('without a key it answers 503, so the site keeps the model', async () => {
