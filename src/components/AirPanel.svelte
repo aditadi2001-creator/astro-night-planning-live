@@ -409,7 +409,7 @@
                         ? 'n/a (not reported nearby)'
                         : stations && !('o3' in (stations.gases ?? {}))
                           ? 'n/a (the data service does not read gases yet)'
-                          : 'n/a (no nearby monitor measures it)'}</span
+                          : 'n/a (no current reading within 25 km)'}</span
                 >
               {/if}
             </td>
